@@ -1,0 +1,69 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\somnu\\.ohos\\config\\default_DailyRead_Harmony_mrBuWIIzCrklZfKbuGjDRoTFiXBbzwhQtRo7TYGRcHA=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BE3CFE8AC6F50E861E50251AE8125AB38A3C43704A268DBD3C3A6883D70DC3EA6C785F8BE517727",
+          "profile": "C:\\Users\\somnu\\.ohos\\config\\default_DailyRead_Harmony_mrBuWIIzCrklZfKbuGjDRoTFiXBbzwhQtRo7TYGRcHA=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\somnu\\.ohos\\config\\default_DailyRead_Harmony_mrBuWIIzCrklZfKbuGjDRoTFiXBbzwhQtRo7TYGRcHA=.p12",
+          "storePassword": "0000001B13C41004A6E110063B8E1B8352F2B2657B44CBFDAE7297A3BBBAC7B1A0CD8714F464672C445593"
+        }
+      },
+      {
+        "name": "debug",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "E:/item/Dailyread_Android/csr/DailyRead_somnus.p12",
+          "storePassword": "0000001C06B7D581AF44CD01DAB01086514DC05607F187DE2370494AA164D59ED5843593BF9EA50222AAFBB4",
+          "keyAlias": "Somnus890930",
+          "keyPassword": "0000001CE1556AE3C8FEC0676E4D7FFD6D22D6E85BCAB63A2EE1D5D0010E0D4965B5814B6CBDDB66CC6542C5",
+          "signAlg": "SHA256withECDSA",
+          "profile": "E:/item/Dailyread_Android/csr/DailyReadDebug.p7b",
+          "certpath": "C:\\Users\\somnu\\.ohos\\config\\debug_DailyRead_Harmony_mrBuWIIzCrklZfKbuGjDRoTFiXBbzwhQtRo7TYGRcHA=.cer"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "6.1.1(24)",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

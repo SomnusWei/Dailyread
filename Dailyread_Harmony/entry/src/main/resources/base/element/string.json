@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "每日阅读"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "每日阅读"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "每日阅读"
+    }
+  ]
+}

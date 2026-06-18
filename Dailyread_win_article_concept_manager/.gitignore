@@ -1,0 +1,8 @@
+libs/
+__pycache__/
+*.pyc
+*.pyo
+build/
+dist/
+*.spec.bak
+__pycache__/
