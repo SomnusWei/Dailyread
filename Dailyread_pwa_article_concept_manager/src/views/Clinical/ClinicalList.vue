@@ -1,8 +1,10 @@
-<script setup lang="ts">import { ref, computed, onMounted } from 'vue';
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useClinicalStore } from '@/stores/clinical';
 import type { ClinicalNote } from '@/types';
 import { Plus, Search, Edit2, Trash2, Upload, Download, X, Check } from 'lucide-vue-next';
+
 const router = useRouter();
 const clinicalStore = useClinicalStore();
 const searchQuery = ref('');
@@ -55,9 +57,12 @@ function openAddModal() {
  form.value = {
  title: '',
  pathogenesis: '',
+ pathogenesisHtml: '',
  treatment: '',
  prescription: '',
+ prescriptionHtml: '',
  notes: '',
+ notesHtml: '',
  isReading: true
  };
  showModal.value = true;
@@ -66,12 +71,12 @@ function openEditModal(note: ClinicalNote) {
  isEditing.value = true;
  selectedNote.value = note;
  form.value = {
- title: note.title,
- pathogenesis: note.pathogenesis,
- treatment: note.treatment,
- prescription: note.prescription,
- notes: note.notes,
- isReading: note.isReading
+  title: note.title,
+  pathogenesis: note.pathogenesis,
+  treatment: note.treatment,
+  prescription: note.prescription,
+  notes: note.notes || '',
+  isReading: note.isReading
  };
  showModal.value = true;
 }
@@ -334,9 +339,9 @@ function goBack() {
               <label class="block text-sm font-medium text-gray-700 mb-1">病机</label>
               <textarea
                 v-model="form.pathogenesis"
-                rows="3"
                 placeholder="病因病机分析"
-                class="input resize-none"
+                rows="3"
+                class="input"
               ></textarea>
             </div>
             
@@ -354,9 +359,9 @@ function goBack() {
               <label class="block text-sm font-medium text-gray-700 mb-1">处方</label>
               <textarea
                 v-model="form.prescription"
-                rows="3"
                 placeholder="方剂组成与用药"
-                class="input resize-none"
+                rows="3"
+                class="input"
               ></textarea>
             </div>
             
@@ -364,9 +369,9 @@ function goBack() {
               <label class="block text-sm font-medium text-gray-700 mb-1">备注</label>
               <textarea
                 v-model="form.notes"
-                rows="3"
                 placeholder="心得体会、注意事项等"
-                class="input resize-none"
+                rows="3"
+                class="input"
               ></textarea>
             </div>
             

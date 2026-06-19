@@ -22,7 +22,11 @@ const loading = ref(false);
 const message = ref('');
 const messageType = ref<'success' | 'error'>('success');
 onMounted(async () => {
- webdavConfig.value = await webdavService.getConfig();
+ // 从服务器获取 WebDAV 配置
+ const config = await webdavService.getConfig();
+ if (config) {
+   webdavConfig.value = config;
+ }
 });
 function showMessage(msg: string, type: 'success' | 'error' = 'success') {
  message.value = msg;
@@ -119,13 +123,22 @@ async function saveWebDavConfig() {
  showMessage('请填写完整的配置信息', 'error');
  return;
  }
+ loading.value = true;
  try {
- await webdavService.saveConfig(webdavConfig.value);
- showMessage('配置保存成功！');
+ const success = await webdavService.saveConfig(webdavConfig.value);
+ if (success) {
+   showMessage('配置保存成功！');
+   showWebDavModal.value = false;
+ } else {
+   showMessage('保存失败，请重试', 'error');
+ }
  }
  catch (error) {
  console.error('保存配置失败:', error);
  showMessage('保存失败，请重试', 'error');
+ }
+ finally {
+ loading.value = false;
  }
 }
 async function uploadToWebDav() {

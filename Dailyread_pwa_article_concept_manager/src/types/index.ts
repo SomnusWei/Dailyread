@@ -41,9 +41,12 @@ export interface ClinicalNote {
   id: number
   title: string
   pathogenesis: string
+  pathogenesisHtml?: string
   treatment: string
   prescription: string
+  prescriptionHtml?: string
   notes: string
+  notesHtml?: string
   isReading: boolean
   createTime: string
   lastModified: string

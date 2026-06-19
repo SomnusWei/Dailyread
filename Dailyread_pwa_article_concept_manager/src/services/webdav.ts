@@ -1,9 +1,9 @@
 import { createClient } from 'webdav'
 import type { WebDavConfig, BackupData } from '@/types'
-
-const STORAGE_KEY = 'dailyread_webdav_config'
+import { apiService } from './api'
 
 function getServerUrl(originalUrl: string): string {
+  // 生产环境使用服务器代理
   if (originalUrl.includes('dav.jianguoyun.com')) {
     return '/api/webdav'
   }
@@ -11,20 +11,30 @@ function getServerUrl(originalUrl: string): string {
 }
 
 export const webdavService = {
-  async getConfig(): Promise<WebDavConfig> {
-    const data = localStorage.getItem(STORAGE_KEY)
-    return data ? JSON.parse(data) : {
-      serverUrl: '',
-      username: '',
-      password: '',
-      remotePath: '/DailyRead'
-    }
+  /**
+   * 从服务器获取 WebDAV 配置
+   */
+  async getConfig(): Promise<WebDavConfig | null> {
+    return await apiService.getWebDavConfig()
   },
   
-  async saveConfig(config: WebDavConfig): Promise<void> {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+  /**
+   * 保存 WebDAV 配置到服务器
+   */
+  async saveConfig(config: WebDavConfig): Promise<boolean> {
+    return await apiService.saveWebDavConfig(config)
   },
   
+  /**
+   * 删除 WebDAV 配置
+   */
+  async deleteConfig(): Promise<boolean> {
+    return await apiService.deleteWebDavConfig()
+  },
+  
+  /**
+   * 测试 WebDAV 连接
+   */
   async testConnection(config: WebDavConfig): Promise<boolean> {
     try {
       const client = createClient(getServerUrl(config.serverUrl), {
@@ -38,6 +48,9 @@ export const webdavService = {
     }
   },
   
+  /**
+   * 上传备份到 WebDAV
+   */
   async uploadBackup(config: WebDavConfig, data: BackupData): Promise<void> {
     const client = createClient(getServerUrl(config.serverUrl), {
       username: config.username,
@@ -52,6 +65,9 @@ export const webdavService = {
     })
   },
   
+  /**
+   * 从 WebDAV 下载备份
+   */
   async downloadBackup(config: WebDavConfig): Promise<BackupData> {
     const client = createClient(getServerUrl(config.serverUrl), {
       username: config.username,

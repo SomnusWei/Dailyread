@@ -1,9 +1,11 @@
-<script setup lang="ts">import { ref, computed, onMounted } from 'vue';
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useArticleStore } from '@/stores/article';
 import type { Article } from '@/types';
 import { compressImage, countChineseChars } from '@/utils/imageCompression';
 import { Plus, Search, Edit2, Trash2, Upload, Download, X, Check } from 'lucide-vue-next';
+
 const router = useRouter();
 const articleStore = useArticleStore();
 const searchQuery = ref('');
@@ -14,7 +16,6 @@ const selectedArticle = ref<Article | null>(null);
 const form = ref({
  title: '',
  content: '',
- contentHtml: '',
  chineseChars: 0,
  fontFamily: '',
  fontSize: 16,
@@ -64,7 +65,6 @@ async function openAddModal() {
  form.value = {
  title: '',
  content: '',
- contentHtml: '',
  chineseChars: 0,
  fontFamily: '',
  fontSize: 16,
@@ -86,7 +86,6 @@ async function openEditModal(article: Article) {
  form.value = {
  title: article.title,
  content: article.content,
- contentHtml: article.contentHtml,
  chineseChars: article.chineseChars,
  fontFamily: article.fontFamily,
  fontSize: article.fontSize,
@@ -392,9 +391,9 @@ function goBack() {
               <label class="block text-sm font-medium text-gray-700 mb-1">内容</label>
               <textarea
                 v-model="form.content"
-                rows="6"
                 placeholder="请输入文章内容"
-                class="input resize-none"
+                rows="8"
+                class="input"
               ></textarea>
             </div>
             

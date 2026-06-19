@@ -4,8 +4,9 @@ import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
 
-onMounted(() => {
-  authStore.initFromStorage()
+onMounted(async () => {
+  // 从服务器初始化用户认证状态
+  await authStore.init()
 })
 </script>
 

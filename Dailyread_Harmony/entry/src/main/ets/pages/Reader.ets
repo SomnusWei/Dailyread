@@ -5,6 +5,9 @@ import { CheckInRecord } from '../model/CheckInRecord';
 import { CheckInRepository } from '../repository/CheckInRepository';
 import { DailyTaskService } from '../service/DailyTaskService';
 import { DailyTaskRepository } from '../repository/DailyTaskRepository';
+import { ConfigRepository } from '../repository/ConfigRepository';
+import { Config } from '../model/Config';
+import { WebDavSyncService } from '../service/WebDavSyncService';
 import promptAction from '@ohos.promptAction';
 import image from '@ohos.multimedia.image';
 import { common } from '@kit.AbilityKit';
@@ -163,6 +166,7 @@ struct ReaderPage {
    *  - 文章打卡天数更新与任务项标记并行执行（减少用户等待）
    *  - 不再强制导航返回——由用户决定何时点击返回；
    *    首页 aboutToShow 会通过 CheckInRecord 交叉校验自动识别为已打卡
+   *  - 今日任务全部完成时，检查并触发自动 WebDAV 同步
    */
   async handleCheckIn(): Promise<void> {
     if (this.isCheckedIn || this.article === null) {
@@ -225,11 +229,98 @@ struct ReaderPage {
       AppStorage.set('dataRefreshSignal', Date.now().toString());
 
       promptAction.showToast({ message: `打卡成功，完成率 ${rate}%`, duration: 2000 });
+
+      // 4. 检查是否今日全部完成，触发自动 WebDAV 同步
+      this.checkAndTriggerAutoWebDavSync();
     } catch (e) {
       this.isCheckedIn = false;
       console.error('打卡失败: ' + JSON.stringify(e));
       promptAction.showToast({ message: '打卡失败，请重试', duration: 2000 });
     }
+  }
+
+  /**
+   * 检查今日任务是否全部完成，如果是则触发自动 WebDAV 同步
+   * 仅同步一次，跨天后可再次触发
+   */
+  async checkAndTriggerAutoWebDavSync(): Promise<void> {
+    try {
+      // 1. 检查 WebDAV 自动同步是否开启
+      const config: Config = await ConfigRepository.getInstance().getConfig();
+      if (!config.autoSyncWebDav) {
+        console.info('Reader: WebDAV 自动同步未开启，跳过');
+        return;
+      }
+      if (!config.webdavUrl || !config.webdavUsername || !config.webdavPassword) {
+        console.info('Reader: WebDAV 配置不完整，跳过自动同步');
+        return;
+      }
+
+      // 2. 检查今天是否已自动同步过（用 AppStorage 存储标记）
+      const todayStr: string = this.getTodayDateString();
+      const autoSyncKey: string = 'autoWebDavSynced_' + todayStr;
+      const alreadySynced: boolean = AppStorage.get(autoSyncKey) === 'true';
+      if (alreadySynced) {
+        console.info('Reader: 今日已自动同步 WebDAV，跳过');
+        return;
+      }
+
+      // 3. 获取今日任务列表和打卡情况
+      const todayTask = await DailyTaskRepository.getInstance().getTodayTask();
+      if (!todayTask || !todayTask.items || todayTask.items.length === 0) {
+        console.info('Reader: 无今日任务，跳过自动同步');
+        return;
+      }
+
+      // 4. 查询今日已打卡数量
+      const checkedInIds: Set<number> = await CheckInRepository.getInstance()
+        .getArticleIdsCheckedInOnDate(todayStr);
+      const checkedInCount: number = checkedInIds.size;
+      const totalCount: number = todayTask.items.length;
+
+      // 5. 判断是否全部完成
+      if (checkedInCount < totalCount) {
+        console.info(`Reader: 今日任务 ${checkedInCount}/${totalCount}，未全部完成，跳过自动同步`);
+        return;
+      }
+
+      // 6. 全部完成，执行 WebDAV 同步
+      console.info('Reader: 今日任务全部完成，触发自动 WebDAV 同步');
+
+      const syncService: WebDavSyncService = WebDavSyncService.getInstance();
+      const syncConfig: Config = new Config();
+      syncConfig.webdavUrl = config.webdavUrl;
+      syncConfig.webdavUsername = config.webdavUsername;
+      syncConfig.webdavPassword = config.webdavPassword;
+      syncConfig.webdavRemotePath = config.webdavRemotePath || '/DailyRead';
+      syncConfig.syncArticlesEnabled = config.syncArticlesEnabled ?? true;
+      syncConfig.syncConceptsEnabled = config.syncConceptsEnabled ?? true;
+      syncConfig.syncClinicalNotesEnabled = config.syncClinicalNotesEnabled ?? true;
+
+      const result = await syncService.syncToRemote(syncConfig);
+
+      if (result.success) {
+        // 7. 标记今天已完成自动同步
+        AppStorage.set(autoSyncKey, 'true');
+        console.info(`Reader: 自动 WebDAV 同步成功，上传 ${result.uploadedArticles} 篇文章`);
+        promptAction.showToast({ message: '数据已自动备份到云端', duration: 2000 });
+      } else {
+        console.error('Reader: 自动 WebDAV 同步失败: ' + result.errorMessage);
+      }
+    } catch (e) {
+      console.error('Reader.checkAndTriggerAutoWebDavSync 异常: ' + JSON.stringify(e));
+    }
+  }
+
+  /**
+   * 获取今天的日期字符串，格式: "2026-06-19"
+   */
+  private getTodayDateString(): string {
+    const d: Date = new Date();
+    const year: number = d.getFullYear();
+    const month: string = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day: string = d.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   build(): void {

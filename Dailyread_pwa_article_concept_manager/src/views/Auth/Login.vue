@@ -15,7 +15,7 @@ const error = ref('')
 
 async function handleLogin() {
   if (!email.value || !password.value) {
-    error.value = '请输入邮箱和密码'
+    error.value = '请输入用户名和密码'
     return
   }
   
@@ -23,21 +23,16 @@ async function handleLogin() {
   error.value = ''
   
   try {
-    // 模拟登录（实际项目中应调用后端API）
-    const user = {
-      id: 1,
-      username: email.value.split('@')[0],
-      email: email.value,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+    // 调用服务器端登录 API
+    const success = await authStore.login(email.value, password.value)
+    
+    if (success) {
+      await router.push('/')
+    } else {
+      error.value = authStore.error || '登录失败，请检查用户名和密码'
     }
-    
-    authStore.login(user, 'mock-token-' + Date.now())
-    authStore.saveUser()
-    
-    await router.push('/')
   } catch {
-    error.value = '登录失败，请检查邮箱和密码'
+    error.value = '登录失败，请检查用户名和密码'
   } finally {
     loading.value = false
   }

@@ -64,11 +64,11 @@ export class DailyTaskService {
 
   /**
    * 计算最大字数上限
-   * 公式：阅读时间(分钟) × 250 ×（1.01~1.11的随机数）
+   * 公式：阅读时间(分钟) × 100 ×（1.01~1.11的随机数）
    */
   private calculateMaxWordLimit(dailyMinutes: number): number {
     const randomFactor = 1.01 + Math.random() * 0.1;
-    return Math.floor(dailyMinutes * 250 * randomFactor);
+    return Math.floor(dailyMinutes * 100 * randomFactor);
   }
 
   /**

@@ -203,7 +203,7 @@ struct HomePage {
       await ArticleRepository.getInstance().resetCheckInDaysIfNeeded();
 
       this.config = await ConfigRepository.getInstance().getConfig();
-      const rateWordsPerMin: number = 250;
+      const rateWordsPerMin: number = 100;
       this.targetWordsToday = this.config.dailyMinutes * rateWordsPerMin;
 
       const allArticles: Article[] = await ArticleRepository.getInstance().getAllArticles();

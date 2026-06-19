@@ -8,7 +8,6 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const username = ref('')
-const email = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const showPassword = ref(false)
@@ -16,7 +15,7 @@ const loading = ref(false)
 const error = ref('')
 
 async function handleRegister() {
-  if (!username.value || !email.value || !password.value || !confirmPassword.value) {
+  if (!username.value || !password.value || !confirmPassword.value) {
     error.value = '请填写所有字段'
     return
   }
@@ -35,19 +34,14 @@ async function handleRegister() {
   error.value = ''
   
   try {
-    // 模拟注册（实际项目中应调用后端API）
-    const user = {
-      id: Date.now(),
-      username: username.value,
-      email: email.value,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+    // 调用服务器端注册 API
+    const success = await authStore.register(username.value, password.value)
+    
+    if (success) {
+      await router.push('/')
+    } else {
+      error.value = authStore.error || '注册失败，请重试'
     }
-    
-    authStore.login(user, 'mock-token-' + Date.now())
-    authStore.saveUser()
-    
-    await router.push('/')
   } catch {
     error.value = '注册失败，请重试'
   } finally {

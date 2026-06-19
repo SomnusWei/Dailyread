@@ -33,10 +33,16 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // WebDAV 代理
       '/webdav': {
         target: 'https://dav.jianguoyun.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/webdav/, '')
+      },
+      // 后端 API 代理
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true
       }
     }
   }
