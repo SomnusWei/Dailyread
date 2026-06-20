@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
     QCheckBox, QColorDialog, QDialogButtonBox, QTabWidget, QMainWindow,
     QToolBar, QStatusBar, QSplitter, QListWidget, QListWidgetItem,
-    QFrame, QScrollArea, QGroupBox, QStyleFactory, QProgressBar
+    QFrame, QScrollArea, QGroupBox, QStyleFactory, QProgressBar,
+    QSizePolicy
 )
 
 
@@ -447,7 +448,7 @@ def compress_image_to_webp_base64(filepath: str, max_size_kb: int = 25) -> str:
         return ''
 
 
-def webp_base64_to_pixmap(b64_str: str, max_width: int = 300) -> QPixmap:
+def webp_base64_to_pixmap(b64_str: str, max_width: int = 300, max_height: int = 200) -> QPixmap:
     """将 WebP base64 字符串转换为 QPixmap（用于预览）"""
     if not b64_str:
         return QPixmap()
@@ -456,8 +457,13 @@ def webp_base64_to_pixmap(b64_str: str, max_width: int = 300) -> QPixmap:
         byte_array = QByteArray(raw_bytes)
         pixmap = QPixmap()
         pixmap.loadFromData(byte_array, "WEBP")
-        if not pixmap.isNull() and pixmap.width() > max_width:
-            pixmap = pixmap.scaledToWidth(max_width, Qt.TransformationMode.SmoothTransformation)
+        if not pixmap.isNull():
+            # 同时限制宽高，保持比例
+            pixmap = pixmap.scaled(
+                max_width, max_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
         return pixmap
     except Exception as e:
         print(f"图片解码失败: {e}")
@@ -482,9 +488,16 @@ class ArticleEditDialog(QDialog):
         self.is_edit = bool(article and article.get('id'))
         self.imagewebp_data = ''
         self.setWindowTitle("编辑文章" if self.is_edit else "添加文章")
-        self.setMinimumWidth(500)
+        
+        # 强制设置窗口大小（覆盖任何保存的设置）
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("DailyRead", "ArticleConceptManager")
+        settings.clear()  # 清除所有旧设置
+        
+        self.setFixedWidth(900)
+        self.setFixedHeight(550)
+        self.setStyleSheet("QDialog { margin-top: 0px; }")
         self.setup_ui()
-        self.restore_geometry()
         if self.article and self.article.get('imagewebp'):
             self.imagewebp_data = self.article.get('imagewebp', '')
             self.update_image_preview()
@@ -493,11 +506,9 @@ class ArticleEditDialog(QDialog):
         """恢复窗口几何信息"""
         from PyQt6.QtCore import QSettings
         settings = QSettings("DailyRead", "ArticleConceptManager")
-        geometry = settings.value("article_dialog_geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
-        else:
-            center_window(self)
+        # 清除旧的几何信息，使用新的默认布局
+        settings.remove("article_dialog_geometry")
+        center_window(self)
 
     def closeEvent(self, event):
         """关闭时保存窗口几何信息"""
@@ -507,37 +518,45 @@ class ArticleEditDialog(QDialog):
         event.accept()
 
     def setup_ui(self):
-        layout = QVBoxLayout(self)
+        # 主布局：垂直排列
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(5)
+        main_layout.setContentsMargins(10, 5, 10, 10)
 
-        # 标题
+        # 标题行
+        title_layout = QHBoxLayout()
         title_label = QLabel("文章标题")
         self.titleEdit = QLineEdit()
         self.titleEdit.setPlaceholderText("请输入文章标题")
         if self.article:
             self.titleEdit.setText(self.article.get('title', ''))
-        layout.addWidget(title_label)
-        layout.addWidget(self.titleEdit)
+        title_layout.addWidget(title_label)
+        title_layout.addWidget(self.titleEdit)
+        main_layout.addLayout(title_layout)
 
-        # 内容
-        content_label = QLabel("文章内容")
-        self.contentEdit = QTextEdit()
-        self.contentEdit.setPlaceholderText("请输入文章内容")
-        if self.article:
-            self.contentEdit.setPlainText(self.article.get('content', ''))
-        layout.addWidget(content_label)
-        layout.addWidget(self.contentEdit)
+        # 内容区域：左右布局（不使用 splitter）
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(10)
 
-        # 图片设置区
-        image_group = QGroupBox("文章图片（WebP格式，自动压缩到25KB以下）")
-        image_layout = QVBoxLayout(image_group)
+        # ========== 左侧面板（25%宽度，约 225px）==========
+        left_widget = QWidget()
+        left_widget.setFixedWidth(225)  # 25% of 900px = 225px
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setSpacing(5)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 图片设置标签
+        image_label = QLabel("图片设置")
+        image_label.setStyleSheet("font-weight: bold;")
+        left_layout.addWidget(image_label)
 
         # 图片预览区
         self.imagePreviewLabel = QLabel()
         self.imagePreviewLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.imagePreviewLabel.setMinimumHeight(100)
+        self.imagePreviewLabel.setFixedHeight(200)
         self.imagePreviewLabel.setStyleSheet("QLabel { border: 1px dashed #999; padding: 8px; }")
         self.imagePreviewLabel.setText("（暂无图片）")
-        image_layout.addWidget(self.imagePreviewLabel)
+        left_layout.addWidget(self.imagePreviewLabel)
 
         # 图片操作按钮
         image_btn_layout = QHBoxLayout()
@@ -552,13 +571,12 @@ class ArticleEditDialog(QDialog):
         self.imageSizeLabel = QLabel("")
         image_btn_layout.addWidget(self.imageSizeLabel)
         image_btn_layout.addStretch()
-        image_layout.addLayout(image_btn_layout)
+        left_layout.addLayout(image_btn_layout)
 
-        layout.addWidget(image_group)
-
-        # 选项组
+        # 选项设置
         options_group = QGroupBox("选项设置")
         options_layout = QFormLayout(options_group)
+        options_layout.setSpacing(5)
 
         # 状态复选框
         status_layout = QHBoxLayout()
@@ -570,41 +588,29 @@ class ArticleEditDialog(QDialog):
         # 必读设置
         required_layout = QHBoxLayout()
         self.isRequiredCheck = QCheckBox("必读")
-        self.useIndependentCheckRateCheck = QCheckBox("使用独立目标完成率")
+        self.useIndependentCheckRateCheck = QCheckBox("独立目标")
         required_layout.addWidget(self.isRequiredCheck)
         required_layout.addWidget(self.useIndependentCheckRateCheck)
         options_layout.addRow("必读:", required_layout)
 
-        # 字体设置
-        self.fontFamilyCombo = QComboBox()
-        self.fontFamilyCombo.addItems(["default", "微软雅黑", "宋体", "楷体", "黑体"])
-        if self.article:
-            self.fontFamilyCombo.setCurrentText(self.article.get('fontFamily', 'default'))
-        options_layout.addRow("字体:", self.fontFamilyCombo)
-
-        self.fontSizeSpin = QSpinBox()
-        self.fontSizeSpin.setRange(10, 72)
-        if self.article:
-            self.fontSizeSpin.setValue(self.article.get('fontSize', 16))
-        else:
-            self.fontSizeSpin.setValue(16)
-        options_layout.addRow("字号:", self.fontSizeSpin)
-
         # 数值设置
         self.independentCheckRateSpin = QSpinBox()
         self.independentCheckRateSpin.setRange(0, 100)
+        self.independentCheckRateSpin.setFixedWidth(50)
         if self.article:
             self.independentCheckRateSpin.setValue(self.article.get('independentCheckRate', 0))
-        options_layout.addRow("独立目标完成率:", self.independentCheckRateSpin)
+        options_layout.addRow("独立目标:", self.independentCheckRateSpin)
 
         self.checkInDaysSpin = QSpinBox()
         self.checkInDaysSpin.setRange(0, 9999)
+        self.checkInDaysSpin.setFixedWidth(50)
         if self.article:
             self.checkInDaysSpin.setValue(self.article.get('checkInDays', 0))
-        options_layout.addRow("累计打卡天数:", self.checkInDaysSpin)
+        options_layout.addRow("打卡天数:", self.checkInDaysSpin)
 
         self.completionRateSpin = QSpinBox()
         self.completionRateSpin.setRange(0, 100)
+        self.completionRateSpin.setFixedWidth(50)
         if self.article:
             self.completionRateSpin.setValue(self.article.get('completionRate', 0))
         options_layout.addRow("完成率:", self.completionRateSpin)
@@ -615,7 +621,6 @@ class ArticleEditDialog(QDialog):
             self.isRequiredCheck.setChecked(self.article.get('isRequired', False))
             self.useIndependentCheckRateCheck.setChecked(self.article.get('useIndependentCheckRate', False))
         else:
-            # 新建文章时，从设置读取默认值
             from PyQt6.QtCore import QSettings
             settings = QSettings("DailyRead", "ArticleConceptManager")
             self.isReadingCheck.setChecked(settings.value("article_default_isReading", True, type=bool))
@@ -624,13 +629,41 @@ class ArticleEditDialog(QDialog):
                 settings.value("article_default_useIndependentCheckRate", False, type=bool)
             )
 
-        layout.addWidget(options_group)
+        left_layout.addWidget(options_group)
+        left_layout.addStretch()  # 让内容靠上
+
+        content_layout.addWidget(left_widget)
+
+        # ========== 右侧面板（自动填充剩余空间）==========
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setSpacing(5)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 文章内容标签
+        content_label = QLabel("文章内容")
+        right_layout.addWidget(content_label)
+
+        # 文章内容编辑区
+        self.contentEdit = QTextEdit()
+        self.contentEdit.setPlaceholderText("请输入文章内容")
+        # 设置较大的字号便于编辑
+        font = self.contentEdit.font()
+        font.setPointSize(14)
+        self.contentEdit.setFont(font)
+        if self.article:
+            self.contentEdit.setPlainText(self.article.get('content', ''))
+        right_layout.addWidget(self.contentEdit)
+
+        content_layout.addWidget(right_widget, 1)  # stretch=1，自动填充
+
+        main_layout.addLayout(content_layout)
 
         # 按钮
         buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttonBox.accepted.connect(self.on_ok)
         buttonBox.rejected.connect(self.reject)
-        layout.addWidget(buttonBox)
+        main_layout.addWidget(buttonBox)
 
     def on_select_image(self):
         """选择图片并压缩为WebP"""
@@ -655,7 +688,7 @@ class ArticleEditDialog(QDialog):
     def update_image_preview(self):
         """更新图片预览显示"""
         if self.imagewebp_data:
-            pixmap = webp_base64_to_pixmap(self.imagewebp_data, max_width=280)
+            pixmap = webp_base64_to_pixmap(self.imagewebp_data, max_width=350, max_height=180)
             if not pixmap.isNull():
                 self.imagePreviewLabel.setPixmap(pixmap)
                 size_kb = get_base64_size_kb(self.imagewebp_data)
@@ -705,8 +738,6 @@ class ArticleEditDialog(QDialog):
                             'title': item_title,
                             'content': item_content,
                             'contentHtml': '',
-                            'fontFamily': self.fontFamilyCombo.currentText(),
-                            'fontSize': self.fontSizeSpin.value(),
                             'isReading': self.isReadingCheck.isChecked(),
                             'isRequired': self.isRequiredCheck.isChecked(),
                             'useIndependentCheckRate': self.useIndependentCheckRateCheck.isChecked(),
@@ -722,8 +753,6 @@ class ArticleEditDialog(QDialog):
             'title': title,
             'content': content,
             'contentHtml': self.article.get('contentHtml', ''),
-            'fontFamily': self.fontFamilyCombo.currentText(),
-            'fontSize': self.fontSizeSpin.value(),
             'isReading': self.isReadingCheck.isChecked(),
             'isRequired': self.isRequiredCheck.isChecked(),
             'useIndependentCheckRate': self.useIndependentCheckRateCheck.isChecked(),
@@ -749,6 +778,7 @@ class ConceptEditDialog(QDialog):
         self.chapters = chapters or []
         self.setWindowTitle("编辑概念" if self.is_edit else "添加概念")
         self.setMinimumWidth(500)
+        self.resize(600, 400)  # 设置默认大小
         self.setup_ui()
         self.restore_geometry()
 
@@ -756,17 +786,12 @@ class ConceptEditDialog(QDialog):
         """恢复窗口几何信息"""
         from PyQt6.QtCore import QSettings
         settings = QSettings("DailyRead", "ArticleConceptManager")
-        geometry = settings.value("concept_dialog_geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
-        else:
-            center_window(self)
+        # 清除旧的几何信息，使用新的默认布局
+        settings.remove("concept_dialog_geometry")
+        center_window(self)
 
     def closeEvent(self, event):
-        """关闭时保存窗口几何信息"""
-        from PyQt6.QtCore import QSettings
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        settings.setValue("concept_dialog_geometry", self.saveGeometry())
+        """关闭时不保存几何信息，每次打开都居中显示"""
         event.accept()
 
     def setup_ui(self):
@@ -890,6 +915,7 @@ class ClinicalNoteEditDialog(QDialog):
         self.is_edit = bool(note and note.get('id'))
         self.setWindowTitle("编辑临床笔记" if self.is_edit else "添加临床笔记")
         self.setMinimumWidth(500)
+        self.resize(600, 400)  # 设置默认大小
         self.setup_ui()
         self.restore_geometry()
 
@@ -897,17 +923,12 @@ class ClinicalNoteEditDialog(QDialog):
         """恢复窗口几何信息"""
         from PyQt6.QtCore import QSettings
         settings = QSettings("DailyRead", "ArticleConceptManager")
-        geometry = settings.value("clinical_dialog_geometry")
-        if geometry:
-            self.restoreGeometry(geometry)
-        else:
-            center_window(self)
+        # 清除旧的几何信息，使用新的默认布局
+        settings.remove("clinical_dialog_geometry")
+        center_window(self)
 
     def closeEvent(self, event):
-        """关闭时保存窗口几何信息"""
-        from PyQt6.QtCore import QSettings
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        settings.setValue("clinical_dialog_geometry", self.saveGeometry())
+        """关闭时不保存几何信息，每次打开都居中显示"""
         event.accept()
 
     def setup_ui(self):
@@ -1499,7 +1520,7 @@ class ArticlePage(QWidget):
                     self.data_model.add_article(data, save_now=False)
                 self.data_model.save()
             self.refresh_table()
-            QMessageBox.information(self, "成功", f"已添加 {len(data_list)} 篇文章")
+            self.window().statusBar().showMessage(f"已添加 {len(data_list)} 篇文章", 3000)
 
     def edit_article(self):
         """编辑选中文章"""
@@ -1522,7 +1543,7 @@ class ArticlePage(QWidget):
                 data = data[0]
             self.data_model.update_article(article['id'], data)
             self.refresh_table()
-            QMessageBox.information(self, "成功", "文章更新成功")
+            self.window().statusBar().showMessage("文章更新成功", 3000)
 
     def delete_articles(self):
         """批量删除"""
