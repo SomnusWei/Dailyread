@@ -14,7 +14,6 @@ a = Analysis(
     binaries=[],
     datas=[
         ('logo.png', '.'),
-        ('app_data.json', '.'),
     ],
     hiddenimports=[],
     hookspath=[],

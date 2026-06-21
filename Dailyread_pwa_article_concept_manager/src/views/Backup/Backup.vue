@@ -1,16 +1,15 @@
-<script setup lang="ts">import { ref, onMounted } from 'vue';
+<script setup lang="ts">
+import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { backupService } from '@/services/backup';
 import { webdavService } from '@/services/webdav';
 import type { WebDavConfig, BackupData } from '@/types';
 import { useArticleStore } from '@/stores/article';
-import { useConceptStore } from '@/stores/concept';
-import { useClinicalStore } from '@/stores/clinical';
 import { Download, Upload, Settings, RefreshCw, Check, AlertCircle } from 'lucide-vue-next';
+
 const router = useRouter();
 const articleStore = useArticleStore();
-const conceptStore = useConceptStore();
-const clinicalStore = useClinicalStore();
+
 const webdavConfig = ref<WebDavConfig>({
  serverUrl: '',
  username: '',
@@ -21,6 +20,7 @@ const showWebDavModal = ref(false);
 const loading = ref(false);
 const message = ref('');
 const messageType = ref<'success' | 'error'>('success');
+
 onMounted(async () => {
  // 从服务器获取 WebDAV 配置
  const config = await webdavService.getConfig();
@@ -28,6 +28,7 @@ onMounted(async () => {
    webdavConfig.value = config;
  }
 });
+
 function showMessage(msg: string, type: 'success' | 'error' = 'success') {
  message.value = msg;
  messageType.value = type;
@@ -35,6 +36,7 @@ function showMessage(msg: string, type: 'success' | 'error' = 'success') {
  message.value = '';
  }, 3000);
 }
+
 async function handleExportBackup() {
  loading.value = true;
  try {
@@ -56,6 +58,7 @@ async function handleExportBackup() {
  loading.value = false;
  }
 }
+
 async function handleImportBackup() {
  const input = document.createElement('input');
  input.type = 'file';
@@ -69,11 +72,7 @@ async function handleImportBackup() {
  reader.onload = async (event) => {
  try {
  await backupService.importFromJSON(event.target?.result as string, false);
- await Promise.all([
- articleStore.loadArticles(),
- conceptStore.loadConcepts(),
- clinicalStore.loadClinicalNotes()
- ]);
+ await articleStore.loadArticles();
  showMessage('备份导入成功！');
  }
  catch (error) {
@@ -95,6 +94,7 @@ async function handleImportBackup() {
  };
  input.click();
 }
+
 async function testWebDavConnection() {
  if (!webdavConfig.value.serverUrl || !webdavConfig.value.username || !webdavConfig.value.password) {
  showMessage('请先填写 WebDAV 配置', 'error');
@@ -118,6 +118,7 @@ async function testWebDavConnection() {
  loading.value = false;
  }
 }
+
 async function saveWebDavConfig() {
  if (!webdavConfig.value.serverUrl || !webdavConfig.value.username || !webdavConfig.value.password) {
  showMessage('请填写完整的配置信息', 'error');
@@ -141,6 +142,7 @@ async function saveWebDavConfig() {
  loading.value = false;
  }
 }
+
 async function uploadToWebDav() {
  if (!webdavConfig.value.serverUrl || !webdavConfig.value.username || !webdavConfig.value.password) {
  showMessage('请先配置并测试 WebDAV', 'error');
@@ -160,6 +162,7 @@ async function uploadToWebDav() {
  loading.value = false;
  }
 }
+
 async function downloadFromWebDav() {
  if (!webdavConfig.value.serverUrl || !webdavConfig.value.username || !webdavConfig.value.password) {
  showMessage('请先配置并测试 WebDAV', 'error');
@@ -171,11 +174,7 @@ async function downloadFromWebDav() {
  try {
  const data = await webdavService.downloadBackup(webdavConfig.value);
  await backupService.importFromJSON(JSON.stringify(data), true);
- await Promise.all([
- articleStore.loadArticles(),
- conceptStore.loadConcepts(),
- clinicalStore.loadClinicalNotes()
- ]);
+ await articleStore.loadArticles();
  showMessage('下载成功！');
  }
  catch (error) {
@@ -186,6 +185,7 @@ async function downloadFromWebDav() {
  loading.value = false;
  }
 }
+
 function goBack() {
  router.push('/');
 }
@@ -247,7 +247,7 @@ function goBack() {
           </button>
         </div>
         <p class="text-sm text-gray-500 mt-4">
-          备份文件格式：daily_read_backup_windows.json（包含文章、概念、临床笔记）
+          备份文件格式：daily_read_backup_windows.json（仅包含文章数据）
         </p>
       </div>
       
@@ -294,18 +294,10 @@ function goBack() {
       <!-- 数据统计 -->
       <div class="card p-6">
         <h2 class="text-lg font-semibold text-gray-800 mb-4">数据统计</h2>
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 gap-4">
           <div class="text-center">
             <p class="text-2xl font-bold text-primary-600">{{ articleStore.totalCount }}</p>
             <p class="text-sm text-gray-500">文章</p>
-          </div>
-          <div class="text-center">
-            <p class="text-2xl font-bold text-purple-600">{{ conceptStore.totalCount }}</p>
-            <p class="text-sm text-gray-500">概念</p>
-          </div>
-          <div class="text-center">
-            <p class="text-2xl font-bold text-green-600">{{ clinicalStore.totalCount }}</p>
-            <p class="text-sm text-gray-500">临床笔记</p>
           </div>
         </div>
       </div>

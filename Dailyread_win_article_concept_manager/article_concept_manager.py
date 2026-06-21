@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 # ==================== 数据模型 ====================
 
 class DataModel:
-    """数据模型：管理文章、概念和临床笔记"""
+    """数据模型：管理文章"""
 
     APP_DATA_FILE = "app_data.json"
     BACKUP_FILE = "daily_read_backup_windows.json"
@@ -37,12 +37,13 @@ class DataModel:
 
     def __init__(self):
         self.articles: list = []
+        # 保留兼容性字段（旧版本备份可能包含）
         self.concepts: list = []
         self.clinical_notes: list = []
         self.next_article_id = 1
         self.next_concept_id = 1
         self.next_clinical_note_id = 1
-        self.version = 2
+        self.version = 7
         self.load()
 
     def load(self):
@@ -52,12 +53,13 @@ class DataModel:
                 with open(self.APP_DATA_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.articles = data.get('articles', [])
+                    # 保留兼容性字段但不使用
                     self.concepts = data.get('concepts', [])
                     self.clinical_notes = data.get('clinical_notes', [])
                     self.next_article_id = data.get('next_article_id', 1)
                     self.next_concept_id = data.get('next_concept_id', 1)
                     self.next_clinical_note_id = data.get('next_clinical_note_id', 1)
-                    self.version = data.get('version', 2)
+                    self.version = data.get('version', 7)
             except Exception as e:
                 print(f"加载数据失败: {e}")
                 self.articles = []
@@ -73,8 +75,14 @@ class DataModel:
                 with open(self.BACKUP_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.articles = data.get('articles', [])
+                    # 保留兼容性字段但不使用
                     self.concepts = data.get('concepts', [])
                     self.clinical_notes = data.get('clinical_notes', data.get('clinicalNotes', []))
+                    # 记录日志
+                    if self.concepts:
+                        print(f"检测到旧备份文件包含 {len(self.concepts)} 条概念数据，已跳过使用")
+                    if self.clinical_notes:
+                        print(f"检测到旧备份文件包含 {len(self.clinical_notes)} 条临床笔记数据，已跳过使用")
             except Exception as e:
                 print(f"加载备份样例失败: {e}")
 
@@ -83,11 +91,11 @@ class DataModel:
         data = {
             'version': self.version,
             'articles': self.articles,
-            'concepts': self.concepts,
-            'clinical_notes': self.clinical_notes,
+            'concepts': [],  # 不保存概念数据
+            'clinical_notes': [],  # 不保存临床笔记数据
             'next_article_id': self.next_article_id,
-            'next_concept_id': self.next_concept_id,
-            'next_clinical_note_id': self.next_clinical_note_id
+            'next_concept_id': 1,
+            'next_clinical_note_id': 1
         }
         with open(self.APP_DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False)
@@ -131,75 +139,6 @@ class DataModel:
         self.articles = [a for a in self.articles if a['id'] not in article_ids]
         self.save()
 
-    def add_concept(self, concept_data: dict, save_now: bool = True) -> int:
-        """添加概念"""
-        concept_data['id'] = self.next_concept_id
-        _now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-        concept_data['createTime'] = _now
-        concept_data['lastModified'] = _now
-        self.concepts.append(concept_data)
-        self.next_concept_id += 1
-        if save_now:
-            self.save()
-        return concept_data['id']
-
-    def update_concept(self, concept_id: int, concept_data: dict):
-        """更新概念"""
-        for i, concept in enumerate(self.concepts):
-            if concept['id'] == concept_id:
-                concept_data['id'] = concept_id
-                concept_data['createTime'] = concept.get('createTime', datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
-                concept_data['lastModified'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-                self.concepts[i] = concept_data
-                self.save()
-                return True
-        return False
-
-    def delete_concepts(self, concept_ids: list):
-        """删除概念"""
-        self.concepts = [c for c in self.concepts if c['id'] not in concept_ids]
-        self.save()
-
-    # --- 临床笔记方法 ---
-    def add_clinical_note(self, note_data: dict, save_now: bool = True) -> int:
-        """添加临床笔记"""
-        note_data['id'] = self.next_clinical_note_id
-        _now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-        note_data['createTime'] = _now
-        note_data['lastModified'] = _now
-        note_data.setdefault('pathogenesis', '')
-        note_data.setdefault('treatment', '')
-        note_data.setdefault('prescription', '')
-        note_data.setdefault('notes', '')
-        note_data.setdefault('isReading', False)
-        self.clinical_notes.append(note_data)
-        self.next_clinical_note_id += 1
-        if save_now:
-            self.save()
-        return note_data['id']
-
-    def update_clinical_note(self, note_id: int, note_data: dict):
-        """更新临床笔记"""
-        for i, note in enumerate(self.clinical_notes):
-            if note['id'] == note_id:
-                note_data['id'] = note_id
-                note_data['createTime'] = note.get('createTime', datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
-                note_data['lastModified'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-                note_data.setdefault('pathogenesis', '')
-                note_data.setdefault('treatment', '')
-                note_data.setdefault('prescription', '')
-                note_data.setdefault('notes', '')
-                note_data.setdefault('isReading', False)
-                self.clinical_notes[i] = note_data
-                self.save()
-                return True
-        return False
-
-    def delete_clinical_notes(self, note_ids: list):
-        """删除临床笔记"""
-        self.clinical_notes = [n for n in self.clinical_notes if n['id'] not in note_ids]
-        self.save()
-
     def export_backup(self, filepath: str):
         """导出备份"""
         data = {
@@ -207,8 +146,8 @@ class DataModel:
             'exportTime': datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
             'dataType': 'daily_read_backup',
             'articles': self.articles,
-            'concepts': self.concepts,
-            'clinicalNotes': self.clinical_notes
+            'concepts': [],  # 不导出概念数据
+            'clinicalNotes': []  # 不导出临床笔记数据
         }
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -218,25 +157,21 @@ class DataModel:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
             self.articles = data.get('articles', [])
-            self.concepts = data.get('concepts', [])
-            self.clinical_notes = data.get('clinical_notes', data.get('clinicalNotes', data.get('notes', [])))
+            # 保留兼容性字段但不使用
+            concepts = data.get('concepts', [])
+            clinical_notes = data.get('clinical_notes', data.get('clinicalNotes', data.get('notes', [])))
+            if concepts:
+                print(f"检测到旧备份文件包含 {len(concepts)} 条概念数据，已跳过导入")
+            if clinical_notes:
+                print(f"检测到旧备份文件包含 {len(clinical_notes)} 条临床笔记数据，已跳过导入")
             if self.articles:
                 self.next_article_id = max(a['id'] for a in self.articles) + 1
-            if self.concepts:
-                self.next_concept_id = max(c['id'] for c in self.concepts) + 1
-            if self.clinical_notes:
-                self.next_clinical_note_id = max(n['id'] for n in self.clinical_notes) + 1
             self.save()
 
     def export_articles_json(self, filepath: str):
         """导出文章为 JSON"""
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(self.articles, f, ensure_ascii=False, indent=2)
-
-    def export_concepts_json(self, filepath: str):
-        """导出概念为 JSON"""
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(self.concepts, f, ensure_ascii=False, indent=2)
 
     def import_articles_json(self, filepath: str, replace: bool = False):
         """导入文章 JSON"""
@@ -252,33 +187,6 @@ class DataModel:
             if self.articles:
                 self.next_article_id = max(a['id'] for a in self.articles) + 1
             self.save()
-
-    def import_concepts_json(self, filepath: str, replace: bool = False):
-        """导入概念 JSON"""
-        with open(filepath, 'r', encoding='utf-8') as f:
-            concepts = json.load(f)
-            if replace:
-                self.concepts = concepts
-            else:
-                existing_ids = {c['id'] for c in self.concepts}
-                for concept in concepts:
-                    if concept['id'] not in existing_ids:
-                        self.concepts.append(concept)
-            if self.concepts:
-                self.next_concept_id = max(c['id'] for c in self.concepts) + 1
-            self.save()
-
-    def get_categories(self) -> list:
-        """获取所有分类"""
-        return list(set(c.get('category', '') for c in self.concepts if c.get('category')))
-
-    def get_subjects(self) -> list:
-        """获取所有学科"""
-        return list(set(c.get('subject', '') for c in self.concepts if c.get('subject')))
-
-    def get_chapters(self) -> list:
-        """获取所有章节"""
-        return list(set(c.get('chapter', '') for c in self.concepts if c.get('chapter')))
 
 
 class WebDAVConfig:
@@ -761,346 +669,6 @@ class ArticleEditDialog(QDialog):
             'completionRate': self.completionRateSpin.value(),
             'imagewebp': self.imagewebp_data
         }]
-
-
-# ==================== 概念编辑对话框 ====================
-
-class ConceptEditDialog(QDialog):
-    """概念编辑对话框"""
-
-    def __init__(self, concept: dict = None, categories: list = None,
-                 subjects: list = None, chapters: list = None, parent=None):
-        super().__init__(parent)
-        self.concept = concept or {}
-        self.is_edit = bool(concept and concept.get('id'))
-        self.categories = categories or []
-        self.subjects = subjects or []
-        self.chapters = chapters or []
-        self.setWindowTitle("编辑概念" if self.is_edit else "添加概念")
-        self.setMinimumWidth(500)
-        self.resize(600, 400)  # 设置默认大小
-        self.setup_ui()
-        self.restore_geometry()
-
-    def restore_geometry(self):
-        """恢复窗口几何信息"""
-        from PyQt6.QtCore import QSettings
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        # 清除旧的几何信息，使用新的默认布局
-        settings.remove("concept_dialog_geometry")
-        center_window(self)
-
-    def closeEvent(self, event):
-        """关闭时不保存几何信息，每次打开都居中显示"""
-        event.accept()
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        # 基本信息
-        form_layout = QFormLayout()
-
-        self.titleEdit = QLineEdit()
-        self.titleEdit.setPlaceholderText("请输入概念标题")
-        if self.concept:
-            self.titleEdit.setText(self.concept.get('title', ''))
-        form_layout.addRow("标题:", self.titleEdit)
-
-        self.categoryCombo = QComboBox()
-        self.categoryCombo.setEditable(True)
-        self.categoryCombo.addItems([""] + self.categories)
-        if self.concept:
-            self.categoryCombo.setCurrentText(self.concept.get('category', ''))
-        form_layout.addRow("分类:", self.categoryCombo)
-
-        self.subjectCombo = QComboBox()
-        self.subjectCombo.setEditable(True)
-        self.subjectCombo.addItems([""] + self.subjects)
-        if self.concept:
-            self.subjectCombo.setCurrentText(self.concept.get('subject', ''))
-        form_layout.addRow("学科:", self.subjectCombo)
-
-        self.chapterCombo = QComboBox()
-        self.chapterCombo.setEditable(True)
-        self.chapterCombo.addItems([""] + self.chapters)
-        if self.concept:
-            self.chapterCombo.setCurrentText(self.concept.get('chapter', ''))
-        form_layout.addRow("章节:", self.chapterCombo)
-
-        layout.addLayout(form_layout)
-
-        # 内容
-        content_label = QLabel("概念内容")
-        layout.addWidget(content_label)
-        self.contentEdit = QTextEdit()
-        self.contentEdit.setPlaceholderText("请输入概念的具体内容")
-        if self.concept:
-            self.contentEdit.setPlainText(self.concept.get('content', ''))
-        layout.addWidget(self.contentEdit)
-
-        # 学习状态
-        self.isReadingCheck = QCheckBox("学习中")
-        if self.is_edit:
-            self.isReadingCheck.setChecked(self.concept.get('isReading', False))
-        else:
-            self.isReadingCheck.setChecked(True)
-        layout.addWidget(self.isReadingCheck)
-
-        # 按钮
-        buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttonBox.accepted.connect(self.on_ok)
-        buttonBox.rejected.connect(self.reject)
-        layout.addWidget(buttonBox)
-
-    def on_ok(self):
-        """点击OK按钮时的验证"""
-        title = self.titleEdit.text().strip()
-        content = self.contentEdit.toPlainText().strip()
-
-        # 如果标题和内容都为空，不允许保存
-        if not title and not content:
-            QMessageBox.warning(self, "提示", "标题和内容不能同时为空")
-            return
-
-        self.accept()
-
-    def get_data(self) -> list:
-        """获取编辑后的数据，可能返回单条或多条"""
-        title = self.titleEdit.text().strip()
-        content = self.contentEdit.toPlainText().strip()
-
-        # 如果标题为空但内容包含分隔符，使用快速粘贴逻辑
-        if not title and content and ('|' in content or '.' in content):
-            result = []
-            lines = content.split('\n')
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                # 概念格式：标题|分类|学科|章节|内容
-                parts = line.split('|')
-                while len(parts) < 5:
-                    parts.append('')
-                item_title = parts[0].strip()
-                if item_title:
-                    result.append({
-                        'title': item_title,
-                        'category': parts[1].strip(),
-                        'subject': parts[2].strip(),
-                        'chapter': parts[3].strip(),
-                        'content': parts[4].strip(),
-                        'isReading': True
-                    })
-            return result if result else [{'title': title, 'category': '', 'subject': '', 'chapter': '', 'content': content, 'isReading': True}]
-
-        # 正常返回单条数据
-        return [{
-            'title': title,
-            'category': self.categoryCombo.currentText(),
-            'subject': self.subjectCombo.currentText(),
-            'chapter': self.chapterCombo.currentText(),
-            'content': content,
-            'isReading': self.isReadingCheck.isChecked()
-        }]
-
-
-# ==================== 临床笔记编辑对话框 ====================
-
-class ClinicalNoteEditDialog(QDialog):
-    """临床笔记编辑对话框"""
-
-    def __init__(self, note: dict = None, parent=None):
-        super().__init__(parent)
-        self.note = note or {}
-        self.is_edit = bool(note and note.get('id'))
-        self.setWindowTitle("编辑临床笔记" if self.is_edit else "添加临床笔记")
-        self.setMinimumWidth(500)
-        self.resize(600, 400)  # 设置默认大小
-        self.setup_ui()
-        self.restore_geometry()
-
-    def restore_geometry(self):
-        """恢复窗口几何信息"""
-        from PyQt6.QtCore import QSettings
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        # 清除旧的几何信息，使用新的默认布局
-        settings.remove("clinical_dialog_geometry")
-        center_window(self)
-
-    def closeEvent(self, event):
-        """关闭时不保存几何信息，每次打开都居中显示"""
-        event.accept()
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        # 标题
-        title_label = QLabel("标题（如：感冒·风寒束表证）")
-        self.titleEdit = QLineEdit()
-        self.titleEdit.setPlaceholderText("请输入临床笔记标题")
-        self.titleEdit.setText(self.note.get('title', ''))
-        layout.addWidget(title_label)
-        layout.addWidget(self.titleEdit)
-
-        # 病机
-        pathogenesis_label = QLabel("病机")
-        self.pathogenesisEdit = QTextEdit()
-        self.pathogenesisEdit.setPlaceholderText("病因病机分析")
-        self.pathogenesisEdit.setPlainText(self.note.get('pathogenesis', ''))
-        self.pathogenesisEdit.setMaximumHeight(100)
-        layout.addWidget(pathogenesis_label)
-        layout.addWidget(self.pathogenesisEdit)
-
-        # 治法
-        treatment_label = QLabel("治法")
-        self.treatmentEdit = QTextEdit()
-        self.treatmentEdit.setPlaceholderText("如：辛温解表，宣肺散寒")
-        self.treatmentEdit.setPlainText(self.note.get('treatment', ''))
-        self.treatmentEdit.setMaximumHeight(80)
-        layout.addWidget(treatment_label)
-        layout.addWidget(self.treatmentEdit)
-
-        # 处方
-        prescription_label = QLabel("处方")
-        self.prescriptionEdit = QTextEdit()
-        self.prescriptionEdit.setPlaceholderText("方剂组成与用药")
-        self.prescriptionEdit.setPlainText(self.note.get('prescription', ''))
-        self.prescriptionEdit.setMaximumHeight(100)
-        layout.addWidget(prescription_label)
-        layout.addWidget(self.prescriptionEdit)
-
-        # 备注
-        notes_label = QLabel("备注/心得")
-        self.notesEdit = QTextEdit()
-        self.notesEdit.setPlaceholderText("心得体会、注意事项等")
-        self.notesEdit.setPlainText(self.note.get('notes', ''))
-        self.notesEdit.setMaximumHeight(100)
-        layout.addWidget(notes_label)
-        layout.addWidget(self.notesEdit)
-
-        # 学习状态
-        self.isReadingCheck = QCheckBox("学习中")
-        if self.is_edit:
-            self.isReadingCheck.setChecked(self.note.get('isReading', False))
-        else:
-            from PyQt6.QtCore import QSettings
-            settings = QSettings("DailyRead", "ArticleConceptManager")
-            self.isReadingCheck.setChecked(settings.value("clinical_default_isReading", True, type=bool))
-        layout.addWidget(self.isReadingCheck)
-
-        # 按钮
-        buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttonBox.accepted.connect(self.on_ok)
-        buttonBox.rejected.connect(self.reject)
-        layout.addWidget(buttonBox)
-
-    def on_ok(self):
-        """点击OK按钮时的验证"""
-        title = self.titleEdit.text().strip()
-        if not title:
-            QMessageBox.warning(self, "提示", "标题不能为空")
-            return
-        self.accept()
-
-    def get_data(self) -> dict:
-        """获取编辑后的数据"""
-        return {
-            'title': self.titleEdit.text().strip(),
-            'pathogenesis': self.pathogenesisEdit.toPlainText().strip(),
-            'treatment': self.treatmentEdit.toPlainText().strip(),
-            'prescription': self.prescriptionEdit.toPlainText().strip(),
-            'notes': self.notesEdit.toPlainText().strip(),
-            'isReading': self.isReadingCheck.isChecked()
-        }
-
-
-# ==================== 临床笔记快速粘贴对话框 ====================
-
-class ClinicalQuickPasteDialog(QDialog):
-    """临床笔记快速粘贴对话框"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("临床笔记快速粘贴")
-        self.setMinimumSize(700, 500)
-        self.parsed_data = []
-        from PyQt6.QtCore import QSettings
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        self.default_isReading = settings.value("clinical_default_isReading", True, type=bool)
-        self.setup_ui()
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        tip = QLabel(
-            "每条占一行，使用 | 或 , 分隔：标题|病机|治法|处方|备注\n"
-            "例：感冒·风寒束表|风寒外束，卫阳被郁|辛温解表|麻黄汤|表实无汗者用"
-        )
-        tip.setStyleSheet("color: #666; padding: 5px;")
-        layout.addWidget(tip)
-
-        self.textEdit = QTextEdit()
-        self.textEdit.setPlaceholderText(
-            "请输入内容，每条占一行，使用 | 或 , 分隔：\n"
-            "标题|病机|治法|处方|备注\n"
-            "感冒|风寒外束|辛温解表|麻黄汤|表实无汗\n"
-            "咳嗽,肺失宣肃,宣肺止咳,止嗽散,注意饮食"
-        )
-        layout.addWidget(self.textEdit)
-
-        # 按钮
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        ok_btn = QPushButton("确定添加")
-        ok_btn.setStyleSheet("background-color: #0078d4; color: white; padding: 5px 15px;")
-        ok_btn.clicked.connect(self.on_ok)
-        btn_layout.addWidget(ok_btn)
-        cancel_btn = QPushButton("取消")
-        cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(cancel_btn)
-        layout.addLayout(btn_layout)
-
-    def on_ok(self):
-        text = self.textEdit.toPlainText().strip()
-        if not text:
-            QMessageBox.warning(self, "提示", "请输入内容")
-            return
-
-        lines = text.split('\n')
-        self.parsed_data = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            # 优先使用 | 分隔；若没有 |，则使用英文逗号 , 分隔
-            if '|' in line:
-                parts = line.split('|')
-            else:
-                parts = line.split(',')
-            if not parts or not parts[0].strip():
-                continue
-            title = parts[0].strip()
-            pathogenesis = parts[1].strip() if len(parts) > 1 else ''
-            treatment = parts[2].strip() if len(parts) > 2 else ''
-            prescription = parts[3].strip() if len(parts) > 3 else ''
-            notes = parts[4].strip() if len(parts) > 4 else ''
-            self.parsed_data.append({
-                'title': title,
-                'pathogenesis': pathogenesis,
-                'treatment': treatment,
-                'prescription': prescription,
-                'notes': notes,
-                'isReading': self.default_isReading
-            })
-
-        if not self.parsed_data:
-            QMessageBox.warning(self, "提示", "未能解析出有效内容")
-            return
-
-        self.accept()
-
-    def get_parsed_data(self) -> list:
-        return self.parsed_data
 
 
 # ==================== 快速粘贴对话框 ====================
@@ -1599,576 +1167,6 @@ class ArticlePage(QWidget):
             QMessageBox.critical(self, "错误", f"导出失败：{str(e)}")
 
 
-# ==================== 概念管理页面 ====================
-
-class ConceptPage(QWidget):
-    """概念管理页面"""
-
-    def __init__(self, data_model: DataModel, parent=None):
-        super().__init__(parent)
-        self.data_model = data_model
-        self.setup_ui()
-        self.refresh_table()
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        # 工具栏
-        toolbar_layout = QHBoxLayout()
-
-        add_btn = QPushButton("添加")
-        add_btn.setStyleSheet("background-color: #0078d4; color: white; padding: 5px 15px;")
-        add_btn.clicked.connect(self.add_concept)
-        toolbar_layout.addWidget(add_btn)
-
-        edit_btn = QPushButton("编辑")
-        edit_btn.clicked.connect(self.edit_concept)
-        toolbar_layout.addWidget(edit_btn)
-
-        delete_btn = QPushButton("批量删除")
-        delete_btn.clicked.connect(self.delete_concepts)
-        toolbar_layout.addWidget(delete_btn)
-
-        quick_paste_btn = QPushButton("快速粘贴")
-        quick_paste_btn.clicked.connect(self.quick_paste)
-        toolbar_layout.addWidget(quick_paste_btn)
-
-        import_btn = QPushButton("导入 JSON")
-        import_btn.clicked.connect(self.import_json)
-        toolbar_layout.addWidget(import_btn)
-
-        export_btn = QPushButton("导出 JSON")
-        export_btn.clicked.connect(self.export_json)
-        toolbar_layout.addWidget(export_btn)
-
-        toolbar_layout.addStretch()
-
-        self.searchEdit = QLineEdit()
-        self.searchEdit.setPlaceholderText("搜索标题...")
-        self.searchEdit.setFixedWidth(200)
-        self.searchEdit.textChanged.connect(self.on_search)
-        toolbar_layout.addWidget(self.searchEdit)
-
-        layout.addLayout(toolbar_layout)
-
-        # 表格
-        self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["ID", "标题", "分类", "学科", "章节", "内容"])
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                alternate-background-color: #f5f5f5;
-                background-color: #ffffff;
-                color: #000000;
-            }
-            QTableWidget::item {
-                color: #000000;
-            }
-            QTableWidget::item:selected {
-                background-color: #3399ff;
-                color: white;
-            }
-        """)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.verticalHeader().setVisible(False)
-
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # 标题列缩小（与文章管理一致）
-        for i in range(2, 5):
-            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # 内容列占剩余宽度
-
-        self.table.cellDoubleClicked.connect(self.on_double_click)
-        self.table.cellClicked.connect(self.on_row_click)
-
-        # 右键菜单
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self.show_context_menu)
-
-        layout.addWidget(self.table)
-
-        # 快捷键
-        from PyQt6.QtGui import QShortcut, QKeySequence
-        from PyQt6.QtCore import QSettings
-
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        add_key = settings.value("shortcut_add_concept", "Ctrl+N")
-        search_key = settings.value("shortcut_search_concept", "Ctrl+F")
-
-        self.add_shortcut = QShortcut(QKeySequence(add_key), self)
-        self.add_shortcut.activated.connect(self.add_concept)
-
-        self.search_shortcut = QShortcut(QKeySequence(search_key), self)
-        self.search_shortcut.activated.connect(self.focus_search)
-
-    def focus_search(self):
-        """聚焦搜索框"""
-        self.searchEdit.setFocus()
-
-    def refresh_table(self, concepts: list = None):
-        """刷新表格（优化：禁用重绘 + 单次循环填充）"""
-        if concepts is None:
-            concepts = self.data_model.concepts
-
-        self.table.setUpdatesEnabled(False)
-        self.table.setRowCount(len(concepts))
-
-        _align = Qt.AlignmentFlag.AlignCenter
-        _QTableWidgetItem = QTableWidgetItem
-
-        for row, concept in enumerate(concepts):
-            item0 = _QTableWidgetItem(str(concept.get('id', '')))
-            item0.setTextAlignment(_align)
-            self.table.setItem(row, 0, item0)
-
-            item1 = _QTableWidgetItem(concept.get('title', ''))
-            item1.setTextAlignment(_align)
-            self.table.setItem(row, 1, item1)
-
-            item2 = _QTableWidgetItem(concept.get('category', ''))
-            item2.setTextAlignment(_align)
-            self.table.setItem(row, 2, item2)
-
-            item3 = _QTableWidgetItem(concept.get('subject', ''))
-            item3.setTextAlignment(_align)
-            self.table.setItem(row, 3, item3)
-
-            item4 = _QTableWidgetItem(concept.get('chapter', ''))
-            item4.setTextAlignment(_align)
-            self.table.setItem(row, 4, item4)
-
-            # 内容列
-            content = concept.get('content', '')
-            display_content = content[:50] + "..." if len(content) > 50 else content
-            item5 = _QTableWidgetItem(display_content)
-            item5.setTextAlignment(_align)
-            self.table.setItem(row, 5, item5)
-
-        self.table.setUpdatesEnabled(True)
-
-    def on_search(self, text: str):
-        """搜索过滤"""
-        if not text:
-            self.refresh_table()
-            return
-        filtered = [c for c in self.data_model.concepts if text.lower() in c.get('title', '').lower()]
-        self.refresh_table(filtered)
-
-    def on_row_click(self, row: int, col: int):
-        """单击选中行 - 已由SelectionMode自动处理"""
-        pass
-
-    def on_double_click(self, row: int, col: int):
-        """双击编辑"""
-        concept_id = int(self.table.item(row, 0).text())
-        concept = next((c for c in self.data_model.concepts if c['id'] == concept_id), None)
-        if concept:
-            self.do_edit_concept(concept)
-
-    def show_context_menu(self, pos):
-        """显示右键菜单"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            return
-
-        menu = QMenu()
-        delete_action = menu.addAction("删除选中")
-        action = menu.exec(self.table.mapToGlobal(pos))
-
-        if action == delete_action:
-            self.delete_concepts()
-
-    def add_concept(self):
-        """添加概念"""
-        dialog = ConceptEditDialog(
-            categories=self.data_model.get_categories(),
-            subjects=self.data_model.get_subjects(),
-            chapters=self.data_model.get_chapters(),
-            parent=self
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data_list = dialog.get_data()
-            # 批量写入内存，最后只写一次磁盘
-            if len(data_list) == 1:
-                self.data_model.add_concept(data_list[0])
-            else:
-                for data in data_list:
-                    self.data_model.add_concept(data, save_now=False)
-                self.data_model.save()
-            self.refresh_table()
-            QMessageBox.information(self, "成功", f"已添加 {len(data_list)} 个概念")
-
-    def edit_concept(self):
-        """编辑选中概念"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            QMessageBox.warning(self, "提示", "请先选择要编辑的概念")
-            return
-        row = selected_rows[0].row()
-        concept_id = int(self.table.item(row, 0).text())
-        concept = next((c for c in self.data_model.concepts if c['id'] == concept_id), None)
-        if concept:
-            self.do_edit_concept(concept)
-
-    def do_edit_concept(self, concept: dict):
-        """执行编辑"""
-        dialog = ConceptEditDialog(
-            concept,
-            categories=self.data_model.get_categories(),
-            subjects=self.data_model.get_subjects(),
-            chapters=self.data_model.get_chapters(),
-            parent=self
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data = dialog.get_data()
-            if data and isinstance(data, list):
-                data = data[0]
-            self.data_model.update_concept(concept['id'], data)
-            self.refresh_table()
-            QMessageBox.information(self, "成功", "概念更新成功")
-
-    def delete_concepts(self):
-        """批量删除"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            QMessageBox.warning(self, "提示", "请先选择要删除的概念")
-            return
-        reply = QMessageBox.question(self, "确认删除", f"确定要删除选中的 {len(selected_rows)} 个概念吗？")
-        if reply == QMessageBox.StandardButton.Yes:
-            ids = [int(self.table.item(row.row(), 0).text()) for row in selected_rows]
-            self.data_model.delete_concepts(ids)
-            self.refresh_table()
-            QMessageBox.information(self, "成功", f"已删除 {len(ids)} 个概念")
-
-    def quick_paste(self):
-        """快速粘贴"""
-        dialog = QuickPasteDialog("concept", self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data_list = dialog.get_parsed_data()
-            for data in data_list:
-                self.data_model.add_concept(data, save_now=False)
-            if data_list:
-                self.data_model.save()
-            self.refresh_table()
-            QMessageBox.information(self, "成功", f"已添加 {len(data_list)} 个概念")
-
-    def import_json(self):
-        """导入 JSON"""
-        filepath, _ = QFileDialog.getOpenFileName(self, "选择 JSON 文件", "", "JSON Files (*.json)")
-        if not filepath:
-            return
-        option_dialog = ImportOptionDialog(self)
-        if option_dialog.exec() == QDialog.DialogCode.Accepted:
-            try:
-                self.data_model.import_concepts_json(filepath, option_dialog.replace)
-                self.refresh_table()
-                concept_count = len(self.data_model.concepts)
-                QMessageBox.information(self, "成功", f"概念导入成功\n\n当前概念总数：{concept_count} 个")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"导入失败：{str(e)}")
-
-    def export_json(self):
-        """导出 JSON"""
-        filepath, _ = QFileDialog.getSaveFileName(self, "保存 JSON 文件", "concepts.json", "JSON Files (*.json)")
-        if not filepath:
-            return
-        try:
-            concept_count = len(self.data_model.concepts)
-            self.data_model.export_concepts_json(filepath)
-            QMessageBox.information(self, "成功", f"概念导出成功\n\n导出概念数量：{concept_count} 个")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导出失败：{str(e)}")
-
-
-# ==================== 临床笔记管理页面 ====================
-
-class ClinicalPage(QWidget):
-    """临床笔记管理页面"""
-
-    def __init__(self, data_model: DataModel, parent=None):
-        super().__init__(parent)
-        self.data_model = data_model
-        self.setup_ui()
-        self.refresh_table()
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        # 工具栏（顺序与文章管理保持一致：添加→编辑→批量删除→快速粘贴→导入→导出）
-        toolbar_layout = QHBoxLayout()
-
-        add_btn = QPushButton("添加")
-        add_btn.setStyleSheet("background-color: #0078d4; color: white; padding: 5px 15px;")
-        add_btn.clicked.connect(self.add_note)
-        toolbar_layout.addWidget(add_btn)
-
-        edit_btn = QPushButton("编辑")
-        edit_btn.clicked.connect(self.edit_note)
-        toolbar_layout.addWidget(edit_btn)
-
-        delete_btn = QPushButton("批量删除")
-        delete_btn.clicked.connect(self.delete_notes)
-        toolbar_layout.addWidget(delete_btn)
-
-        quick_paste_btn = QPushButton("快速粘贴")
-        quick_paste_btn.clicked.connect(self.quick_paste)
-        toolbar_layout.addWidget(quick_paste_btn)
-
-        import_btn = QPushButton("导入 JSON")
-        import_btn.clicked.connect(self.import_json)
-        toolbar_layout.addWidget(import_btn)
-
-        export_btn = QPushButton("导出 JSON")
-        export_btn.clicked.connect(self.export_json)
-        toolbar_layout.addWidget(export_btn)
-
-        toolbar_layout.addStretch()
-
-        self.searchEdit = QLineEdit()
-        self.searchEdit.setPlaceholderText("搜索标题...")
-        self.searchEdit.setFixedWidth(200)
-        self.searchEdit.textChanged.connect(self.on_search)
-        toolbar_layout.addWidget(self.searchEdit)
-
-        layout.addLayout(toolbar_layout)
-
-        # 表格：ID、标题、病机、治法、处方、学习状态
-        self.table = QTableWidget()
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels([
-            "ID", "标题", "病机", "治法", "处方", "学习中"
-        ])
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet("""
-            QTableWidget {
-                alternate-background-color: #f5f5f5;
-                background-color: #ffffff;
-                color: #000000;
-            }
-            QTableWidget::item {
-                color: #000000;
-            }
-            QTableWidget::item:selected {
-                background-color: #3399ff;
-                color: white;
-            }
-        """)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.verticalHeader().setVisible(False)
-
-        header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-
-        self.table.cellDoubleClicked.connect(self.on_double_click)
-
-        # 右键菜单
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self.show_context_menu)
-
-        layout.addWidget(self.table)
-
-        # 快捷键
-        from PyQt6.QtGui import QShortcut, QKeySequence
-        from PyQt6.QtCore import QSettings
-
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        add_key = settings.value("shortcut_add_clinical_note", "Ctrl+N")
-        search_key = settings.value("shortcut_search_clinical_note", "Ctrl+F")
-
-        self.add_shortcut = QShortcut(QKeySequence(add_key), self)
-        self.add_shortcut.activated.connect(self.add_note)
-
-        self.search_shortcut = QShortcut(QKeySequence(search_key), self)
-        self.search_shortcut.activated.connect(self.focus_search)
-
-    def focus_search(self):
-        """聚焦搜索框"""
-        self.searchEdit.setFocus()
-
-    def refresh_table(self, notes: list = None):
-        """刷新表格"""
-        if notes is None:
-            notes = self.data_model.clinical_notes
-
-        self.table.setUpdatesEnabled(False)
-        self.table.setRowCount(len(notes))
-
-        _align = Qt.AlignmentFlag.AlignCenter
-        _QTableWidgetItem = QTableWidgetItem
-
-        for row, note in enumerate(notes):
-            # ID
-            item0 = _QTableWidgetItem(str(note.get('id', '')))
-            item0.setTextAlignment(_align)
-            self.table.setItem(row, 0, item0)
-            # 标题
-            item1 = _QTableWidgetItem(note.get('title', ''))
-            self.table.setItem(row, 1, item1)
-            # 病机
-            pathogenesis = note.get('pathogenesis', '')
-            display_p = pathogenesis[:50] + "..." if len(pathogenesis) > 50 else pathogenesis
-            item2 = _QTableWidgetItem(display_p)
-            self.table.setItem(row, 2, item2)
-            # 治法
-            treatment = note.get('treatment', '')
-            display_t = treatment[:30] + "..." if len(treatment) > 30 else treatment
-            item3 = _QTableWidgetItem(display_t)
-            self.table.setItem(row, 3, item3)
-            # 处方
-            prescription = note.get('prescription', '')
-            display_rx = prescription[:30] + "..." if len(prescription) > 30 else prescription
-            item4 = _QTableWidgetItem(display_rx)
-            self.table.setItem(row, 4, item4)
-            # 学习状态
-            item5 = _QTableWidgetItem("是" if note.get('isReading') else "否")
-            item5.setTextAlignment(_align)
-            self.table.setItem(row, 5, item5)
-
-        self.table.setUpdatesEnabled(True)
-
-    def on_search(self, text: str):
-        """搜索过滤"""
-        if not text:
-            self.refresh_table()
-            return
-        filtered = [n for n in self.data_model.clinical_notes
-                    if text.lower() in n.get('title', '').lower()]
-        self.refresh_table(filtered)
-
-    def on_double_click(self, row: int, col: int):
-        """双击编辑"""
-        note_id = int(self.table.item(row, 0).text())
-        note = next((n for n in self.data_model.clinical_notes if n['id'] == note_id), None)
-        if note:
-            self.do_edit_note(note)
-
-    def show_context_menu(self, pos):
-        """显示右键菜单"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            return
-        menu = QMenu()
-        delete_action = menu.addAction("删除选中")
-        action = menu.exec(self.table.mapToGlobal(pos))
-        if action == delete_action:
-            self.delete_notes()
-
-    def add_note(self):
-        """添加临床笔记"""
-        dialog = ClinicalNoteEditDialog(parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data = dialog.get_data()
-            self.data_model.add_clinical_note(data)
-            self.refresh_table()
-            QMessageBox.information(self, "成功", "临床笔记已添加")
-
-    def quick_paste(self):
-        """快速粘贴多条临床笔记"""
-        dialog = ClinicalQuickPasteDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data_list = dialog.get_parsed_data()
-            for data in data_list:
-                self.data_model.add_clinical_note(data, save_now=False)
-            if data_list:
-                self.data_model.save()
-            self.refresh_table()
-            QMessageBox.information(self, "成功", f"已添加 {len(data_list)} 条临床笔记")
-
-    def edit_note(self):
-        """编辑选中笔记"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            QMessageBox.warning(self, "提示", "请先选择要编辑的临床笔记")
-            return
-        row = selected_rows[0].row()
-        note_id = int(self.table.item(row, 0).text())
-        note = next((n for n in self.data_model.clinical_notes if n['id'] == note_id), None)
-        if note:
-            self.do_edit_note(note)
-
-    def do_edit_note(self, note: dict):
-        """执行编辑"""
-        dialog = ClinicalNoteEditDialog(note, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            data = dialog.get_data()
-            self.data_model.update_clinical_note(note['id'], data)
-            self.refresh_table()
-            QMessageBox.information(self, "成功", "临床笔记已更新")
-
-    def delete_notes(self):
-        """批量删除"""
-        selected_rows = self.table.selectionModel().selectedRows()
-        if not selected_rows:
-            QMessageBox.warning(self, "提示", "请先选择要删除的临床笔记")
-            return
-        reply = QMessageBox.question(self, "确认删除",
-                                     f"确定要删除选中的 {len(selected_rows)} 条临床笔记吗？")
-        if reply == QMessageBox.StandardButton.Yes:
-            ids = [int(self.table.item(row.row(), 0).text()) for row in selected_rows]
-            self.data_model.delete_clinical_notes(ids)
-            self.refresh_table()
-            QMessageBox.information(self, "成功", f"已删除 {len(ids)} 条临床笔记")
-
-    def import_json(self):
-        """导入临床笔记 JSON"""
-        filepath, _ = QFileDialog.getOpenFileName(self, "选择 JSON 文件", "", "JSON Files (*.json)")
-        if not filepath:
-            return
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-
-            imported = 0
-            # 兼容：支持完整备份格式 或 纯列表
-            if isinstance(data, dict):
-                notes_list = data.get('clinicalNotes', data.get('clinical_notes', []))
-            elif isinstance(data, list):
-                notes_list = data
-            else:
-                notes_list = []
-
-            for item in notes_list:
-                if not isinstance(item, dict) or not item.get('title'):
-                    continue
-                self.data_model.add_clinical_note(item, save_now=False)
-                imported += 1
-
-            if imported > 0:
-                self.data_model.save()
-
-            self.refresh_table()
-            QMessageBox.information(self, "成功", f"已导入 {imported} 条临床笔记")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导入失败：{str(e)}")
-
-    def export_json(self):
-        """导出临床笔记 JSON"""
-        filepath, _ = QFileDialog.getSaveFileName(self, "保存 JSON 文件", "clinical_notes.json",
-                                                  "JSON Files (*.json)")
-        if not filepath:
-            return
-        try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(self.data_model.clinical_notes, f, ensure_ascii=False, indent=2)
-            QMessageBox.information(self, "成功",
-                                    f"已导出 {len(self.data_model.clinical_notes)} 条临床笔记")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"导出失败：{str(e)}")
-
-
 # ==================== 备份与恢复页面 ====================
 
 class BackupPage(QWidget):
@@ -2238,11 +1236,9 @@ class BackupPage(QWidget):
         try:
             self.data_model.export_backup(filepath)
             article_count = len(self.data_model.articles)
-            concept_count = len(self.data_model.concepts)
-            clinical_count = len(self.data_model.clinical_notes)
             QMessageBox.information(
                 self, "成功",
-                f"备份已保存到：{filepath}\n\n包含文章：{article_count} 篇\n包含概念：{concept_count} 个\n包含临床笔记：{clinical_count} 条"
+                f"备份已保存到：{filepath}\n\n包含文章：{article_count} 篇"
             )
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导出失败：{str(e)}")
@@ -2257,11 +1253,9 @@ class BackupPage(QWidget):
             try:
                 self.data_model.import_backup(filepath)
                 article_count = len(self.data_model.articles)
-                concept_count = len(self.data_model.concepts)
-                clinical_count = len(self.data_model.clinical_notes)
                 QMessageBox.information(
                     self, "成功",
-                    f"备份导入成功\n\n文章数量：{article_count} 篇\n概念数量：{concept_count} 个\n临床笔记：{clinical_count} 条"
+                    f"备份导入成功\n\n文章数量：{article_count} 篇"
                 )
                 self.refresh_all_tables()
             except Exception as e:
@@ -2307,13 +1301,11 @@ class BackupPage(QWidget):
 
         if success:
             article_count = len(self.data_model.articles)
-            concept_count = len(self.data_model.concepts)
-            clinical_count = len(self.data_model.clinical_notes)
             self.progressBar.setValue(100)
             self.progressStatusLabel.setText("上传完成")
             QMessageBox.information(
                 self, "成功",
-                f"上传成功\n\n上传文章：{article_count} 篇\n上传概念：{concept_count} 个\n上传临床笔记：{clinical_count} 条"
+                f"上传成功\n\n上传文章：{article_count} 篇"
             )
         else:
             self.progressBar.setValue(0)
@@ -2357,13 +1349,11 @@ class BackupPage(QWidget):
             try:
                 self.data_model.import_backup(temp_file)
                 article_count = len(self.data_model.articles)
-                concept_count = len(self.data_model.concepts)
-                clinical_count = len(self.data_model.clinical_notes)
                 self.progressBar.setValue(100)
                 self.progressStatusLabel.setText("下载完成")
                 QMessageBox.information(
                     self, "成功",
-                    f"下载并恢复成功\n\n文章数量：{article_count} 篇\n概念数量：{concept_count} 个\n临床笔记：{clinical_count} 条"
+                    f"下载并恢复成功\n\n文章数量：{article_count} 篇"
                 )
                 self.refresh_all_tables()
             except Exception as e:
@@ -2483,13 +1473,8 @@ class SettingsPage(QWidget):
             'isRequired': False,
             'useIndependentCheckRate': False
         }
-        # 临床笔记默认设置
-        self.clinical_defaults = {
-            'isReading': True
-        }
         self.load_shortcuts()
         self.load_article_defaults()
-        self.load_clinical_defaults()
         self.setup_ui()
 
     def load_shortcuts(self):
@@ -2526,18 +1511,6 @@ class SettingsPage(QWidget):
         settings.setValue("article_default_isRequired", self.article_defaults['isRequired'])
         settings.setValue("article_default_useIndependentCheckRate", self.article_defaults['useIndependentCheckRate'])
 
-    def load_clinical_defaults(self):
-        """加载临床笔记默认设置"""
-        from PyQt6.QtCore import QSettings
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        self.clinical_defaults['isReading'] = settings.value("clinical_default_isReading", True, type=bool)
-
-    def save_clinical_defaults(self):
-        """保存临床笔记默认设置"""
-        from PyQt6.QtCore import QSettings
-        settings = QSettings("DailyRead", "ArticleConceptManager")
-        settings.setValue("clinical_default_isReading", self.clinical_defaults['isReading'])
-
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
@@ -2560,32 +1533,6 @@ class SettingsPage(QWidget):
         article_layout.addRow("添加文章", self.add_article_edit)
         article_layout.addRow("搜索文章", self.search_article_edit)
         shortcut_layout.addRow(article_group)
-
-        # 概念管理快捷键
-        concept_group = QGroupBox("概念管理")
-        concept_layout = QFormLayout(concept_group)
-
-        self.add_concept_edit = ShortcutEdit()
-        self.add_concept_edit.setText(self.shortcuts['add_concept'])
-        self.search_concept_edit = ShortcutEdit()
-        self.search_concept_edit.setText(self.shortcuts['search_concept'])
-
-        concept_layout.addRow("添加概念", self.add_concept_edit)
-        concept_layout.addRow("搜索概念", self.search_concept_edit)
-        shortcut_layout.addRow(concept_group)
-
-        # 临床笔记快捷键
-        clinical_group = QGroupBox("临床笔记")
-        clinical_layout = QFormLayout(clinical_group)
-
-        self.add_clinical_note_edit = ShortcutEdit()
-        self.add_clinical_note_edit.setText(self.shortcuts['add_clinical_note'])
-        self.search_clinical_note_edit = ShortcutEdit()
-        self.search_clinical_note_edit.setText(self.shortcuts['search_clinical_note'])
-
-        clinical_layout.addRow("添加临床笔记", self.add_clinical_note_edit)
-        clinical_layout.addRow("搜索临床笔记", self.search_clinical_note_edit)
-        shortcut_layout.addRow(clinical_group)
 
         # 按钮
         button_layout = QHBoxLayout()
@@ -2618,19 +1565,9 @@ class SettingsPage(QWidget):
 
         layout.addWidget(article_defaults_group)
 
-        # 临床笔记默认设置
-        clinical_defaults_group = QGroupBox("临床笔记默认设置")
-        clinical_defaults_layout = QHBoxLayout(clinical_defaults_group)
-
-        self.default_clinical_isReading_check = QCheckBox("学习中")
-        self.default_clinical_isReading_check.setChecked(self.clinical_defaults['isReading'])
-        clinical_defaults_layout.addWidget(self.default_clinical_isReading_check)
-
-        layout.addWidget(clinical_defaults_group)
-
         about_group = QGroupBox("关于")
         about_layout = QVBoxLayout(about_group)
-        about_layout.addWidget(QLabel("每日阅读 · 文章与概念管理器"))
+        about_layout.addWidget(QLabel("每日阅读 · 文章管理器"))
         about_layout.addWidget(QLabel("版本 1.0.0"))
         about_layout.addWidget(QLabel("用于「每日阅读」APP 的本地数据管理工具"))
         layout.addWidget(about_group)
@@ -2638,7 +1575,6 @@ class SettingsPage(QWidget):
         func_group = QGroupBox("功能说明")
         func_layout = QVBoxLayout(func_group)
         func_layout.addWidget(QLabel("• 文章管理：增删改查、自动统计汉字数、快速粘贴添加"))
-        func_layout.addWidget(QLabel("• 概念管理：增删改查、分类/学科/章节管理"))
         func_layout.addWidget(QLabel("• 备份恢复：本地备份、导入导出 JSON"))
         func_layout.addWidget(QLabel("• WebDAV 同步：支持坚果云、Nextcloud 等服务"))
         layout.addWidget(func_group)
@@ -2650,38 +1586,23 @@ class SettingsPage(QWidget):
         # 快捷键
         self.shortcuts['add_article'] = self.add_article_edit.text().strip()
         self.shortcuts['search_article'] = self.search_article_edit.text().strip()
-        self.shortcuts['add_concept'] = self.add_concept_edit.text().strip()
-        self.shortcuts['search_concept'] = self.search_concept_edit.text().strip()
-        self.shortcuts['add_clinical_note'] = self.add_clinical_note_edit.text().strip()
-        self.shortcuts['search_clinical_note'] = self.search_clinical_note_edit.text().strip()
         self.save_shortcuts()
         # 文章默认设置
         self.article_defaults['isReading'] = self.default_isReading_check.isChecked()
         self.article_defaults['isRequired'] = self.default_isRequired_check.isChecked()
         self.article_defaults['useIndependentCheckRate'] = self.default_useIndependent_check.isChecked()
         self.save_article_defaults()
-        # 临床笔记默认设置
-        self.clinical_defaults['isReading'] = self.default_clinical_isReading_check.isChecked()
-        self.save_clinical_defaults()
-        QMessageBox.information(self, "成功", "设置已保存，添加新文章和临床笔记时将生效")
+        QMessageBox.information(self, "成功", "设置已保存，添加新文章时将生效")
 
     def on_reset_settings(self):
         """恢复所有默认设置"""
         # 快捷键
         self.shortcuts = {
             'add_article': 'Ctrl+N',
-            'search_article': 'Ctrl+F',
-            'add_concept': 'Ctrl+N',
-            'search_concept': 'Ctrl+F',
-            'add_clinical_note': 'Ctrl+N',
-            'search_clinical_note': 'Ctrl+F'
+            'search_article': 'Ctrl+F'
         }
         self.add_article_edit.setText('Ctrl+N')
         self.search_article_edit.setText('Ctrl+F')
-        self.add_concept_edit.setText('Ctrl+N')
-        self.search_concept_edit.setText('Ctrl+F')
-        self.add_clinical_note_edit.setText('Ctrl+N')
-        self.search_clinical_note_edit.setText('Ctrl+F')
         self.save_shortcuts()
         # 文章默认设置
         self.article_defaults = {
@@ -2693,10 +1614,6 @@ class SettingsPage(QWidget):
         self.default_isRequired_check.setChecked(False)
         self.default_useIndependent_check.setChecked(False)
         self.save_article_defaults()
-        # 临床笔记默认设置
-        self.clinical_defaults = {'isReading': True}
-        self.default_clinical_isReading_check.setChecked(True)
-        self.save_clinical_defaults()
         QMessageBox.information(self, "成功", "已恢复默认设置")
 
 
@@ -2727,14 +1644,10 @@ class MainWindow(QMainWindow):
         self.tabs.setDocumentMode(True)
 
         self.article_page = ArticlePage(self.data_model, self)
-        self.concept_page = ConceptPage(self.data_model, self)
-        self.clinical_page = ClinicalPage(self.data_model, self)
         self.backup_page = BackupPage(self.data_model, self)
         self.settings_page = SettingsPage(self)
 
         self.tabs.addTab(self.article_page, "📖 文章管理")
-        self.tabs.addTab(self.concept_page, "💡 概念管理")
-        self.tabs.addTab(self.clinical_page, "🏥 临床笔记")
         self.tabs.addTab(self.backup_page, "💾 备份与恢复")
         self.tabs.addTab(self.settings_page, "⚙️ 设置")
 
@@ -2769,10 +1682,6 @@ class MainWindow(QMainWindow):
         """刷新所有页面"""
         if self.article_page:
             self.article_page.refresh_table()
-        if self.concept_page:
-            self.concept_page.refresh_table()
-        if self.clinical_page:
-            self.clinical_page.refresh_table()
 
     def closeEvent(self, event):
         """关闭时保存数据"""

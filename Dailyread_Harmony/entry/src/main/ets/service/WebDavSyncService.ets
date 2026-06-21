@@ -1,11 +1,7 @@
 import { WebDavClient, WebDavResult } from './WebDavClient';
 import { Config } from '../model/Config';
 import { ArticleRepository } from '../repository/ArticleRepository';
-import { ConceptRepository } from '../repository/ConceptRepository';
-import { ClinicalNoteRepository } from '../repository/ClinicalNoteRepository';
 import { Article } from '../model/Article';
-import { Concept } from '../model/Concept';
-import { ClinicalNote } from '../model/ClinicalNote';
 import { AppDatabase } from '../database/AppDatabase';
 import { common } from '@kit.AbilityKit';
 
@@ -14,6 +10,7 @@ export class SyncResult {
   errorMessage: string = '';
   downloadedArticles: number = 0;
   uploadedArticles: number = 0;
+  // 保留兼容性字段
   downloadedConcepts: number = 0;
   uploadedConcepts: number = 0;
   downloadedClinicalNotes: number = 0;
@@ -44,7 +41,7 @@ export class SyncArticleData {
   lastModified: string = '';
 }
 
-/** 与 Concept 字段完全对齐 */
+// 保留兼容性数据结构（用于读取旧备份文件）
 export class SyncConceptData {
   id: number = 0;
   title: string = '';
@@ -57,7 +54,6 @@ export class SyncConceptData {
   lastModified: string = '';
 }
 
-/** 与 ClinicalNote 字段完全对齐 */
 export class SyncClinicalNoteData {
   id: number = 0;
   title: string = '';
@@ -71,10 +67,11 @@ export class SyncClinicalNoteData {
 }
 
 export class SyncPayload {
-  version: number = 2;
+  version: number = 7;
   exportTime: string = '';
   dataType: string = 'daily_read_backup';
   articles: SyncArticleData[] = [];
+  // 保留兼容性字段（旧版本备份可能包含）
   concepts: SyncConceptData[] = [];
   clinicalNotes: SyncClinicalNoteData[] = [];
 }
@@ -317,9 +314,14 @@ export class WebDavSyncService {
       }
 
       result.downloadedArticles = await this.mergeArticles(payload.articles);
-      result.downloadedConcepts = await this.mergeConcepts(payload.concepts);
-      result.downloadedClinicalNotes = await this.mergeClinicalNotes(payload.clinicalNotes);
-      console.info('WebDAV syncFromRemote: mergedArticles=' + result.downloadedArticles + ' mergedConcepts=' + result.downloadedConcepts + ' mergedClinicalNotes=' + result.downloadedClinicalNotes);
+      // 旧备份文件兼容性：概念和临床笔记数据不导入
+      if (payload.concepts.length > 0) {
+        console.log('检测到旧备份文件包含 ' + payload.concepts.length + ' 条概念数据，已跳过导入');
+      }
+      if (payload.clinicalNotes.length > 0) {
+        console.log('检测到旧备份文件包含 ' + payload.clinicalNotes.length + ' 条临床笔记数据，已跳过导入');
+      }
+      console.info('WebDAV syncFromRemote: mergedArticles=' + result.downloadedArticles);
       config.lastSyncTime = new Date().toISOString();
       result.success = true;
     } catch (e) {
@@ -370,43 +372,7 @@ export class WebDavSyncService {
         result.uploadedArticles = articles.length;
       }
 
-      if (config.syncConceptsEnabled) {
-        const concepts: Concept[] = await ConceptRepository.getInstance().getAllConcepts();
-        for (let i: number = 0; i < concepts.length; i++) {
-          const c: Concept = concepts[i];
-          const data: SyncConceptData = new SyncConceptData();
-          data.id = c.id;
-          data.title = c.title;
-          data.category = c.category || '';
-          data.subject = c.subject || '';
-          data.chapter = c.chapter || '';
-          data.content = c.content;
-          data.isReading = c.isReading;
-          data.createTime = c.createTime || '';
-          data.lastModified = c.lastModified || payload.exportTime;
-          payload.concepts.push(data);
-        }
-        result.uploadedConcepts = concepts.length;
-      }
-
-      if (config.syncClinicalNotesEnabled) {
-        const notes: ClinicalNote[] = await ClinicalNoteRepository.getInstance().getAllNotes();
-        for (let i: number = 0; i < notes.length; i++) {
-          const cn: ClinicalNote = notes[i];
-          const data: SyncClinicalNoteData = new SyncClinicalNoteData();
-          data.id = cn.id;
-          data.title = cn.title;
-          data.pathogenesis = cn.pathogenesis || '';
-          data.treatment = cn.treatment || '';
-          data.prescription = cn.prescription || '';
-          data.notes = cn.notes || '';
-          data.isReading = cn.isReading;
-          data.createTime = cn.createTime || '';
-          data.lastModified = cn.lastModified || payload.exportTime;
-          payload.clinicalNotes.push(data);
-        }
-        result.uploadedClinicalNotes = notes.length;
-      }
+      // 只上传文章数据，概念和临床笔记字段保留为空数组（兼容旧版本格式）
 
       const jsonContent: string = JSON.stringify(payload);
       
@@ -509,101 +475,6 @@ export class WebDavSyncService {
       }
     } catch (e) {
       console.error('WebDAV mergeArticles 失败: ' + JSON.stringify(e));
-    }
-    return mergedCount;
-  }
-
-  private async mergeConcepts(remoteConcepts: SyncConceptData[]): Promise<number> {
-    let mergedCount: number = 0;
-    try {
-      const existingConcepts: Concept[] = await ConceptRepository.getInstance().getAllConcepts();
-      const existingTitles: Map<string, Concept> = new Map<string, Concept>();
-      for (let i: number = 0; i < existingConcepts.length; i++) {
-        existingTitles.set(existingConcepts[i].title, existingConcepts[i]);
-      }
-      console.info('WebDAV mergeConcepts: 本地已有 concepts=' + existingConcepts.length + ' 条');
-
-      for (let i: number = 0; i < remoteConcepts.length; i++) {
-        const remote: SyncConceptData = remoteConcepts[i];
-        const existing: Concept | undefined = existingTitles.get(remote.title);
-
-        if (!existing) {
-          const concept: Concept = new Concept();
-          concept.title = remote.title;
-          concept.category = remote.category;
-          concept.subject = remote.subject;
-          concept.chapter = remote.chapter;
-          concept.content = remote.content;
-          concept.isReading = Boolean(remote.isReading || true);
-          concept.createTime = remote.createTime || remote.lastModified;
-          concept.lastModified = remote.lastModified || new Date().toISOString();
-          await ConceptRepository.getInstance().insertConcept(concept);
-          mergedCount++;
-        } else {
-          if (!existing.lastModified || (remote.lastModified && remote.lastModified > existing.lastModified)) {
-            existing.title = remote.title;
-            existing.category = remote.category;
-            existing.subject = remote.subject;
-            existing.chapter = remote.chapter;
-            existing.content = remote.content;
-            existing.isReading = Boolean(remote.isReading || true);
-            existing.lastModified = remote.lastModified || new Date().toISOString();
-            await ConceptRepository.getInstance().updateConcept(existing);
-            mergedCount++;
-          }
-        }
-      }
-      
-      
-    } catch (e) {
-      console.error('WebDAV mergeConcepts 失败: ' + JSON.stringify(e));
-    }
-    return mergedCount;
-  }
-
-  private async mergeClinicalNotes(remoteNotes: SyncClinicalNoteData[]): Promise<number> {
-    let mergedCount: number = 0;
-    try {
-      const existingNotes: ClinicalNote[] = await ClinicalNoteRepository.getInstance().getAllNotes();
-      const existingTitles: Map<string, ClinicalNote> = new Map<string, ClinicalNote>();
-      for (let i: number = 0; i < existingNotes.length; i++) {
-        existingTitles.set(existingNotes[i].title, existingNotes[i]);
-      }
-      console.info('WebDAV mergeClinicalNotes: 本地已有 clinicalNotes=' + existingNotes.length + ' 条');
-
-      for (let i: number = 0; i < remoteNotes.length; i++) {
-        const remote: SyncClinicalNoteData = remoteNotes[i];
-        const existing: ClinicalNote | undefined = existingTitles.get(remote.title);
-
-        if (!existing) {
-          const note: ClinicalNote = new ClinicalNote();
-          note.title = remote.title;
-          note.pathogenesis = remote.pathogenesis || '';
-          note.treatment = remote.treatment || '';
-          note.prescription = remote.prescription || '';
-          note.notes = remote.notes || '';
-          note.isReading = remote.isReading !== undefined ? remote.isReading : false;
-          note.createTime = remote.createTime || remote.lastModified;
-          note.lastModified = remote.lastModified || new Date().toISOString();
-          await ClinicalNoteRepository.getInstance().insertNote(note);
-          mergedCount++;
-        } else {
-          if (!existing.lastModified || (remote.lastModified && remote.lastModified > existing.lastModified)) {
-            existing.title = remote.title;
-            existing.pathogenesis = remote.pathogenesis !== undefined ? (remote.pathogenesis || '') : existing.pathogenesis;
-            existing.treatment = remote.treatment !== undefined ? (remote.treatment || '') : existing.treatment;
-            existing.prescription = remote.prescription !== undefined ? (remote.prescription || '') : existing.prescription;
-            existing.notes = remote.notes !== undefined ? (remote.notes || '') : existing.notes;
-            existing.isReading = remote.isReading !== undefined ? remote.isReading : existing.isReading;
-            existing.createTime = remote.createTime || existing.createTime;
-            existing.lastModified = remote.lastModified || new Date().toISOString();
-            await ClinicalNoteRepository.getInstance().updateNote(existing);
-            mergedCount++;
-          }
-        }
-      }
-    } catch (e) {
-      console.error('WebDAV mergeClinicalNotes 失败: ' + JSON.stringify(e));
     }
     return mergedCount;
   }

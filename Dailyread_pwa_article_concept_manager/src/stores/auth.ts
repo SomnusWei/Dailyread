@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { User } from '@/types'
-import { apiService } from '@/services/api'
+import { apiService, type User } from '@/services/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
@@ -19,7 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
     
     try {
       const response = await apiService.register(username, password)
-      if (response.success) {
+      if (response.success && response.user) {
         user.value = response.user
         return true
       }
@@ -41,7 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
     
     try {
       const response = await apiService.login(username, password)
-      if (response.success) {
+      if (response.success && response.user) {
         user.value = response.user
         return true
       }

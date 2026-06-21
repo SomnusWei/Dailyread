@@ -111,9 +111,7 @@ struct SettingsPage {
     try {
       const result = await WebDavSyncService.getInstance().syncFromRemote(this.config);
       if (result.success) {
-        const msg: string = '下载成功！文章:' + result.downloadedArticles +
-          ', 概念:' + result.downloadedConcepts +
-          ', 临床笔记:' + result.downloadedClinicalNotes;
+        const msg: string = '下载成功！文章:' + result.downloadedArticles;
         promptAction.showToast({ message: msg, duration: 3000 });
         this.syncMessage = msg;
         await this.loadConfig();
@@ -135,9 +133,7 @@ struct SettingsPage {
     try {
       const result = await WebDavSyncService.getInstance().syncToRemote(this.config);
       if (result.success) {
-        const msg: string = '上传成功！文章:' + result.uploadedArticles +
-          ', 概念:' + result.uploadedConcepts +
-          ', 临床笔记:' + result.uploadedClinicalNotes;
+        const msg: string = '上传成功！文章:' + result.uploadedArticles;
         promptAction.showToast({ message: msg, duration: 3000 });
         this.syncMessage = msg;
         await this.loadConfig();
@@ -233,8 +229,7 @@ struct SettingsPage {
 
       const result: ImportResult = await BackupService.getInstance().importFromJSON(jsonContent, true);
       if (result.success) {
-        const msg: string = '导入成功！文章:' + result.importedArticles +
-          ', 概念:' + result.importedConcepts;
+        const msg: string = '导入成功！文章:' + result.importedArticles;
         promptAction.showToast({ message: msg, duration: 3000 });
       } else {
         promptAction.showToast({ message: '导入失败: ' + result.errorMessage, duration: 3000 });
@@ -280,34 +275,6 @@ struct SettingsPage {
                 .fontWeight(FontWeight.Bold)
                 .width('100%')
                 .padding({ left: 16, right: 16, top: 8 })
-
-              // 文章管理入口
-              Column() {
-                Row() {
-                  Column() {
-                    Text('文章管理')
-                      .fontSize(16)
-                      .fontWeight(FontWeight.Medium)
-                    Text('添加、编辑和管理你的文章')
-                      .fontSize(12)
-                      .fontColor('#999999')
-                      .margin({ top: 4 })
-                  }
-                  .alignItems(HorizontalAlign.Start)
-                  .layoutWeight(1)
-                  Text('›')
-                    .fontSize(22)
-                    .fontColor('#999999')
-                }
-                .width('100%')
-                .onClick(() => {
-                  router.pushUrl({ url: 'pages/ArticleManage' });
-                })
-              }
-              .width('100%')
-              .padding(16)
-              .backgroundColor('#FFFFFF')
-              .borderRadius(8)
 
               // 每日阅读时间卡片
               Column() {
@@ -533,34 +500,6 @@ struct SettingsPage {
                     Toggle({ type: ToggleType.Switch, isOn: this.config.syncArticlesEnabled })
                       .onChange((val: boolean) => {
                         this.config.syncArticlesEnabled = val;
-                        this.updateConfig();
-                      })
-                  }
-                  .width('100%')
-                  .alignItems(VerticalAlign.Center)
-                  .margin({ top: 8 })
-
-                  Row() {
-                    Text('同步概念数据')
-                      .fontSize(14)
-                      .layoutWeight(1)
-                    Toggle({ type: ToggleType.Switch, isOn: this.config.syncConceptsEnabled })
-                      .onChange((val: boolean) => {
-                        this.config.syncConceptsEnabled = val;
-                        this.updateConfig();
-                      })
-                  }
-                  .width('100%')
-                  .alignItems(VerticalAlign.Center)
-                  .margin({ top: 8 })
-
-                  Row() {
-                    Text('同步临床笔记数据')
-                      .fontSize(14)
-                      .layoutWeight(1)
-                    Toggle({ type: ToggleType.Switch, isOn: this.config.syncClinicalNotesEnabled })
-                      .onChange((val: boolean) => {
-                        this.config.syncClinicalNotesEnabled = val;
                         this.updateConfig();
                       })
                   }
@@ -865,7 +804,7 @@ struct SettingsPage {
         Text('▣')
           .fontSize(16)
           .fontColor('#999999');
-        Text('背临床')
+        Text('文章管理')
           .fontSize(11)
           .fontColor('#666666');
       }
@@ -873,7 +812,7 @@ struct SettingsPage {
       .justifyContent(FlexAlign.Center)
       .padding({ top: 8, bottom: 8 })
       .onClick(() => {
-        router.pushUrl({ url: 'pages/ClinicalStudy' });
+        router.pushUrl({ url: 'pages/ArticleManage' });
       });
 
       Column({ space: 2 }) {
@@ -889,36 +828,6 @@ struct SettingsPage {
       .padding({ top: 8, bottom: 8 })
       .onClick(() => {
         router.pushUrl({ url: 'pages/RandomRead' });
-      })
-
-      Column({ space: 2 }) {
-        Text('◆')
-          .fontSize(16)
-          .fontColor('#999999');
-        Text('背穴位')
-          .fontSize(11)
-          .fontColor('#666666');
-      }
-      .layoutWeight(1)
-      .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
-      .onClick(() => {
-        router.pushUrl({ url: 'pages/AcupointStudy' });
-      })
-
-      Column({ space: 2 }) {
-        Text('◇')
-          .fontSize(16)
-          .fontColor('#999999');
-        Text('背概念')
-          .fontSize(11)
-          .fontColor('#666666');
-      }
-      .layoutWeight(1)
-      .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
-      .onClick(() => {
-        router.pushUrl({ url: 'pages/ConceptStudy' });
       })
 
       Column({ space: 2 }) {

@@ -3,12 +3,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useArticleStore } from '@/stores/article'
-import { useConceptStore } from '@/stores/concept'
-import { useClinicalStore } from '@/stores/clinical'
 import { 
   BookOpen, 
-  Zap, 
-  Heart, 
   Settings, 
   LogOut,
   FileText,
@@ -20,17 +16,11 @@ import {
 const router = useRouter()
 const authStore = useAuthStore()
 const articleStore = useArticleStore()
-const conceptStore = useConceptStore()
-const clinicalStore = useClinicalStore()
 
 const loading = ref(true)
 
 onMounted(async () => {
-  await Promise.all([
-    articleStore.loadArticles(),
-    conceptStore.loadConcepts(),
-    clinicalStore.loadClinicalNotes()
-  ])
+  await articleStore.loadArticles()
   loading.value = false
 })
 
@@ -71,7 +61,7 @@ function handleLogout() {
       
       <div v-else class="space-y-6">
         <!-- 统计卡片 -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div class="card p-6">
             <div class="flex items-center justify-between">
               <div>
@@ -88,12 +78,12 @@ function handleLogout() {
           <div class="card p-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-500">概念总数</p>
-                <p class="text-3xl font-bold text-gray-800 mt-1">{{ conceptStore.totalCount }}</p>
-                <p class="text-sm text-success-600 mt-1">{{ conceptStore.readingCount }} 个学习中</p>
+                <p class="text-sm text-gray-500">备份状态</p>
+                <p class="text-3xl font-bold text-gray-800 mt-1">-</p>
+                <p class="text-sm text-gray-500 mt-1">查看备份详情</p>
               </div>
-              <div class="w-14 h-14 bg-purple-100 rounded-xl flex items-center justify-center">
-                <Zap class="w-7 h-7 text-purple-600" />
+              <div class="w-14 h-14 bg-amber-100 rounded-xl flex items-center justify-center">
+                <Target class="w-7 h-7 text-amber-600" />
               </div>
             </div>
           </div>
@@ -101,19 +91,19 @@ function handleLogout() {
           <div class="card p-6">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-gray-500">临床笔记</p>
-                <p class="text-3xl font-bold text-gray-800 mt-1">{{ clinicalStore.totalCount }}</p>
-                <p class="text-sm text-success-600 mt-1">{{ clinicalStore.readingCount }} 条学习中</p>
+                <p class="text-sm text-gray-500">阅读进度</p>
+                <p class="text-3xl font-bold text-gray-800 mt-1">-</p>
+                <p class="text-sm text-gray-500 mt-1">持续阅读</p>
               </div>
               <div class="w-14 h-14 bg-green-100 rounded-xl flex items-center justify-center">
-                <Heart class="w-7 h-7 text-green-600" />
+                <BookOpen class="w-7 h-7 text-green-600" />
               </div>
             </div>
           </div>
         </div>
         
         <!-- 功能入口 -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <button
             @click="router.push('/articles')"
             class="card p-6 text-left hover:shadow-md transition-shadow group"
@@ -131,38 +121,6 @@ function handleLogout() {
           </button>
           
           <button
-            @click="router.push('/concepts')"
-            class="card p-6 text-left hover:shadow-md transition-shadow group"
-          >
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-lg font-semibold text-gray-800">概念管理</h3>
-                <p class="text-sm text-gray-500 mt-1">管理您的概念数据</p>
-              </div>
-              <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-200 transition-colors">
-                <Brain class="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-            <ChevronRight class="w-5 h-5 text-gray-400 mt-4 group-hover:text-purple-500 group-hover:translate-x-1 transition-all" />
-          </button>
-          
-          <button
-            @click="router.push('/clinical')"
-            class="card p-6 text-left hover:shadow-md transition-shadow group"
-          >
-            <div class="flex items-center justify-between">
-              <div>
-                <h3 class="text-lg font-semibold text-gray-800">临床笔记</h3>
-                <p class="text-sm text-gray-500 mt-1">管理您的临床笔记</p>
-              </div>
-              <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                <Stethoscope class="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-            <ChevronRight class="w-5 h-5 text-gray-400 mt-4 group-hover:text-green-500 group-hover:translate-x-1 transition-all" />
-          </button>
-          
-          <button
             @click="router.push('/backup')"
             class="card p-6 text-left hover:shadow-md transition-shadow group"
           >
@@ -176,6 +134,22 @@ function handleLogout() {
               </div>
             </div>
             <ChevronRight class="w-5 h-5 text-gray-400 mt-4 group-hover:text-amber-500 group-hover:translate-x-1 transition-all" />
+          </button>
+          
+          <button
+            @click="router.push('/settings')"
+            class="card p-6 text-left hover:shadow-md transition-shadow group"
+          >
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-lg font-semibold text-gray-800">设置</h3>
+                <p class="text-sm text-gray-500 mt-1">应用设置与偏好</p>
+              </div>
+              <div class="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center group-hover:bg-gray-200 transition-colors">
+                <Settings class="w-6 h-6 text-gray-600" />
+              </div>
+            </div>
+            <ChevronRight class="w-5 h-5 text-gray-400 mt-4 group-hover:text-gray-500 group-hover:translate-x-1 transition-all" />
           </button>
         </div>
         

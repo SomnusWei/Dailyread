@@ -5,14 +5,13 @@ import { User, Bell, Palette, HelpCircle, Info, LogOut } from 'lucide-vue-next';
 const router = useRouter();
 const authStore = useAuthStore();
 const userInfo = ref({
- username: '',
- email: ''
+ username: ''
 });
+
 onMounted(() => {
  if (authStore.user) {
  userInfo.value = {
- username: authStore.user.username,
- email: authStore.user.email
+ username: authStore.user.username
  };
  }
 });
@@ -55,7 +54,6 @@ function goBack() {
           </div>
           <div>
             <h2 class="text-lg font-semibold text-gray-800">{{ userInfo.username }}</h2>
-            <p class="text-gray-500">{{ userInfo.email }}</p>
           </div>
         </div>
       </div>

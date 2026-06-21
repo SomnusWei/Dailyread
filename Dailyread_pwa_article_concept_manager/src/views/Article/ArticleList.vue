@@ -16,6 +16,7 @@ const selectedArticle = ref<Article | null>(null);
 const form = ref({
  title: '',
  content: '',
+ contentHtml: '',
  chineseChars: 0,
  fontFamily: '',
  fontSize: 16,
@@ -65,6 +66,7 @@ async function openAddModal() {
  form.value = {
  title: '',
  content: '',
+ contentHtml: '',
  chineseChars: 0,
  fontFamily: '',
  fontSize: 16,
@@ -86,6 +88,7 @@ async function openEditModal(article: Article) {
  form.value = {
  title: article.title,
  content: article.content,
+ contentHtml: article.contentHtml || '',
  chineseChars: article.chineseChars,
  fontFamily: article.fontFamily,
  fontSize: article.fontSize,

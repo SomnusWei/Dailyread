@@ -1,15 +1,12 @@
 import { Article } from '../model/Article';
-import { Concept } from '../model/Concept';
-import { ClinicalNote } from '../model/ClinicalNote';
 import { ArticleRepository } from '../repository/ArticleRepository';
-import { ConceptRepository } from '../repository/ConceptRepository';
-import { ClinicalNoteRepository } from '../repository/ClinicalNoteRepository';
 
 export class BackupData {
-  version: number = 6;
+  version: number = 7;
   exportTime: string = '';
   dataType: string = 'daily_read_backup';
   articles: BackupArticleData[] = [];
+  // 保留兼容性字段（旧版本备份可能包含）
   concepts: BackupConceptData[] = [];
   clinicalNotes: BackupClinicalNoteData[] = [];
 
@@ -43,6 +40,7 @@ export class BackupArticleData {
   }
 }
 
+// 保留兼容性数据结构（用于读取旧备份文件）
 export class BackupConceptData {
   id: number = 0;
   title: string = '';
@@ -77,6 +75,7 @@ export class ImportResult {
   success: boolean = false;
   errorMessage: string = '';
   importedArticles: number = 0;
+  // 保留兼容性字段
   importedConcepts: number = 0;
   importedClinicalNotes: number = 0;
 
@@ -197,7 +196,7 @@ export class BackupService {
 
   public async exportToJSON(): Promise<string> {
     const backup: BackupData = new BackupData();
-    backup.version = 6;
+    backup.version = 7;
     backup.exportTime = new Date().toISOString();
     backup.dataType = 'daily_read_backup';
 
@@ -228,38 +227,7 @@ export class BackupService {
       backup.articles.push(bd);
     }
 
-    const concepts: Concept[] = await ConceptRepository.getInstance().getAllConcepts();
-    for (let m: number = 0; m < concepts.length; m++) {
-      const cp: Concept = concepts[m];
-      const bd: BackupConceptData = new BackupConceptData();
-      bd.id = cp.id;
-      bd.title = cp.title;
-      bd.category = cp.category;
-      bd.subject = cp.subject;
-      bd.chapter = cp.chapter;
-      bd.content = cp.content;
-      bd.isReading = cp.isReading;
-      bd.createTime = cp.createTime;
-      bd.lastModified = cp.lastModified || cp.createTime;
-      backup.concepts.push(bd);
-    }
-
-    const notes: ClinicalNote[] = await ClinicalNoteRepository.getInstance().getAllNotes();
-    for (let n: number = 0; n < notes.length; n++) {
-      const cn: ClinicalNote = notes[n];
-      const bd: BackupClinicalNoteData = new BackupClinicalNoteData();
-      bd.id = cn.id;
-      bd.title = cn.title;
-      bd.pathogenesis = cn.pathogenesis;
-      bd.treatment = cn.treatment;
-      bd.prescription = cn.prescription;
-      bd.notes = cn.notes;
-      bd.isReading = cn.isReading;
-      bd.createTime = cn.createTime;
-      bd.lastModified = cn.lastModified || cn.createTime;
-      backup.clinicalNotes.push(bd);
-    }
-
+    // 只导出文章数据，概念和临床笔记字段保留为空数组（兼容旧版本格式）
     return JSON.stringify(backup);
   }
 
@@ -279,43 +247,18 @@ export class BackupService {
         } catch (err1) {
           console.error('删除文章失败: ' + JSON.stringify(err1));
         }
-        try {
-          await ConceptRepository.getInstance().deleteAllConcepts();
-        } catch (err2) {
-          console.error('删除概念失败: ' + JSON.stringify(err2));
-        }
-        try {
-          await ClinicalNoteRepository.getInstance().deleteAllNotes();
-        } catch (err3) {
-          console.error('删除临床笔记失败: ' + JSON.stringify(err3));
-        }
       }
 
       const existingArticleTitles: Set<string> = new Set<string>();
-      const existingConceptTitles: Set<string> = new Set<string>();
-      const existingNoteTitles: Set<string> = new Set<string>();
 
       if (!clearBeforeImport) {
         const existingArticles: Article[] = await ArticleRepository.getInstance().getAllArticles();
         for (let i: number = 0; i < existingArticles.length; i++) {
           existingArticleTitles.add(existingArticles[i].title);
         }
-
-        const existingConcepts: Concept[] = await ConceptRepository.getInstance().getAllConcepts();
-        for (let j: number = 0; j < existingConcepts.length; j++) {
-          existingConceptTitles.add(existingConcepts[j].title);
-        }
-
-        const existingNotes: ClinicalNote[] = await ClinicalNoteRepository.getInstance().getAllNotes();
-        for (let k: number = 0; k < existingNotes.length; k++) {
-          existingNoteTitles.add(existingNotes[k].title);
-        }
       }
 
       const nowIso: string = new Date().toISOString();
-
-      const isRootArray: boolean = Array.isArray(parsed);
-      const rootArrayData: object[] = isRootArray ? (parsed as object[]) : [];
 
       const articleArray: object[] = this.extractArray(parsed,
         ['articles', 'articleList', 'contents', 'contentList']);
@@ -373,91 +316,17 @@ export class BackupService {
         }
       }
 
+      // 旧备份文件兼容性：读取概念和临床笔记字段但不导入（仅记录日志）
       const conceptArray: object[] = this.extractArray(parsed,
         ['concepts', 'conceptList', 'gainian', 'gainianList']);
-
-      // 只有当根 JSON 本身是数组（而非带 articles/concepts 键的对象）时才跳过概念导入
-      if (isRootArray) {
-        console.log('检测到纯数组JSON，跳过概念导入');
-      } else if (conceptArray.length > 0) {
-        for (let m: number = 0; m < conceptArray.length; m++) {
-          const raw: object = conceptArray[m];
-          const reader: JsonFieldReader = new JsonFieldReader(raw);
-          const title: string = reader.getString(['title', 'biaoTi', 'name'], '');
-          const content: string = reader.getString(['content', 'neirong', 'body', 'text'], '');
-          if (title.length === 0) {
-            continue;
-          }
-
-          if (existingConceptTitles.has(title)) {
-            console.log('概念已存在，跳过: ' + title);
-            continue;
-          }
-
-          const cp: Concept = new Concept();
-          cp.title = title;
-          cp.category = reader.getString(['category', 'fenlei', 'type'], '');
-          cp.subject = reader.getString(['subject', 'xueke', 'subjectName'], '');
-          cp.chapter = reader.getString(['chapter', 'zhangjie', 'subChapter', 'sub_chapter', 'subchapter'], '');
-          cp.content = content;
-          cp.isReading = reader.getBoolean(['isReading', 'is_reading', 'reading'], true);
-          cp.createTime = reader.getString(['createTime', 'create_time', 'createAt'], nowIso);
-          cp.lastModified = reader.getString(['lastModified', 'last_modified', 'updateTime'], '');
-          if (cp.lastModified.length === 0) {
-            cp.lastModified = cp.createTime;
-          }
-          if (cp.createTime.length === 0) {
-            cp.createTime = nowIso;
-            cp.lastModified = nowIso;
-          }
-          try {
-            await ConceptRepository.getInstance().insertConcept(cp);
-            result.importedConcepts++;
-          } catch (err) {
-            console.error('导入概念失败: ' + JSON.stringify(err));
-          }
-        }
+      if (conceptArray.length > 0) {
+        console.log('检测到旧备份文件包含 ' + conceptArray.length + ' 条概念数据，已跳过导入');
       }
 
       const noteArray: object[] = this.extractArray(parsed,
         ['clinicalNotes', 'clinical_notes', 'notes', 'noteList', 'linchuang', 'linchuangbiji']);
       if (noteArray.length > 0) {
-        for (let p: number = 0; p < noteArray.length; p++) {
-          const raw: object = noteArray[p];
-          const reader: JsonFieldReader = new JsonFieldReader(raw);
-          const title: string = reader.getString(['title', 'biaoTi', 'name'], '');
-          if (title.length === 0) {
-            continue;
-          }
-
-          if (existingNoteTitles.has(title)) {
-            console.log('临床笔记已存在，跳过: ' + title);
-            continue;
-          }
-
-          const note: ClinicalNote = new ClinicalNote();
-          note.title = title;
-          note.pathogenesis = reader.getString(['pathogenesis', 'bingji', 'bingJi'], '');
-          note.treatment = reader.getString(['treatment', 'zhifa', 'zhiFa'], '');
-          note.prescription = reader.getString(['prescription', 'chufang', 'chuFang'], '');
-          note.notes = reader.getString(['notes', 'note', 'beizhu', 'beiZhu', 'remark'], '');
-          note.isReading = reader.getBoolean(['isReading', 'is_reading', 'reading'], false);
-          note.createTime = reader.getString(['createTime', 'create_time', 'createAt'], nowIso);
-          note.lastModified = reader.getString(['lastModified', 'last_modified', 'updateTime'], '');
-          if (note.lastModified.length === 0) {
-            note.lastModified = note.createTime;
-          }
-          if (note.createTime.length === 0) {
-            note.createTime = nowIso;
-            note.lastModified = nowIso;
-          }
-          try {
-            await ClinicalNoteRepository.getInstance().insertNote(note);
-            result.importedClinicalNotes++;
-          } catch (err) {
-            console.error('导入临床笔记失败: ' + JSON.stringify(err));
-          }
-        }
+        console.log('检测到旧备份文件包含 ' + noteArray.length + ' 条临床笔记数据，已跳过导入');
       }
 
       result.success = true;

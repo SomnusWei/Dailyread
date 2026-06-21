@@ -60,3 +60,12 @@ Dailyread_win_article_concept_manager/webdav_config.json
 # PWA 脚本
 # ==================
 Dailyread_pwa_article_concept_manager/scripts/*.pyc
+
+# ==================
+# 敏感信息文件
+# ==================
+.gitignore.txt
+file/Github账号密码.txt
+PWA服务器账号密码.TXT
+Github账号密码.txt
+PWA服务器账号密码.txt

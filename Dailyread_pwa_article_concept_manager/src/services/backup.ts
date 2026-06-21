@@ -1,23 +1,18 @@
 import type { BackupData } from '@/types'
 import { articleService } from './article'
-import { conceptService } from './concept'
-import { clinicalService } from './clinical'
 
 export const backupService = {
   async exportToJSON(): Promise<string> {
-    const [articles, concepts, clinicalNotes] = await Promise.all([
-      articleService.getAll(),
-      conceptService.getAll(),
-      clinicalService.getAll()
-    ])
+    const articles = await articleService.getAll()
     
     const backupData: BackupData = {
-      version: 6,
+      version: 7,
       exportTime: new Date().toISOString(),
       dataType: 'daily_read_backup',
       articles,
-      concepts,
-      clinicalNotes
+      // 不导出概念和临床笔记数据
+      concepts: [],
+      clinicalNotes: []
     }
     
     return JSON.stringify(backupData, null, 2)
@@ -54,48 +49,13 @@ export const backupService = {
       }
     }
     
-    if (data.concepts && Array.isArray(data.concepts)) {
-      if (clearBeforeImport) {
-        await conceptService.importFromJSON(JSON.stringify({ concepts: data.concepts }))
-      } else {
-        const existingConcepts = await conceptService.getAll()
-        const newConcepts = data.concepts.filter((c: { title: string }) =>
-          !existingConcepts.some(ec => ec.title === c.title)
-        )
-        for (const concept of newConcepts) {
-          await conceptService.create({
-            title: concept.title,
-            category: concept.category || '',
-            subject: concept.subject || '',
-            chapter: concept.chapter || '',
-            content: concept.content || '',
-            isReading: concept.isReading || false
-          })
-        }
-      }
+    // 保留旧备份文件兼容性：概念和临床笔记数据不导入
+    if (data.concepts && Array.isArray(data.concepts) && data.concepts.length > 0) {
+      console.log(`检测到旧备份文件包含 ${data.concepts.length} 条概念数据，已跳过导入`)
     }
     
-    if (data.clinicalNotes && Array.isArray(data.clinicalNotes)) {
-      if (clearBeforeImport) {
-        const existingNotes = await clinicalService.getAll()
-        for (const note of existingNotes) {
-          await clinicalService.delete(note.id)
-        }
-      }
-      const existingNotes = await clinicalService.getAll()
-      const newNotes = data.clinicalNotes.filter((n: { title: string }) =>
-        !existingNotes.some(en => en.title === n.title)
-      )
-      for (const note of newNotes) {
-        await clinicalService.create({
-          title: note.title,
-          pathogenesis: note.pathogenesis || '',
-          treatment: note.treatment || '',
-          prescription: note.prescription || '',
-          notes: note.notes || '',
-          isReading: note.isReading || false
-        })
-      }
+    if (data.clinicalNotes && Array.isArray(data.clinicalNotes) && data.clinicalNotes.length > 0) {
+      console.log(`检测到旧备份文件包含 ${data.clinicalNotes.length} 条临床笔记数据，已跳过导入`)
     }
   }
 }

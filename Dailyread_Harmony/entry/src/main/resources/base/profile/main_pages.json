@@ -6,11 +6,6 @@
     "pages/Settings",
     "pages/Reader",
     "pages/ArticleManage",
-    "pages/RandomRead",
-    "pages/AcupointStudy",
-    "pages/ConceptStudy",
-    "pages/ConceptSettings",
-    "pages/ClinicalStudy",
-    "pages/ClinicalSettings"
+    "pages/RandomRead"
   ]
 }

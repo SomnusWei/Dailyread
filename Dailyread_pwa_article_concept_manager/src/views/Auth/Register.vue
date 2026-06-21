@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { Eye, EyeOff, UserPlus, User, Mail, Lock } from 'lucide-vue-next'
+import { Eye, EyeOff, UserPlus, User, Lock } from 'lucide-vue-next'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -75,19 +75,6 @@ function goToLogin() {
                 v-model="username"
                 type="text"
                 placeholder="请输入用户名"
-                class="input pl-10"
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
-            <div class="relative">
-              <Mail class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                v-model="email"
-                type="email"
-                placeholder="请输入邮箱"
                 class="input pl-10"
               />
             </div>

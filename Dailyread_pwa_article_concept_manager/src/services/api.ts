@@ -3,7 +3,9 @@
  * 用于用户认证和 WebDAV 配置管理
  */
 
-const API_BASE_URL = import.meta.env.PROD ? '' : 'http://localhost:3001/api'
+// 使用 Vite define 配置的全局常量
+declare const __API_BASE_URL__: string
+const API_BASE_URL = __API_BASE_URL__
 
 export interface User {
   id: number
@@ -19,11 +21,12 @@ export interface WebDavConfig {
 
 export interface AuthResponse {
   success: boolean
-  token: string
-  user: User
+  token?: string
+  user?: User
+  error?: string
 }
 
-export interface ApiResponse<T> {
+export interface ApiResponse<T = unknown> {
   success?: boolean
   data?: T
   error?: string
@@ -45,7 +48,7 @@ class ApiService {
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     const token = this.getToken()
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -63,7 +66,7 @@ class ApiService {
       throw new Error(data.error || '请求失败')
     }
     
-    return data
+    return data as T
   }
 
   // ==================== 用户认证 ====================
@@ -78,7 +81,7 @@ class ApiService {
       this.setToken(response.token)
     }
     
-    return response as AuthResponse
+    return response
   }
 
   async login(username: string, password: string): Promise<AuthResponse> {
@@ -91,7 +94,7 @@ class ApiService {
       this.setToken(response.token)
     }
     
-    return response as AuthResponse
+    return response
   }
 
   async getUser(): Promise<User | null> {

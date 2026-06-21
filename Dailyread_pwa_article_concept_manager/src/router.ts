@@ -27,18 +27,6 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/concepts',
-    name: 'Concepts',
-    component: () => import('@/views/Concept/ConceptList.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/clinical',
-    name: 'Clinical',
-    component: () => import('@/views/Clinical/ClinicalList.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
     path: '/backup',
     name: 'Backup',
     component: () => import('@/views/Backup/Backup.vue'),

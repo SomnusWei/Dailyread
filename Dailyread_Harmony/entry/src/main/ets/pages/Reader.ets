@@ -294,8 +294,6 @@ struct ReaderPage {
       syncConfig.webdavPassword = config.webdavPassword;
       syncConfig.webdavRemotePath = config.webdavRemotePath || '/DailyRead';
       syncConfig.syncArticlesEnabled = config.syncArticlesEnabled ?? true;
-      syncConfig.syncConceptsEnabled = config.syncConceptsEnabled ?? true;
-      syncConfig.syncClinicalNotesEnabled = config.syncClinicalNotesEnabled ?? true;
 
       const result = await syncService.syncToRemote(syncConfig);
 

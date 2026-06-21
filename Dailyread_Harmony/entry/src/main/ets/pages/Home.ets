@@ -603,7 +603,7 @@ struct HomePage {
       Column({ space: 2 }) {
         Text('●')
           .fontSize(18)
-          .fontColor('#999999');
+          .fontColor('#1976D2');
         Text('首页')
           .fontSize(11)
           .fontColor('#1976D2')
@@ -614,10 +614,10 @@ struct HomePage {
       .padding({ top: 8, bottom: 8 });
 
       Column({ space: 2 }) {
-        Text('▣')
+        Text('📄')
           .fontSize(16)
           .fontColor('#999999');
-        Text('背临床')
+        Text('文章管理')
           .fontSize(11)
           .fontColor('#666666');
       }
@@ -625,7 +625,7 @@ struct HomePage {
       .justifyContent(FlexAlign.Center)
       .padding({ top: 8, bottom: 8 })
       .onClick(() => {
-        router.pushUrl({ url: 'pages/ClinicalStudy' });
+        router.pushUrl({ url: 'pages/ArticleManage' });
       });
 
       Column({ space: 2 }) {
@@ -641,36 +641,6 @@ struct HomePage {
       .padding({ top: 8, bottom: 8 })
       .onClick(() => {
         router.pushUrl({ url: 'pages/RandomRead' });
-      });
-
-      Column({ space: 2 }) {
-        Text('◆')
-          .fontSize(16)
-          .fontColor('#999999');
-        Text('背穴位')
-          .fontSize(11)
-          .fontColor('#666666');
-      }
-      .layoutWeight(1)
-      .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
-      .onClick(() => {
-        router.pushUrl({ url: 'pages/AcupointStudy' });
-      });
-
-      Column({ space: 2 }) {
-        Text('◇')
-          .fontSize(16)
-          .fontColor('#999999');
-        Text('背概念')
-          .fontSize(11)
-          .fontColor('#666666');
-      }
-      .layoutWeight(1)
-      .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
-      .onClick(() => {
-        router.pushUrl({ url: 'pages/ConceptStudy' });
       });
 
       Column({ space: 2 }) {

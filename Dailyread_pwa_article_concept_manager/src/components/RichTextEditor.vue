@@ -53,23 +53,10 @@ watch(() => props.modelValue, (newVal) => {
 function updateContent() {
   if (editorRef.value) {
     const plainText = editorRef.value.textContent || ''
-    let html = editorRef.value.innerHTML
-    // 嵌入字号样式
-    html = wrapHtmlWithFontSize(html, props.fontSize)
+    const html = editorRef.value.innerHTML
     emit('update:modelValue', plainText)
     emit('update:htmlValue', html)
   }
-}
-
-// 包装HTML添加字号样式
-function wrapHtmlWithFontSize(html: string, fontSize: number): string {
-  if (!html || html === '<br>' || html === '<div><br></div>') {
-    return ''
-  }
-  const style = `font-size: ${fontSize}px; line-height: ${fontSize * 1.8}px; color: #333333;`
-  // 如果没有包裹span，直接返回原HTML（用户设置的样式优先）
-  // RichText组件会使用HTML中的样式
-  return html
 }
 
 // 格式化命令
