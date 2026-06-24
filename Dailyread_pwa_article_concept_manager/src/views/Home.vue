@@ -3,21 +3,23 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useArticleStore } from '@/stores/article'
-import { 
-  BookOpen, 
-  Settings, 
+import {
+  BookOpen,
+  Settings,
   LogOut,
   FileText,
-  Clock,
   Target,
-  ChevronRight
+  ChevronRight,
+  Download
 } from 'lucide-vue-next'
+import LinkToPdf from '@/components/LinkToPdf.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const articleStore = useArticleStore()
 
 const loading = ref(true)
+const showLinkToPdf = ref(false)
 
 onMounted(async () => {
   await articleStore.loadArticles()
@@ -26,7 +28,7 @@ onMounted(async () => {
 
 function handleLogout() {
   authStore.logout()
-  router.push('/login')
+  window.location.href = '/login'
 }
 </script>
 
@@ -165,10 +167,13 @@ function handleLogout() {
               <span class="text-sm">设置</span>
             </button>
           </div>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <button class="flex flex-col items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-              <Clock class="w-8 h-8 text-gray-600 mb-2" />
-              <span class="text-sm text-gray-700">今日阅读</span>
+          <div class="grid grid-cols-3 gap-4">
+            <button
+              @click="showLinkToPdf = true"
+              class="flex flex-col items-center p-4 bg-gray-50 rounded-lg hover:bg-primary-50 hover:text-primary-600 transition-colors group"
+            >
+              <Download class="w-8 h-8 text-gray-600 mb-2 group-hover:text-primary-600" />
+              <span class="text-sm text-gray-700 group-hover:text-primary-600">链接转PDF</span>
             </button>
             <button class="flex flex-col items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
               <Target class="w-8 h-8 text-gray-600 mb-2" />
@@ -178,13 +183,12 @@ function handleLogout() {
               <FileText class="w-8 h-8 text-gray-600 mb-2" />
               <span class="text-sm text-gray-700">导入数据</span>
             </button>
-            <button class="flex flex-col items-center p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-              <BookOpen class="w-8 h-8 text-gray-600 mb-2" />
-              <span class="text-sm text-gray-700">随机阅读</span>
-            </button>
           </div>
         </div>
       </div>
     </main>
+
+    <!-- 链接转PDF弹窗 -->
+    <LinkToPdf :visible="showLinkToPdf" @close="showLinkToPdf = false" />
   </div>
 </template>

@@ -6,21 +6,6 @@ Thumbs.db
 *.log
 *.tmp
 
-# ==================
-# Android 项目
-# ==================
-Dailyread_Android/.gradle/
-Dailyread_Android/gradle/
-Dailyread_Android/build/
-Dailyread_Android/app/build/
-Dailyread_Android/app/*.apk
-Dailyread_Android/app/*.aab
-Dailyread_Android/local.properties
-Dailyread_Android/.idea/
-Dailyread_Android/*.iml
-Dailyread_Android/captures/
-Dailyread_Android/.externalNativeBuild/
-Dailyread_Android/.cxx/
 
 # ==================
 # Harmony 项目
@@ -69,3 +54,4 @@ file/Github账号密码.txt
 PWA服务器账号密码.TXT
 Github账号密码.txt
 PWA服务器账号密码.txt
+Win端APP打包信息.txt

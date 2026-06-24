@@ -905,7 +905,7 @@ struct ArticleManagePage {
       });
 
       Column({ space: 2 }) {
-        Text('▣')
+        Text('📄')
           .fontSize(16)
           .fontColor('#1976D2');
         Text('文章管理')

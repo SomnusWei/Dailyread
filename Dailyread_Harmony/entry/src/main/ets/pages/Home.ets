@@ -439,157 +439,160 @@ struct HomePage {
 
   build(): void {
     Column() {
-      Row() {
-        Text('每日阅读')
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .layoutWeight(1);
-      }
-      .width('100%')
-      .padding({ left: 16, right: 16, top: 16, bottom: 8 })
-      .backgroundColor('#FFFFFF');
-
-      if (this.isLoading) {
-        Column() {
-          LoadingProgress()
-            .width(40)
-            .height(40);
-          Text('加载中...')
-            .fontSize(14)
-            .fontColor('#999999')
-            .margin({ top: 12 });
+      // 主内容区域
+      Column() {
+        Row() {
+          Text('每日阅读')
+            .fontSize(24)
+            .fontWeight(FontWeight.Bold)
+            .layoutWeight(1);
         }
         .width('100%')
-        .height('100%')
-        .alignItems(HorizontalAlign.Center)
-        .justifyContent(FlexAlign.Start)
-        .padding({ top: 100 })
-        .backgroundColor('#F5F5F5');
-      } else {
-        Scroll() {
-          Column({ space: 16 }) {
-            Column() {
-              Row() {
-                Text('今日目标')
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Bold);
-                Blank();
-                Text(`${this.completedCount}/${this.tasks.length}`)
-                  .fontSize(14)
-                  .fontColor('#666666');
-              }
-              .width('100%');
-              Row({ space: 12 }) {
-                Column({ space: 4 }) {
-                  Text(`${this.targetWordsToday}`)
-                    .fontSize(16)
-                    .fontColor('#1976D2')
-                    .fontWeight(FontWeight.Bold);
-                  Text('目标字数')
-                    .fontSize(12)
-                    .fontColor('#999999');
-                }
-                .layoutWeight(1);
-                Column({ space: 4 }) {
-                  Text(`${this.totalWordsToday}`)
-                    .fontSize(16)
-                    .fontColor('#333333')
-                    .fontWeight(FontWeight.Bold);
-                  Text('今日文章字数')
-                    .fontSize(12)
-                    .fontColor('#999999');
-                }
-                .layoutWeight(1);
-                Column({ space: 4 }) {
-                  Text(`${Math.round(this.config.targetCheckRate)}%`)
-                    .fontSize(16)
-                    .fontColor('#4CAF50')
-                    .fontWeight(FontWeight.Bold);
-                  Text('目标完成率')
-                    .fontSize(12)
-                    .fontColor('#999999');
-                }
-                .layoutWeight(1);
-              }
-              .width('100%')
-              .margin({ top: 8 });
+        .padding({ left: 16, right: 16, top: 16, bottom: 8 })
+        .backgroundColor('#FFFFFF');
 
-              if (this.requiredTasksCount > 0) {
-                Row({ space: 8 }) {
-                  Text(`必读:${this.requiredCompleted}/${this.requiredTasksCount}`)
-                    .fontSize(12)
-                    .fontColor('#D32F2F')
-                    .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                    .backgroundColor('#FFEBEE')
-                    .borderRadius(4);
+        if (this.isLoading) {
+          Column() {
+            LoadingProgress()
+              .width(40)
+              .height(40);
+            Text('加载中...')
+              .fontSize(14)
+              .fontColor('#999999')
+              .margin({ top: 12 });
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Center)
+          .justifyContent(FlexAlign.Start)
+          .padding({ top: 100 });
+        } else {
+          Scroll() {
+            Column({ space: 16 }) {
+              Column() {
+                Row() {
+                  Text('今日目标')
+                    .fontSize(16)
+                    .fontWeight(FontWeight.Bold);
+                  Blank();
+                  Text(`${this.completedCount}/${this.tasks.length}`)
+                    .fontSize(14)
+                    .fontColor('#666666');
+                }
+                .width('100%');
+                Row({ space: 12 }) {
+                  Column({ space: 4 }) {
+                    Text(`${this.targetWordsToday}`)
+                      .fontSize(16)
+                      .fontColor('#1976D2')
+                      .fontWeight(FontWeight.Bold);
+                    Text('目标字数')
+                      .fontSize(12)
+                      .fontColor('#999999');
+                  }
+                  .layoutWeight(1);
+                  Column({ space: 4 }) {
+                    Text(`${this.totalWordsToday}`)
+                      .fontSize(16)
+                      .fontColor('#333333')
+                      .fontWeight(FontWeight.Bold);
+                    Text('今日文章字数')
+                      .fontSize(12)
+                      .fontColor('#999999');
+                  }
+                  .layoutWeight(1);
+                  Column({ space: 4 }) {
+                    Text(`${Math.round(this.config.targetCheckRate)}%`)
+                      .fontSize(16)
+                      .fontColor('#4CAF50')
+                      .fontWeight(FontWeight.Bold);
+                    Text('目标完成率')
+                      .fontSize(12)
+                      .fontColor('#999999');
+                  }
+                  .layoutWeight(1);
                 }
                 .width('100%')
                 .margin({ top: 8 });
-              }
-            }
-            .width('100%')
-            .padding(16)
-            .backgroundColor('#FFFFFF')
-            .borderRadius(8);
 
-            Column({ space: 8 }) {
-              Row() {
-                Text('今日任务')
-                  .fontSize(20)
-                  .fontWeight(FontWeight.Bold);
-                Blank();
+                if (this.requiredTasksCount > 0) {
+                  Row({ space: 8 }) {
+                    Text(`必读:${this.requiredCompleted}/${this.requiredTasksCount}`)
+                      .fontSize(12)
+                      .fontColor('#D32F2F')
+                      .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                      .backgroundColor('#FFEBEE')
+                      .borderRadius(4);
+                  }
+                  .width('100%')
+                  .margin({ top: 8 });
+                }
+              }
+              .width('100%')
+              .padding(16)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(8);
+
+              Column({ space: 8 }) {
                 Row() {
-                  // 图书图标 - 矢量图：一本打开的书
-                  Text('📖')
-                    .fontSize(22)
-                    .fontColor('#333333');
-                  Text('随机阅读')
-                    .fontSize(12)
-                    .fontColor('#666666')
-                    .margin({ left: 4 });
+                  Text('今日任务')
+                    .fontSize(20)
+                    .fontWeight(FontWeight.Bold);
+                  Blank();
+                  Row() {
+                    // 图书图标 - 矢量图：一本打开的书
+                    Text('📖')
+                      .fontSize(22)
+                      .fontColor('#333333');
+                    Text('随机阅读')
+                      .fontSize(12)
+                      .fontColor('#666666')
+                      .margin({ left: 4 });
+                  }
+                  .padding({ left: 10, right: 10, top: 6, bottom: 6 })
+                  .borderRadius(16)
+                  .backgroundColor('#F5F5F5')
+                  .onClick(() => {
+                    this.openRandomUncheckedArticle();
+                  });
                 }
-                .padding({ left: 10, right: 10, top: 6, bottom: 6 })
-                .borderRadius(16)
-                .backgroundColor('#F5F5F5')
-                .onClick(() => {
-                  this.openRandomUncheckedArticle();
-                });
-              }
-              .width('100%');
+                .width('100%');
 
-              if (this.tasks.length === 0) {
-                Column() {
-                  Text('暂无文章，请先在文章管理中添加文章并标记为"阅读中"')
-                    .fontSize(14)
-                    .fontColor('#999999')
-                    .textAlign(TextAlign.Center);
+                if (this.tasks.length === 0) {
+                  Column() {
+                    Text('暂无文章，请先在文章管理中添加文章并标记为"阅读中"')
+                      .fontSize(14)
+                      .fontColor('#999999')
+                      .textAlign(TextAlign.Center);
+                  }
+                  .width('100%')
+                  .alignItems(HorizontalAlign.Center)
+                  .margin({ top: 16, bottom: 16 });
+                } else {
+                  ForEach(this.tasks, (item: TaskItemUI) => {
+                    this.TaskCard(item);
+                  }, (item: TaskItemUI) => `${item.taskId}-${item.articleId}`);
                 }
-                .width('100%')
-                .alignItems(HorizontalAlign.Center)
-                .margin({ top: 16, bottom: 16 });
-              } else {
-                ForEach(this.tasks, (item: TaskItemUI) => {
-                  this.TaskCard(item);
-                }, (item: TaskItemUI) => `${item.taskId}-${item.articleId}`);
               }
+              .width('100%')
+              .padding(16)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(8);
             }
             .width('100%')
-            .padding(16)
-            .backgroundColor('#FFFFFF')
-            .borderRadius(8);
+            .alignItems(HorizontalAlign.Start)
+            .padding({ bottom: 24 });
           }
+          .scrollBar(BarState.On)
           .width('100%')
-          .alignItems(HorizontalAlign.Start)
-          .padding({ bottom: 80 });
+          .scrollable(ScrollDirection.Vertical);
         }
-        .scrollBar(BarState.On)
-        .width('100%')
-        .layoutWeight(1)
-        .padding({ top: 16 })
-        .backgroundColor('#F5F5F5')
-        .scrollable(ScrollDirection.Vertical);
       }
+      .width('100%')
+      .layoutWeight(1)
+      .backgroundColor('#F5F5F5')
+      .justifyContent(FlexAlign.Start)
 
+      // 底部导航栏
       this.BottomTabBar();
     }
     .width('100%')

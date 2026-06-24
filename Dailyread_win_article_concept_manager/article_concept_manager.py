@@ -13,16 +13,14 @@ import sys
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer, QSize, QByteArray, QBuffer
-from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPixmap, QImage
+from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap, QImage
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel,
     QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
-    QCheckBox, QColorDialog, QDialogButtonBox, QTabWidget, QMainWindow,
-    QToolBar, QStatusBar, QSplitter, QListWidget, QListWidgetItem,
-    QFrame, QScrollArea, QGroupBox, QStyleFactory, QProgressBar,
-    QSizePolicy
+    QCheckBox, QDialogButtonBox, QTabWidget, QMainWindow,
+    QStatusBar, QGroupBox, QProgressBar
 )
 
 

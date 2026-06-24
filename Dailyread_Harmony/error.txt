@@ -1,0 +1,180 @@
+> hvigor ERROR: ArkTS Compiler Error
+1 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:341:23
+
+
+2 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:357:18
+
+
+3 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:363:23
+
+
+4 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:379:18
+
+
+5 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:384:23
+
+
+6 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:385:28
+
+
+7 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:389:19
+
+
+8 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:401:18
+
+
+9 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:406:23
+
+
+10 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:407:28
+
+
+11 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:411:19
+
+
+12 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:418:18
+
+
+13 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:425:35
+
+
+14 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:428:18
+
+
+15 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:436:23
+
+
+16 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:437:28
+
+
+17 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:443:19
+
+
+18 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:450:18
+
+
+19 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:455:25
+
+
+20 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:456:30
+
+
+21 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:460:21
+
+
+22 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:467:20
+
+
+23 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:471:25
+
+
+24 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:478:20
+
+
+25 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:490:27
+
+
+26 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:493:22
+
+
+27 ERROR: 10505001 ArkTS Compiler Error
+Error Message: ';' expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:495:39
+
+
+28 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Declaration or statement expected. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:499:22
+
+
+29 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:357:19
+
+
+30 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:379:19
+
+
+31 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'alignItems'. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:389:20
+
+
+32 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:401:19
+
+
+33 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'alignItems'. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:411:20
+
+
+34 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:418:19
+
+
+35 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:428:19
+
+
+36 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'alignItems'. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:443:20
+
+
+37 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:450:19
+
+
+38 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'alignItems'. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:460:22
+
+
+39 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:467:21
+
+
+40 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:478:21
+
+
+41 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:493:23
+
+
+42 ERROR: 10505001 ArkTS Compiler Error
+Error Message: Cannot find name 'width'. Did you mean the instance member 'this.width'? At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:499:23
+
+
+43 ERROR: 10905204 ArkTS Compiler Error
+Error Message: 'content()' does not meet UI component syntax. At File: E:/item/DailyRead/Dailyread_Harmony/entry/src/main/ets/pages/Settings.ets:303:7
+
+
+COMPILE RESULT:FAIL {ERROR:44 WARN:142}
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+
+> hvigor ERROR: BUILD FAILED in 10 s 273 ms 

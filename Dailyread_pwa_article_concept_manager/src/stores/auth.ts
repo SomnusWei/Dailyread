@@ -6,7 +6,8 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
-  
+  const initialized = ref(false)
+
   const isLoggedIn = computed(() => apiService.isLoggedIn())
   
   /**
@@ -65,6 +66,9 @@ export const useAuthStore = defineStore('auth', () => {
    * 初始化：从服务器获取用户信息
    */
   async function init() {
+    // 防止重复初始化
+    if (initialized.value) return
+
     if (isLoggedIn.value) {
       const userData = await apiService.getUser()
       if (userData) {
@@ -74,12 +78,14 @@ export const useAuthStore = defineStore('auth', () => {
         logout()
       }
     }
+    initialized.value = true
   }
   
   return {
     user,
     loading,
     error,
+    initialized,
     isLoggedIn,
     register,
     login,

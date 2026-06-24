@@ -120,9 +120,9 @@ struct RandomReadPage {
                 .width('100%');
 
               Text(this.article.content)
-                .fontSize(16)
+                .fontSize(26)
                 .fontColor('#333333')
-                .lineHeight(24)
+                .lineHeight(36)
                 .width('100%')
                 .textAlign(TextAlign.Start);
 

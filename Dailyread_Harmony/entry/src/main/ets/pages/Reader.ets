@@ -228,7 +228,13 @@ struct ReaderPage {
       // 再次发信号（保证完成率也更新）
       AppStorage.set('dataRefreshSignal', Date.now().toString());
 
-      promptAction.showToast({ message: `打卡成功，完成率 ${rate}%`, duration: 2000 });
+      promptAction.showToast({ message: `打卡成功，完成率 ${rate}%`, duration: 1300 });
+
+      // Toast 显示1.3秒后自动返回首页
+      setTimeout(() => {
+        AppStorage.set('dataRefreshSignal', Date.now().toString());
+        router.replaceUrl({ url: 'pages/Home' });
+      }, 2000);
 
       // 4. 检查是否今日全部完成，触发自动 WebDAV 同步
       this.checkAndTriggerAutoWebDavSync();

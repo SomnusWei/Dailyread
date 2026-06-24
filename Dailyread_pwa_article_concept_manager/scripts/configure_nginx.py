@@ -15,6 +15,20 @@ def configure_nginx():
 
         server_name _;
 
+        # 后端 API 反向代理配置
+        location /api/ {
+            proxy_pass http://127.0.0.1:3001/api/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Connection "";
+            proxy_connect_timeout 60s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
         # WebDAV 反向代理配置 - 解决跨域问题
         location /api/webdav/ {
             proxy_pass https://dav.jianguoyun.com/;
@@ -36,7 +50,7 @@ def configure_nginx():
         }
 
         location / {
-            try_files $uri $uri/ =404;
+            try_files $uri $uri/ /index.html;
         }
     }
     '''

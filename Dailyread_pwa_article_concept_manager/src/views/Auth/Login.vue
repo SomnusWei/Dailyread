@@ -27,7 +27,7 @@ async function handleLogin() {
     const success = await authStore.login(email.value, password.value)
     
     if (success) {
-      await router.push('/')
+      window.location.href = '/'
     } else {
       error.value = authStore.error || '登录失败，请检查用户名和密码'
     }
