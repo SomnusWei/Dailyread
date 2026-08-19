@@ -1,0 +1,56 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\somnu\\.ohos\\config\\default_Dailyread_Harmony_UROvwtPQd59ZnWP-qNlansd5R_1_2ja3FJdsAYEfRqA=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BE1223C16D4C0A8ED7796233F4C7305741368B0FA322A0F8C7C8F1B90D756DF30F14543A1D7778D",
+          "profile": "C:\\Users\\somnu\\.ohos\\config\\default_Dailyread_Harmony_UROvwtPQd59ZnWP-qNlansd5R_1_2ja3FJdsAYEfRqA=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\somnu\\.ohos\\config\\default_Dailyread_Harmony_UROvwtPQd59ZnWP-qNlansd5R_1_2ja3FJdsAYEfRqA=.p12",
+          "storePassword": "0000001B7D02F455EEAFE0ADBF76C6F9ABE1ED343E6DDCFF033031B173B7123F73168E3FCEF5BDEF448CE1"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "6.1.1(24)",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

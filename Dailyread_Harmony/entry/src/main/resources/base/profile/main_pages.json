@@ -1,0 +1,13 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/SplashPage",
+    "pages/Login",
+    "pages/Register",
+    "pages/Home",
+    "pages/Settings",
+    "pages/Reader",
+    "pages/ArticleManage",
+    "pages/RandomRead"
+  ]
+}

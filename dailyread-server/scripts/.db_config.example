@@ -1,0 +1,28 @@
+# DailyRead 数据库连接配置
+# 使用方法：将此文件重命名为 .db_config，填入实际的数据库连接信息
+# 然后在运行 account_manager.py 之前 source 或设置环境变量
+
+# 方式一：命令行参数
+# python account_manager.py --host 127.0.0.1 --port 3306 --user root --password "your_password" --database dailyread_db list
+
+# 方式二：环境变量（推荐，密码不会出现在命令历史中）
+# Windows PowerShell:
+#   $env:DB_HOST="127.0.0.1"
+#   $env:DB_USER="root"
+#   $env:DB_PASSWORD="your_password"
+#   $env:DB_NAME="dailyread_db"
+#   python account_manager.py list
+#
+# Linux/macOS:
+#   export DB_HOST=127.0.0.1
+#   export DB_USER=root
+#   export DB_PASSWORD="your_password"
+#   export DB_NAME=dailyread_db
+#   python account_manager.py list
+
+# 数据库连接信息（请替换为实际值）
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=请替换为实际密码
+DB_NAME=dailyread_db

@@ -1,0 +1,57 @@
+# ==================
+# 通用忽略项
+# ==================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+
+# ==================
+# Harmony 项目
+# ==================
+Dailyread_Harmony/.gradle/
+Dailyread_Harmony/build/
+Dailyread_Harmony/. hvigor/
+Dailyread_Harmony/.c_cpp_dist/
+Dailyread_Harmony/oh_modules/
+Dailyread_Harmony/.idea/
+Dailyread_Harmony/*.iml
+Dailyread_Harmony/DevEcoTools/
+
+# ==================
+# PWA 项目
+# ==================
+Dailyread_pwa_article_concept_manager/node_modules/
+Dailyread_pwa_article_concept_manager/dist/
+Dailyread_pwa_article_concept_manager/.vite/
+Dailyread_pwa_article_concept_manager/*.local
+Dailyread_pwa_article_concept_manager/.env
+Dailyread_pwa_article_concept_manager/.env.local
+
+# ==================
+# Windows 项目
+# ==================
+Dailyread_win_article_concept_manager/__pycache__/
+Dailyread_win_article_concept_manager/*.pyc
+Dailyread_win_article_concept_manager/*.pyo
+Dailyread_win_article_concept_manager/dist/
+Dailyread_win_article_concept_manager/build/
+Dailyread_win_article_concept_manager/*.spec.bak
+Dailyread_win_article_concept_manager/app_data.json
+Dailyread_win_article_concept_manager/webdav_config.json
+
+# ==================
+# PWA 脚本
+# ==================
+Dailyread_pwa_article_concept_manager/scripts/*.pyc
+
+# ==================
+# 敏感信息文件
+# ==================
+.gitignore.txt
+file/Github账号密码.txt
+PWA服务器账号密码.TXT
+Github账号密码.txt
+PWA服务器账号密码.txt
+Win端APP打包信息.txt
