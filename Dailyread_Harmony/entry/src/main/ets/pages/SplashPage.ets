@@ -2,6 +2,7 @@ import router from '@ohos.router';
 import common from '@ohos.app.ability.common';
 import { ConfigRepository } from '../repository/ConfigRepository';
 import { ArticleRepository } from '../repository/ArticleRepository';
+import { DailyTaskRepository } from '../repository/DailyTaskRepository';
 import { DailyTaskService } from '../service/DailyTaskService';
 import { ApiClient } from '../service/ApiClient';
 import { SyncService } from '../service/SyncService';
@@ -138,7 +139,15 @@ struct SplashPage {
       console.info('SplashPage: 已加载文章数=' + allArticles.length);
 
       // 9. 预加载今日任务
+      // 关键修复：启动时先清空本地任务缓存，确保用最新文章数据重新生成
+      // （解决 Win 端修改后鸿蒙端仍显示旧任务列表的问题）
       this.initMessage = '正在生成今日阅读列表…';
+      try {
+        await DailyTaskRepository.getInstance().clearTodayTask();
+        console.info('SplashPage: 已清空本地今日任务缓存，将重新生成');
+      } catch (e) {
+        console.error('SplashPage: 清空今日任务缓存失败: ' + JSON.stringify(e));
+      }
       const tasks = await DailyTaskService.getInstance().getOrGenerateTodayTasks(allArticles);
       console.info('SplashPage: 预加载任务完成，数量=' + tasks.length);
 

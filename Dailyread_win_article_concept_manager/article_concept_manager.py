@@ -251,12 +251,22 @@ class DataModel:
         """批量更新文章字段"""
         ids_set = set(article_ids)
         now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        # 收集被修改的文章副本，用于云同步推送（修改后再取 clientId）
+        updated_articles = []
         for article in self.articles:
             if article['id'] in ids_set:
                 for key, value in updates.items():
                     article[key] = value
                 article['lastModified'] = now
+                updated_articles.append(dict(article))
         self.save()
+        # 云同步钩子：每篇被修改的文章单独入队推送
+        if updated_articles and api_client.is_logged_in():
+            for article_data in updated_articles:
+                try:
+                    sync_service.enqueue_article_update(article_data)
+                except Exception as e:
+                    print(f"[Sync] 批量修改 enqueue update 失败: {e}")
 
     def export_backup(self, filepath: str):
         """导出备份"""
@@ -2661,7 +2671,91 @@ class MainWindow(QMainWindow):
 
 # ==================== 程序入口 ====================
 
+# 单实例互斥锁（全局，避免被 GC 回收）
+_singleton_mutex = None
+
+
+def activate_existing_window():
+    """尝试找到并激活已有的应用窗口"""
+    try:
+        from PyQt6.QtCore import Qt, QTimer
+        # 通过共享内存或 socket 方式更可靠，但用 Windows API 最简单
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+
+        def _enum_windows_callback(hwnd, lparam):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buffer, length + 1)
+                title = buffer.value
+                if "每日阅读" in title and ("管理器" in title or "概念" in title):
+                    # 找到窗口，恢复并前置
+                    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                    user32.SetForegroundWindow(hwnd)
+                    # 把找到的句柄写入 lparam（一个 list）
+                    lparam.append(hwnd)
+            return True
+
+        results = []
+        WNDENUMPROC = ctypes.WINFUNCTYPE(
+            ctypes.c_bool, wintypes.HWND, wintypes.LPARAM
+        )
+        user32.EnumWindows(WNDENUMPROC(_enum_windows_callback), ctypes.byref(ctypes.c_int(id(results))))
+        return len(results) > 0
+    except Exception as e:
+        print(f"[SingleInstance] 激活已有窗口失败: {e}")
+        return False
+
+
+def check_single_instance():
+    """检查是否已有实例运行，若有则返回 False 并激活已有窗口"""
+    global _singleton_mutex
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel32 = ctypes.windll.kernel32
+        mutex_name = "DailyRead_ArticleConceptManager_Singleton_Mutex"
+        # 创建/打开命名互斥锁
+        mutex = kernel32.CreateMutexW(None, False, mutex_name)
+        last_error = kernel32.GetLastError()
+        # ERROR_ALREADY_EXISTS = 183
+        if last_error == 183:
+            # 已有实例：先尝试激活它的窗口
+            activate_existing_window()
+            # 释放锁
+            kernel32.CloseHandle(mutex)
+            return False
+        elif mutex == 0:
+            # 互斥锁创建失败，降级为文件锁
+            print(f"[SingleInstance] 创建 mutex 失败，尝试文件锁")
+            try:
+                lock_path = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "dailyread_manager.lock")
+                f = open(lock_path, "w")
+                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                _singleton_mutex = f
+                return True
+            except Exception:
+                activate_existing_window()
+                return False
+        else:
+            _singleton_mutex = mutex
+            return True
+    except Exception as e:
+        print(f"[SingleInstance] 检查失败: {e}，降级允许启动")
+        return True
+
+
 def main():
+    # 单实例检查（放在 QApplication 创建之前，避免浪费资源）
+    if not check_single_instance():
+        print("[SingleInstance] 已有实例运行，退出")
+        sys.exit(1)
+
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
 
