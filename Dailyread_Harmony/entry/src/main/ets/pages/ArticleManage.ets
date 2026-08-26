@@ -1013,60 +1013,130 @@ struct ArticleManagePage {
   @Builder
   BottomTabBar(): void {
     Row() {
-      Column({ space: 2 }) {
+      // 首页
+      Column({ space: 0 }) {
         Text('●')
           .fontSize(18)
-          .fontColor('#999999');
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
         Text('首页')
           .fontSize(11)
-          .fontColor('#666666');
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
+      .alignItems(HorizontalAlign.Center)
       .onClick(() => {
         router.back({ url: 'pages/Home' });
       });
 
-      Column({ space: 2 }) {
+      // 文章管理（当前页，高亮）
+      Column({ space: 0 }) {
         Text('📄')
           .fontSize(16)
-          .fontColor('#1976D2');
+          .fontColor('#1976D2')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
         Text('文章管理')
           .fontSize(11)
           .fontColor('#1976D2')
-          .fontWeight(FontWeight.Bold);
+          .fontWeight(FontWeight.Bold)
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
+      .alignItems(HorizontalAlign.Center);
 
-      Column({ space: 2 }) {
+      // 磨耳跟背
+      Column({ space: 0 }) {
+        Text('🔊')
+          .fontSize(16)
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
+        Text('磨耳跟背')
+          .fontSize(11)
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
+      }
+      .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .onClick(() => {
+        router.pushUrl({ url: 'pages/EarPractice' });
+      });
+
+      // 随心阅读
+      Column({ space: 0 }) {
         Text('◈')
           .fontSize(16)
-          .fontColor('#999999');
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
         Text('随心阅读')
           .fontSize(11)
-          .fontColor('#666666');
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
+      .alignItems(HorizontalAlign.Center)
       .onClick(() => {
         router.pushUrl({ url: 'pages/RandomRead' });
       });
 
-      Column({ space: 2 }) {
+      // 设置
+      Column({ space: 0 }) {
         Text('⚙')
           .fontSize(16)
-          .fontColor('#999999');
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
         Text('设置')
           .fontSize(11)
-          .fontColor('#666666');
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
+      .alignItems(HorizontalAlign.Center)
       .onClick(() => {
         router.pushUrl({ url: 'pages/Settings' });
       });

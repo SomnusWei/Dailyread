@@ -135,40 +135,125 @@ struct SettingsPage {
   @Builder
   BuildBottomTabBar(): void {
     Row() {
-      Column({ space: 2 }) {
-        Text('●').fontSize(18).fontColor('#999999');
-        Text('首页').fontSize(11).fontColor('#666666');
+      // 首页
+      Column({ space: 0 }) {
+        Text('●')
+          .fontSize(18)
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
+        Text('首页')
+          .fontSize(11)
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
-      .onClick(() => router.back({ url: 'pages/Home' }))
+      .alignItems(HorizontalAlign.Center)
+      .onClick(() => router.back({ url: 'pages/Home' }));
 
-      Column({ space: 2 }) {
-        Text('📄').fontSize(16).fontColor('#999999');
-        Text('文章管理').fontSize(11).fontColor('#666666');
+      // 文章管理
+      Column({ space: 0 }) {
+        Text('📄')
+          .fontSize(16)
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
+        Text('文章管理')
+          .fontSize(11)
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
+      .alignItems(HorizontalAlign.Center)
       .onClick(() => router.pushUrl({ url: 'pages/ArticleManage' }));
 
-      Column({ space: 2 }) {
-        Text('◈').fontSize(16).fontColor('#999999');
-        Text('随心阅读').fontSize(11).fontColor('#666666');
+      // 磨耳跟背
+      Column({ space: 0 }) {
+        Text('🔊')
+          .fontSize(16)
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
+        Text('磨耳跟背')
+          .fontSize(11)
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
-      .onClick(() => router.pushUrl({ url: 'pages/RandomRead' }))
+      .alignItems(HorizontalAlign.Center)
+      .onClick(() => router.pushUrl({ url: 'pages/EarPractice' }));
 
-      Column({ space: 2 }) {
-        Text('⚙').fontSize(16).fontColor('#1976D2');
-        Text('设置').fontSize(11).fontColor('#1976D2').fontWeight(FontWeight.Bold);
+      // 随心阅读
+      Column({ space: 0 }) {
+        Text('◈')
+          .fontSize(16)
+          .fontColor('#999999')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
+        Text('随心阅读')
+          .fontSize(11)
+          .fontColor('#666666')
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
       }
       .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
       .justifyContent(FlexAlign.Center)
-      .padding({ top: 8, bottom: 8 })
+      .alignItems(HorizontalAlign.Center)
+      .onClick(() => router.pushUrl({ url: 'pages/RandomRead' }));
+
+      // 设置（当前页，高亮）
+      Column({ space: 0 }) {
+        Text('⚙')
+          .fontSize(16)
+          .fontColor('#1976D2')
+          .width('100%')
+          .height(36)
+          .textAlign(TextAlign.Center);
+        Blank().width('100%').height(2);
+        Text('设置')
+          .fontSize(11)
+          .fontColor('#1976D2')
+          .fontWeight(FontWeight.Bold)
+          .width('100%')
+          .height(14)
+          .textAlign(TextAlign.Center);
+      }
+      .layoutWeight(1)
+      .width('100%')
+      .height(72)
+      .padding({ top: 10, bottom: 10 })
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center);
     }
     .width('100%')
     .backgroundColor('#FFFFFF')

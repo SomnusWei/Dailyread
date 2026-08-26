@@ -12,9 +12,11 @@ DailyRead 是一套帮助用户养成每日阅读习惯的工具，支持文章�
 
 - 📚 **文章阅读**：文章管理、图片上传（WebP 压缩）、每日自动生成阅读任务
 - 🔊 **音频朗读**：文章支持 m4a 音频，Win 端录入转码（ffmpeg）、鸿蒙端 AVPlayer 自动播放/循环播放、三端同步透传
+- 🎧 **磨耳跟背**：鸿蒙端底栏独立入口，只展示有音频的文章，进入简化阅读页（无打卡/无计时）专注跟听跟背
 - 🧠 **概念背诵**：按分类/学科/章节管理，随机背诵模式
 - 🏥 **临床笔记**：病机、治法、处方结构化管理，随机背诵
 - 📍 **穴位记忆**：内置常用穴位库，随机抽查
+- ⚙️ **多端配置同步**：每日阅读时长、目标完成率、自动播放/循环播放、字号等配置双端共享、实时同步
 - ☁️ **多端同步**：通过后端 API 或 WebDAV 实现鸿蒙端与 Windows 端数据互通
 - 💾 **数据备份**：支持 JSON 导入/导出，一键迁移
 
@@ -129,9 +131,9 @@ Win 端录入            后端存储                鸿蒙端播放
 
 | 端 | 实现 |
 |----|------|
-| **Win 端** | `audio_to_m4a_base64()` 调用系统 ffmpeg 转码为 m4a/AAC-LC，base64 编码后写入 `audiobase64` 字段；支持单篇编辑录入与**批量导入**（选中文章→选文件夹→按标题匹配→进度条转码→自动上传） |
-| **后端** | `articles` 表新增 `audiobase64 LONGTEXT` 列，CRUD 路由透传该字段，`init.js` 自动迁移 |
-| **鸿蒙端** | `AudioService` 负责字符串清洗→`util.Base64Helper` 二进制解码→沙箱临时文件→`AVPlayer` fd 协议→状态机自动 prepare/play；`Reader`/`RandomRead` 阅读页内置控制条；`Settings` 支持「自动播放」「循环播放」开关 |
+| **Win 端** | `audio_to_m4a_base64()` 调用系统 ffmpeg 转码为 m4a/AAC-LC，base64 编码后写入 `audiobase64` 字段；支持单篇编辑录入、**批量导入**（选中文章→选文件夹→按标题匹配→进度条转码→自动上传）、**批量修改「是否显示文章内容」开关**（对没有图片的文章自动跳过）；保存采用线程锁 + os.replace 原子写，避免 daemon/主线程竞争损坏 JSON |
+| **后端** | `articles` 表新增 `audiobase64 LONGTEXT` 列，CRUD 路由透传该字段，`init.js` 自动迁移；`user_configs` 表新增 `auto_play_audio`、`loop_audio` 配置；每日 00:00 cron 根据 `daily_minutes × 100 字/分钟 × 随机因子(1.01~1.10)` 生成当日任务字数基数 |
+| **鸿蒙端** | `AudioService` 负责字符串清洗→`util.Base64Helper` 二进制解码→沙箱临时文件→`AVPlayer` fd 协议（保存 fdFile 实例变量防 GC）→状态机回调内 prepare；`Reader`/`RandomRead`/`EarPracticeReader` 三阅读页内置控制条（标题下/内容上）；`Settings` 支持「自动播放」「循环播放」开关；「磨耳跟背」页独立底栏按钮，筛选含音频文章列表，进入简化阅读页（无打卡按钮/无计时/不写打卡天数）专注跟听 |
 
 **Win 端依赖**：需安装 ffmpeg 并加入 PATH。如通过 winget 安装，APP 会自动扫描 WinGet 路径作为 fallback。
 
@@ -139,7 +141,7 @@ Win 端录入            后端存储                鸿蒙端播放
 
 ---
 
-## � 子项目关系
+## �🔗 子项目关系
 
 ```
 ┌─────────────────┐     API / WebDAV     ┌─────────────────┐
@@ -169,11 +171,11 @@ Win 端录入            后端存储                鸿蒙端播放
 | 表名 | 说明 |
 |------|------|
 | users | 用户表（用户名、密码、角色） |
-| articles | 文章表（多端同步字段 `client_id` + `user_id` 唯一；含 `imagewebp` 图片、`audiobase64` 音频） |
+| articles | 文章表（多端同步字段 `client_id` + `user_id` 唯一；含 `imagewebp` 图片、`audiobase64` 音频、`iscontent` 是否显示内容） |
 | checkins | 打卡记录表 |
 | daily_tasks | 每日任务表 |
 | daily_task_items | 每日任务条目表 |
-| user_configs | 用户配置表（含 `autoPlayAudio`、`loopAudio` 等开关） |
+| user_configs | 用户配置表（`daily_minutes` 每日阅读时长、`target_check_rate` 目标完成率、`reader_font_size` 字号、`auto_play_audio` 自动播放、`loop_audio` 循环播放等） |
 
 详见 [schema.sql](dailyread-server/schema.sql)。
 

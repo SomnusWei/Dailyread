@@ -8,6 +8,8 @@
     "pages/Settings",
     "pages/Reader",
     "pages/ArticleManage",
-    "pages/RandomRead"
+    "pages/RandomRead",
+    "pages/EarPractice",
+    "pages/EarPracticeReader"
   ]
 }
