@@ -7,6 +7,7 @@ import { ImageCompressionService, SizedPixelMap } from '../service/ImageCompress
 import { AudioService, AudioPlayerState } from '../service/AudioService';
 import { Config } from '../model/Config';
 import { ConfigRepository } from '../repository/ConfigRepository';
+import { ServerStatusIndicator } from '../components/ServerStatusIndicator';
 
 interface TextSegment {
   text: string;
@@ -356,7 +357,8 @@ struct RandomReadPage {
           Text('随心阅读')
             .fontSize(24)
             .fontWeight(FontWeight.Bold)
-            .padding({ left: 16, right: 16, top: 16, bottom: 8 });
+            .padding({ left: 16, right: 8, top: 16, bottom: 8 });
+          ServerStatusIndicator();
           Blank();
         }
         .width('100%')

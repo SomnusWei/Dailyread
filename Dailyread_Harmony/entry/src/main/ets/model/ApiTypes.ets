@@ -116,7 +116,7 @@ export interface ArticlePatchPayload {
 export interface ConfigPayload {
   dailyMinutes: number;
   targetCheckRate: number;
-  readerFontSize: number;
+  readerFontSize?: number;
   lastResetMonth: string;
   lastSyncTime: string;
 }

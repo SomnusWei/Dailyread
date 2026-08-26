@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>注册账号 · DailyRead</title>
+  <meta name="description" content="注册 DailyRead 账号，开启每日阅读习惯养成之旅">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="nav-brand">
+        <span class="brand-icon">📖</span>
+        <span class="brand-text">DailyRead</span>
+      </a>
+      <div class="nav-links">
+        <a href="/" class="nav-link">首页</a>
+        <a href="https://github.com/SomnusWei/Dailyread" class="nav-link" target="_blank" rel="noopener">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="register-section">
+    <div class="container">
+      <div class="register-card">
+        <div class="register-header">
+          <h1>注册账号</h1>
+          <p>创建账号后可在鸿蒙端和 Windows 端登录使用</p>
+        </div>
+
+        <form id="registerForm" class="register-form" novalidate>
+          <div class="form-group">
+            <label for="username">用户名</label>
+            <input type="text" id="username" name="username" placeholder="3-32 个字符" minlength="3" maxlength="32" required>
+            <span class="form-error" id="usernameError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="nickname">昵称 <span class="optional">(可选)</span></label>
+            <input type="text" id="nickname" name="nickname" placeholder="显示名称" maxlength="64">
+          </div>
+
+          <div class="form-group">
+            <label for="password">密码</label>
+            <input type="password" id="password" name="password" placeholder="至少 6 位" minlength="6" maxlength="64" required>
+            <span class="form-error" id="passwordError"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="confirmPassword">确认密码</label>
+            <input type="password" id="confirmPassword" name="confirmPassword" placeholder="再次输入密码" minlength="6" maxlength="64" required>
+            <span class="form-error" id="confirmPasswordError"></span>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block" id="submitBtn">
+            <span class="btn-text">注册账号</span>
+            <span class="btn-loader" style="display:none;"></span>
+          </button>
+
+          <div class="form-success" id="formSuccess" style="display:none;">
+            <div class="success-icon">✓</div>
+            <p>注册成功！正在跳转...</p>
+          </div>
+        </form>
+
+        <div class="register-footer">
+          <p>注册即表示你同意 <a href="#">服务条款</a> 和 <a href="#">隐私政策</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <span class="brand-icon">📖</span>
+          <span class="brand-text">DailyRead</span>
+        </div>
+        <div class="footer-links">
+          <a href="/">首页</a>
+          <a href="https://github.com/SomnusWei/Dailyread" target="_blank" rel="noopener">GitHub</a>
+        </div>
+        <div class="footer-copy">
+          © 2026 DailyRead. MIT License.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/js/register.js"></script>
+</body>
+</html>

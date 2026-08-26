@@ -12,7 +12,7 @@ from app_paths import data_path
 class ApiClient:
     """服务端 API 客户端（线程安全：所有方法独立 session）"""
 
-    BASE_URL = "https://d.sonnusww.top"
+    BASE_URL = "https://dailyread.sonnusww.top"
     TOKEN_FILE = data_path("auth_token.json")  # 与 app_data.json 同目录
 
     def __init__(self):

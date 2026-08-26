@@ -49,8 +49,13 @@ const apiLimiter = rateLimit({
 });
 app.use('/api', apiLimiter);
 
-// 静态文件 - 管理后台面板
-app.use('/admin', express.static(path.join(__dirname, '..', 'public')));
+// 静态文件 - 官网前端
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// 管理后台 - 访问 /admin/ 重定向到登录页
+app.get('/admin/', (req, res) => {
+  res.redirect('/login.html');
+});
 
 // 路由
 app.use('/api/auth', authRoutes);

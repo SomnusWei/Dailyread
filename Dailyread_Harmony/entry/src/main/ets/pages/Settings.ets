@@ -10,6 +10,7 @@ import fs from '@ohos.file.fs';
 import picker from '@ohos.file.picker';
 import util from '@ohos.util';
 import { setKeepScreenOn } from '../entryability/EntryAbility';
+import { ServerStatusIndicator } from '../components/ServerStatusIndicator';
 
 @Entry
 @Component
@@ -274,12 +275,15 @@ struct SettingsPage {
       Column() {
         // 主内容区域
         Column() {
-          Text('设置')
-            .fontSize(24)
-            .fontWeight(FontWeight.Bold)
-            .padding({ left: 16, right: 16, top: 16, bottom: 8 })
-            .width('100%')
-            .backgroundColor('#FFFFFF')
+          Row() {
+            Text('设置')
+              .fontSize(24)
+              .fontWeight(FontWeight.Bold);
+            ServerStatusIndicator();
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 16, bottom: 8 })
+          .backgroundColor('#FFFFFF')
 
           if (this.isLoading) {
             Column() {

@@ -1,6 +1,7 @@
 import router from '@ohos.router';
 import { Article } from '../model/Article';
 import { ArticleRepository } from '../repository/ArticleRepository';
+import { ServerStatusIndicator } from '../components/ServerStatusIndicator';
 
 @Entry
 @Component
@@ -207,7 +208,8 @@ struct EarPracticePage {
           Text('磨耳跟背')
             .fontSize(24)
             .fontWeight(FontWeight.Bold)
-            .padding({ left: 16, right: 16, top: 16, bottom: 8 });
+            .padding({ left: 16, right: 8, top: 16, bottom: 8 });
+          ServerStatusIndicator();
           Blank();
           Text('共 ' + this.totalCount + ' 篇')
             .fontSize(13)

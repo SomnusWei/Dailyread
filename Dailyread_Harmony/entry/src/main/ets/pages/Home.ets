@@ -10,6 +10,7 @@ import { DailyTaskService } from '../service/DailyTaskService';
 import { DailyTaskItem } from '../repository/DailyTaskRepository';
 import { ApiClient } from '../service/ApiClient';
 import { SyncService } from '../service/SyncService';
+import { ServerStatusIndicator } from '../components/ServerStatusIndicator';
 
 interface TaskItemUI {
   taskId: number;
@@ -524,6 +525,7 @@ struct HomePage {
             .fontSize(24)
             .fontWeight(FontWeight.Bold)
             .layoutWeight(1);
+          ServerStatusIndicator();
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 16, bottom: 8 })

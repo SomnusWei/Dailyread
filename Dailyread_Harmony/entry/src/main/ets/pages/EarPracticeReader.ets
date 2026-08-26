@@ -337,7 +337,7 @@ struct EarPracticeReaderPage {
           if (this.article !== null) {
             Scroll() {
               Column() {
-                if (this.shouldShowContent) {
+                // ====== 标题和字数（始终显示）======
                   Text(this.article.title)
                     .fontSize(this.fontSize + 6)
                     .fontWeight(FontWeight.Bold)
@@ -354,7 +354,7 @@ struct EarPracticeReaderPage {
                     .margin({ bottom: 16 })
                     .width('100%');
 
-                  // ====== 音频播放控制条（标题下、内容上）======
+                  // ====== 音频播放控制条（始终显示，当有音频时）======
                   if (this.hasAudio) {
                     Column() {
                       Row() {
@@ -421,20 +421,22 @@ struct EarPracticeReaderPage {
                     .borderRadius(8);
                   }
 
-                  Text() {
-                    ForEach(this.contentSegments, (segment: TextSegment) => {
-                      Span(segment.text)
-                        .fontSize(segment.type === 'annotation' ? this.fontSize - 4 : this.fontSize)
-                        .fontColor(segment.type === 'annotation' ? '#FF0000' : '#333333')
-                        .fontWeight(segment.type === 'bold' ? FontWeight.Bold : FontWeight.Normal);
-                    });
+                  // ====== 文章文字内容（仅当 shouldShowContent=true 时显示）======
+                  if (this.shouldShowContent) {
+                    Text() {
+                      ForEach(this.contentSegments, (segment: TextSegment) => {
+                        Span(segment.text)
+                          .fontSize(segment.type === 'annotation' ? this.fontSize - 4 : this.fontSize)
+                          .fontColor(segment.type === 'annotation' ? '#FF0000' : '#333333')
+                          .fontWeight(segment.type === 'bold' ? FontWeight.Bold : FontWeight.Normal);
+                      });
+                    }
+                    .fontSize(this.fontSize)
+                    .fontColor('#333333')
+                    .lineHeight(this.fontSize * 1.8)
+                    .width('100%')
+                    .textAlign(TextAlign.Start);
                   }
-                  .fontSize(this.fontSize)
-                  .fontColor('#333333')
-                  .lineHeight(this.fontSize * 1.8)
-                  .width('100%')
-                  .textAlign(TextAlign.Start);
-                }
 
                 // ===== 文章图片（WebP）=====
                 if (this.articlePixelMap !== null) {
@@ -449,12 +451,12 @@ struct EarPracticeReaderPage {
                     }
                     .width('100%')
                     .justifyContent(FlexAlign.Center)
-                    .margin({ top: this.shouldShowContent ? 24 : 0 });
+                    .margin({ top: 24 });
                   } else {
                     Image(this.articlePixelMap)
                       .width('100%')
                       .aspectRatio(this.articlePixelRatio)
-                      .margin({ top: this.shouldShowContent ? 24 : 0 })
+                      .margin({ top: 24 })
                       .borderRadius(8)
                       .objectFit(ImageFit.Auto)
                       .backgroundColor('#F5F5F5');

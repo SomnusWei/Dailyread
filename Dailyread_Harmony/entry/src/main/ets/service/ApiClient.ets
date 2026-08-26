@@ -23,7 +23,7 @@ import {
   GenerateTaskBody
 } from '../model/ApiTypes';
 
-const BASE_URL: string = 'https://d.sonnusww.top';
+const BASE_URL: string = 'https://dailyread.sonnusww.top';
 const PREF_STORE: string = 'dailyread_auth';
 const KEY_TOKEN: string = 'token';
 const KEY_USER: string = 'user';

@@ -403,13 +403,12 @@ export class SyncService {
       const localConfig = await ConfigRepository.getInstance().getConfig();
       const remoteDailyMinutes = (remoteData['dailyMinutes'] as number) || 20;
       const remoteTargetCheckRate = (remoteData['targetCheckRate'] as number) || 30;
-      const remoteReaderFontSize = (remoteData['readerFontSize'] as number) || 26;
       const remoteLastResetMonth = (remoteData['lastResetMonth'] as string) || '';
 
-      // 合并：以服务端为准（除了 keepScreenOn 保持本地）
+      // 合并：以服务端为准（除了 keepScreenOn 和 readerFontSize 保持本地）
       localConfig.dailyMinutes = remoteDailyMinutes;
       localConfig.targetCheckRate = remoteTargetCheckRate;
-      localConfig.readerFontSize = remoteReaderFontSize;
+      // readerFontSize 不从服务端拉取，保持本地设置
       if (remoteLastResetMonth) {
         localConfig.lastResetMonth = remoteLastResetMonth;
       }
@@ -435,7 +434,7 @@ export class SyncService {
       const payload: ConfigPayload = {
         dailyMinutes: config.dailyMinutes,
         targetCheckRate: config.targetCheckRate,
-        readerFontSize: config.readerFontSize,
+        // readerFontSize 不上传服务端，保持各端本地设置
         lastResetMonth: config.lastResetMonth,
         lastSyncTime: new Date().toISOString()
       };

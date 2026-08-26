@@ -14,11 +14,13 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from datetime import datetime
 
+import requests
 from PyQt6.QtCore import Qt, QTimer, QSize, QByteArray, QBuffer, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap, QImage
+from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap, QImage, QPainter, QBrush, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel,
@@ -43,6 +45,101 @@ def _debug_log(msg: str):
             f.write(f"{datetime.now().isoformat()} {msg}\n")
     except Exception:
         pass
+
+
+# ==================== 服务器状态检测 ====================
+
+class ServerStatusChecker(QThread):
+    """服务器状态检测线程：定期检查服务器连通性"""
+
+    status_changed = pyqtSignal(str)  # 'online' | 'offline' | 'checking'
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._running = True
+        self._current_status = 'checking'
+        self._check_interval = 10  # 10秒检测一次
+        self._check_url = 'https://dailyread.sonnusww.top/health'
+        self.status_changed.emit(self._current_status)
+
+    def stop(self):
+        self._running = False
+
+    def run(self):
+        while self._running:
+            new_status = self._check_server()
+            if new_status != self._current_status:
+                self._current_status = new_status
+                self.status_changed.emit(new_status)
+            self.msleep(self._check_interval * 1000)
+
+    def _check_server(self) -> str:
+        try:
+            response = requests.get(self._check_url, timeout=5)
+            if response.status_code == 200:
+                return 'online'
+            else:
+                return 'offline'
+        except Exception:
+            return 'offline'
+
+
+class StatusIndicator(QLabel):
+    """服务器状态指示灯组件"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._status = 'checking'
+        self.setFixedSize(16, 16)
+        self.setToolTip('服务器状态')
+        self.update_indicator()
+
+    def set_status(self, status: str):
+        if self._status != status:
+            self._status = status
+            self.update_indicator()
+
+    def update_indicator(self):
+        color_map = {
+            'online': QColor(76, 175, 80),     # 绿色 #4CAF50
+            'offline': QColor(244, 67, 54),    # 红色 #F44336
+            'checking': QColor(255, 193, 7),   # 黄色 #FFC107
+        }
+        color = color_map.get(self._status, QColor(255, 193, 7))
+
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        # 绘制外圈（稍暗）
+        painter.setBrush(QBrush(QColor(200, 200, 200)))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(1, 1, 14, 14)
+
+        # 绘制内圈（状态颜色）
+        inner_color = QColor(color)
+        inner_color.setAlpha(200)  # 半透明效果
+        painter.setBrush(QBrush(inner_color))
+        painter.drawEllipse(3, 3, 10, 10)
+
+        # 绘制高光（模拟 LED 光泽）
+        highlight = QColor(255, 255, 255, 120)
+        painter.setBrush(QBrush(highlight))
+        painter.drawEllipse(5, 4, 4, 4)
+
+        painter.end()
+
+        self.setPixmap(pixmap)
+
+        # 更新 tooltip
+        tooltip_map = {
+            'online': '服务器：已连接',
+            'offline': '服务器：离线',
+            'checking': '服务器：检测中...'
+        }
+        self.setToolTip(tooltip_map.get(self._status, ''))
 
 
 # ==================== 数据模型 ====================
@@ -759,25 +856,50 @@ def audio_base64_to_tempfile(b64_str: str, suffix: str = '.m4a') -> str:
         return ''
 
 
-def format_article_media_cell(article: dict) -> str:
-    """格式化文章媒体列显示文字（图片 + 音频），用于表格"图片"列。
+def format_article_image_cell(article: dict) -> str:
+    """格式化文章图片列显示。
 
     返回示例：
-      - 都有：'✓ 图(25KB) | ♪ 音(580KB)'
-      - 仅有图：'✓ 有图(25KB)'
-      - 仅有音频：'♪ 有音频(580KB)'
-      - 都无：'—'
+      - 有图：'✓ 图(25KB)'
+      - 无图：'—'
     """
     has_image = bool(article.get('imagewebp', ''))
+    if not has_image:
+        return '—'
+    size_kb = get_base64_size_kb(article.get('imagewebp', ''))
+    return f"✓ {size_kb:.0f}KB"
+
+
+def format_article_audio_cell(article: dict) -> str:
+    """格式化文章音频列显示。
+
+    返回示例：
+      - 有音频：'♪ 音(580KB)'
+      - 无音频：'—'
+    """
     has_audio = bool(article.get('audiobase64', ''))
-    parts = []
-    if has_image:
-        size_kb = get_base64_size_kb(article.get('imagewebp', ''))
-        parts.append(f"✓ 图({size_kb:.0f}KB)")
-    if has_audio:
-        audio_kb = get_base64_size_kb(article.get('audiobase64', ''))
-        parts.append(f"♪ 音({audio_kb:.0f}KB)")
-    return ' | '.join(parts) if parts else '—'
+    if not has_audio:
+        return '—'
+    audio_kb = get_base64_size_kb(article.get('audiobase64', ''))
+    return f"♪ {audio_kb:.0f}KB"
+
+
+class NumericTableWidgetItem(QTableWidgetItem):
+    """支持数值排序的 QTableWidgetItem，避免 '10%' 排在 '9%' 前面"""
+
+    def __init__(self, value, display_text=None):
+        if display_text is None:
+            display_text = str(value)
+        super().__init__(display_text)
+        try:
+            self._numeric_value = float(value)
+        except (ValueError, TypeError):
+            self._numeric_value = 0.0
+
+    def __lt__(self, other):
+        if isinstance(other, NumericTableWidgetItem):
+            return self._numeric_value < other._numeric_value
+        return super().__lt__(other)
 
 
 # ==================== 文章编辑对话框 ====================
@@ -1634,10 +1756,10 @@ class ArticlePage(QWidget):
 
         # 表格
         self.table = QTableWidget()
-        self.table.setColumnCount(12)
+        self.table.setColumnCount(13)
         self.table.setHorizontalHeaderLabels([
             "ID", "标题", "汉字数", "在读", "显示文章", "独立打卡率",
-            "独立目标完成率", "必读", "累计打卡天数", "完成率", "图片", "内容"
+            "独立目标完成率", "必读", "累计打卡天数", "完成率", "图片", "音频", "内容"
         ])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
@@ -1668,9 +1790,12 @@ class ArticlePage(QWidget):
         # 显示文章列：缩小宽度
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(4, 60)
-        for i in range(5, 11):
+        for i in range(5, 12):
             header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(11, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(12, QHeaderView.ResizeMode.Stretch)
+
+        # 启用点击表头排序（仅视觉排序，不修改数据）
+        self.table.setSortingEnabled(True)
 
         self.table.cellDoubleClicked.connect(self.on_double_click)
         self.table.cellClicked.connect(self.on_row_click)
@@ -1704,16 +1829,18 @@ class ArticlePage(QWidget):
         if articles is None:
             articles = self.data_model.articles
 
-        # 先禁用重绘，避免每次setItem触发布局重算
+        # 先禁用重绘和排序，避免每次setItem触发布局重算
         self.table.setUpdatesEnabled(False)
+        self.table.setSortingEnabled(False)
         self.table.setRowCount(len(articles))
 
         _align = Qt.AlignmentFlag.AlignCenter
         _QTableWidgetItem = QTableWidgetItem
+        _NumItem = NumericTableWidgetItem
 
         for row, article in enumerate(articles):
             # ID列
-            item0 = _QTableWidgetItem(str(article.get('id', '')))
+            item0 = _NumItem(article.get('id', ''))
             item0.setTextAlignment(_align)
             self.table.setItem(row, 0, item0)
             # 标题
@@ -1721,7 +1848,7 @@ class ArticlePage(QWidget):
             item1.setTextAlignment(_align)
             self.table.setItem(row, 1, item1)
             # 汉字数
-            item2 = _QTableWidgetItem(str(article.get('chineseChars', 0)))
+            item2 = _NumItem(article.get('chineseChars', 0))
             item2.setTextAlignment(_align)
             self.table.setItem(row, 2, item2)
             # 正在阅读
@@ -1733,7 +1860,7 @@ class ArticlePage(QWidget):
             item_display.setTextAlignment(_align)
             self.table.setItem(row, 4, item_display)
             # 独立打卡率
-            item5 = _QTableWidgetItem(str(article.get('independentCheckRate', 0)) + "%")
+            item5 = _NumItem(article.get('independentCheckRate', 0), str(article.get('independentCheckRate', 0)) + "%")
             item5.setTextAlignment(_align)
             self.table.setItem(row, 5, item5)
             # 独立目标完成率
@@ -1745,25 +1872,30 @@ class ArticlePage(QWidget):
             item7.setTextAlignment(_align)
             self.table.setItem(row, 7, item7)
             # 累计打卡
-            item8 = _QTableWidgetItem(str(article.get('checkInDays', 0)))
+            item8 = _NumItem(article.get('checkInDays', 0))
             item8.setTextAlignment(_align)
             self.table.setItem(row, 8, item8)
             # 完成率
-            item9 = _QTableWidgetItem(str(article.get('completionRate', 0)) + "%")
+            item9 = _NumItem(article.get('completionRate', 0), str(article.get('completionRate', 0)) + "%")
             item9.setTextAlignment(_align)
             self.table.setItem(row, 9, item9)
-            # 图片/音频
-            item_img = _QTableWidgetItem(format_article_media_cell(article))
+            # 图片
+            item_img = _QTableWidgetItem(format_article_image_cell(article))
             item_img.setTextAlignment(_align)
             self.table.setItem(row, 10, item_img)
+            # 音频
+            item_audio = _QTableWidgetItem(format_article_audio_cell(article))
+            item_audio.setTextAlignment(_align)
+            self.table.setItem(row, 11, item_audio)
             # 内容
             content = article.get('content', '')
             display_content = content[:50] + "..." if len(content) > 50 else content
             item_content = _QTableWidgetItem(display_content)
             item_content.setTextAlignment(_align)
-            self.table.setItem(row, 11, item_content)
+            self.table.setItem(row, 12, item_content)
 
-        # 恢复重绘，只触发一次完整刷新
+        # 恢复排序和重绘
+        self.table.setSortingEnabled(True)
         self.table.setUpdatesEnabled(True)
 
     def update_table_cells(self, article_ids: list):
@@ -1771,50 +1903,69 @@ class ArticlePage(QWidget):
         ids_set = set(article_ids)
         _align = Qt.AlignmentFlag.AlignCenter
         _QTableWidgetItem = QTableWidgetItem
+        _NumItem = NumericTableWidgetItem
 
-        for row in range(self.table.rowCount()):
-            item_id = self.table.item(row, 0)
-            if not item_id:
-                continue
-            article_id = int(item_id.text())
-            if article_id not in ids_set:
-                continue
+        # 排序期间禁用，避免 setItem 导致行移位
+        self.table.setSortingEnabled(False)
+        self.table.setUpdatesEnabled(False)
+        try:
+            for row in range(self.table.rowCount()):
+                item_id = self.table.item(row, 0)
+                if not item_id:
+                    continue
+                article_id = int(item_id.text())
+                if article_id not in ids_set:
+                    continue
 
-            # 从数据模型中找到对应文章
-            article = next((a for a in self.data_model.articles if a['id'] == article_id), None)
-            if not article:
-                continue
+                # 从数据模型中找到对应文章
+                article = next((a for a in self.data_model.articles if a['id'] == article_id), None)
+                if not article:
+                    continue
 
-            # 只更新可能变化的列：在读(3)、显示文章(4)、独立打卡率(5)、独立开关(6)、必读(7)、完成率(9)
-            item3 = _QTableWidgetItem("是" if article.get('isReading') else "否")
-            item3.setTextAlignment(_align)
-            self.table.setItem(row, 3, item3)
+                # 只更新可能变化的列：在读(3)、显示文章(4)、独立打卡率(5)、独立开关(6)、必读(7)、完成率(9)
+                item3 = _QTableWidgetItem("是" if article.get('isReading') else "否")
+                item3.setTextAlignment(_align)
+                self.table.setItem(row, 3, item3)
 
-            # 显示文章
-            item_display = _QTableWidgetItem("是" if article.get('iscontent', True) else "仅图")
-            item_display.setTextAlignment(_align)
-            self.table.setItem(row, 4, item_display)
+                # 显示文章
+                item_display = _QTableWidgetItem("是" if article.get('iscontent', True) else "仅图")
+                item_display.setTextAlignment(_align)
+                self.table.setItem(row, 4, item_display)
 
-            item5 = _QTableWidgetItem(str(article.get('independentCheckRate', 0)) + "%")
-            item5.setTextAlignment(_align)
-            self.table.setItem(row, 5, item5)
+                item5 = _NumItem(article.get('independentCheckRate', 0), str(article.get('independentCheckRate', 0)) + "%")
+                item5.setTextAlignment(_align)
+                self.table.setItem(row, 5, item5)
 
-            item6 = _QTableWidgetItem("是" if article.get('useIndependentCheckRate') else "否")
-            item6.setTextAlignment(_align)
-            self.table.setItem(row, 6, item6)
+                item6 = _QTableWidgetItem("是" if article.get('useIndependentCheckRate') else "否")
+                item6.setTextAlignment(_align)
+                self.table.setItem(row, 6, item6)
 
-            item7 = _QTableWidgetItem("是" if article.get('isRequired') else "否")
-            item7.setTextAlignment(_align)
-            self.table.setItem(row, 7, item7)
+                item7 = _QTableWidgetItem("是" if article.get('isRequired') else "否")
+                item7.setTextAlignment(_align)
+                self.table.setItem(row, 7, item7)
 
-            item9 = _QTableWidgetItem(str(article.get('completionRate', 0)) + "%")
-            item9.setTextAlignment(_align)
-            self.table.setItem(row, 9, item9)
+                item9 = _NumItem(article.get('completionRate', 0), str(article.get('completionRate', 0)) + "%")
+                item9.setTextAlignment(_align)
+                self.table.setItem(row, 9, item9)
+
+                # 图片
+                item_img = _QTableWidgetItem(format_article_image_cell(article))
+                item_img.setTextAlignment(_align)
+                self.table.setItem(row, 10, item_img)
+
+                # 音频
+                item_audio = _QTableWidgetItem(format_article_audio_cell(article))
+                item_audio.setTextAlignment(_align)
+                self.table.setItem(row, 11, item_audio)
+        finally:
+            self.table.setSortingEnabled(True)
+            self.table.setUpdatesEnabled(True)
 
     def update_table_row(self, article_id: int):
         """局部刷新单行所有列（编辑文章后调用，避免全表重建）"""
         _align = Qt.AlignmentFlag.AlignCenter
         _QTableWidgetItem = QTableWidgetItem
+        _NumItem = NumericTableWidgetItem
 
         # 找到表格中对应的行
         target_row = -1
@@ -1831,7 +1982,8 @@ class ArticlePage(QWidget):
         if not article:
             return
 
-        # 禁用重绘，避免每个 setItem 触发布局
+        # 禁用重绘和排序，避免每个 setItem 触发行移位
+        self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
         try:
             # 标题(1)
@@ -1839,7 +1991,7 @@ class ArticlePage(QWidget):
             item1.setTextAlignment(_align)
             self.table.setItem(target_row, 1, item1)
             # 汉字数(2)
-            item2 = _QTableWidgetItem(str(article.get('chineseChars', 0)))
+            item2 = _NumItem(article.get('chineseChars', 0))
             item2.setTextAlignment(_align)
             self.table.setItem(target_row, 2, item2)
             # 正在阅读(3)
@@ -1851,7 +2003,7 @@ class ArticlePage(QWidget):
             item_display.setTextAlignment(_align)
             self.table.setItem(target_row, 4, item_display)
             # 独立打卡率(5)
-            item5 = _QTableWidgetItem(str(article.get('independentCheckRate', 0)) + "%")
+            item5 = _NumItem(article.get('independentCheckRate', 0), str(article.get('independentCheckRate', 0)) + "%")
             item5.setTextAlignment(_align)
             self.table.setItem(target_row, 5, item5)
             # 独立目标完成率(6)
@@ -1863,20 +2015,25 @@ class ArticlePage(QWidget):
             item7.setTextAlignment(_align)
             self.table.setItem(target_row, 7, item7)
             # 完成率(9)
-            item9 = _QTableWidgetItem(str(article.get('completionRate', 0)) + "%")
+            item9 = _NumItem(article.get('completionRate', 0), str(article.get('completionRate', 0)) + "%")
             item9.setTextAlignment(_align)
             self.table.setItem(target_row, 9, item9)
-            # 图片/音频(10)
-            item_img = _QTableWidgetItem(format_article_media_cell(article))
+            # 图片(10)
+            item_img = _QTableWidgetItem(format_article_image_cell(article))
             item_img.setTextAlignment(_align)
             self.table.setItem(target_row, 10, item_img)
-            # 内容(11)
+            # 音频(11)
+            item_audio = _QTableWidgetItem(format_article_audio_cell(article))
+            item_audio.setTextAlignment(_align)
+            self.table.setItem(target_row, 11, item_audio)
+            # 内容(12)
             content = article.get('content', '')
             display_content = content[:50] + "..." if len(content) > 50 else content
             item_content = _QTableWidgetItem(display_content)
             item_content.setTextAlignment(_align)
-            self.table.setItem(target_row, 11, item_content)
+            self.table.setItem(target_row, 12, item_content)
         finally:
+            self.table.setSortingEnabled(True)
             self.table.setUpdatesEnabled(True)
 
     def on_search(self, text: str):
@@ -2995,8 +3152,40 @@ class MainWindow(QMainWindow):
         # 账号菜单
         self._setup_account_menu()
 
-        # 状态栏
+        # 状态栏：左侧消息 + 右侧服务器状态指示灯
         self.statusBar().showMessage("就绪")
+
+        # 添加服务器状态指示灯到状态栏右侧
+        status_widget = QWidget()
+        status_layout = QHBoxLayout(status_widget)
+        status_layout.setContentsMargins(0, 0, 8, 0)
+        status_layout.setSpacing(4)
+
+        self._status_indicator = StatusIndicator()
+        self._status_label = QLabel("检测中...")
+        self._status_label.setStyleSheet("color: #666; font-size: 11px;")
+
+        status_layout.addWidget(self._status_indicator)
+        status_layout.addWidget(self._status_label)
+
+        self.statusBar().addPermanentWidget(status_widget)
+
+        # 启动服务器状态检测线程
+        self._status_checker = ServerStatusChecker(self)
+        self._status_checker.status_changed.connect(self._on_server_status_changed)
+        self._status_checker.start()
+
+    def _on_server_status_changed(self, status: str):
+        """服务器状态变化回调"""
+        self._status_indicator.set_status(status)
+        status_text_map = {
+            'online': ('已连接', 'color: #4CAF50; font-size: 11px;'),
+            'offline': ('离线', 'color: #F44336; font-size: 11px;'),
+            'checking': ('检测中...', 'color: #FFC107; font-size: 11px;')
+        }
+        text, style = status_text_map.get(status, ('未知', 'color: #999; font-size: 11px;'))
+        self._status_label.setText(text)
+        self._status_label.setStyleSheet(style)
 
     def _setup_account_menu(self):
         """账号菜单栏"""
@@ -3134,6 +3323,10 @@ class MainWindow(QMainWindow):
         """关闭时同步保存数据（确保写完再退出）"""
         self.save_window_geometry()
         self.data_model.save_sync()
+        # 停止服务器状态检测线程
+        if hasattr(self, '_status_checker') and self._status_checker:
+            self._status_checker.stop()
+            self._status_checker.wait(2000)  # 等待线程结束，最多2秒
         event.accept()
 
 

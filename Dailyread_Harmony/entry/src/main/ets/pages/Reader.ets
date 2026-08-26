@@ -38,6 +38,7 @@ struct ReaderPage {
   @State shouldShowContent: boolean = true; // iscontent=true 或无图时 true，纯图时 false（UI 渲染条件缓存）
   @State taskCheckedInCount: number = 0; // 今日任务已打卡数
   @State taskTotalCount: number = 0; // 今日任务总数
+  @State canReadLater: boolean = false; // 是否有其他未完成任务（待缓再读按钮可用状态）
   // ====== 音频播放状态 ======
   @State hasAudio: boolean = false; // 文章是否含音频
   @State audioPrepared: boolean = false; // AVPlayer 是否已 prepare
@@ -196,6 +197,20 @@ struct ReaderPage {
         const stats = await DailyTaskRepository.getInstance().getTodayTaskStats();
         this.taskTotalCount = stats.total;
         this.taskCheckedInCount = stats.checkedIn;
+        // 检查是否有其他未完成任务文章（用于"待缓再读"按钮状态）
+        const todayTask = await DailyTaskRepository.getInstance().getTodayTask();
+        if (todayTask && todayTask.items && todayTask.items.length > 0) {
+          // 获取今日实际打卡记录（与 Home 页面相同的双重判断逻辑）
+          const checkedInIds: Set<number> = await CheckInRepository.getInstance().getArticleIdsCheckedInOnDate(today);
+          let otherUnchecked = 0;
+          for (let i = 0; i < todayTask.items.length; i++) {
+            const isChecked = todayTask.items[i].isCheckedIn || checkedInIds.has(todayTask.items[i].articleId);
+            if (!isChecked && todayTask.items[i].articleId !== this.articleId) {
+              otherUnchecked++;
+            }
+          }
+          this.canReadLater = otherUnchecked > 0;
+        }
       } catch (statsErr) {
         console.error('Reader: 加载任务统计失败: ' + JSON.stringify(statsErr));
       }
@@ -637,6 +652,64 @@ struct ReaderPage {
   }
 
   /**
+   * 待缓再读：不打卡当前文章，随机跳转下一篇未完成任务文章
+   * 与 Home 页面相同的逻辑：解析真实本地 articleId + 双重判断已打卡状态
+   */
+  async handleReadLater(): Promise<void> {
+    if (!this.canReadLater || this.article === null) {
+      return;
+    }
+    try {
+      const todayTask = await DailyTaskRepository.getInstance().getTodayTask();
+      if (!todayTask || !todayTask.items || todayTask.items.length === 0) {
+        return;
+      }
+      // 获取今日实际打卡记录（与 Home 页面相同的双重判断逻辑）
+      const todayStr: string = this.getTodayDateString();
+      const checkedInIds: Set<number> = await CheckInRepository.getInstance().getArticleIdsCheckedInOnDate(todayStr);
+      // 加载所有本地文章，用于解析真实 articleId
+      const allArticles: Article[] = await ArticleRepository.getInstance().getAllArticles();
+      // 收集其他未完成文章的有效本地 ID
+      const validNextIds: number[] = [];
+      for (let i = 0; i < todayTask.items.length; i++) {
+        const item = todayTask.items[i];
+        if (item.articleId === this.articleId) {
+          continue;
+        }
+        // 解析真实本地 articleId
+        let article: Article | undefined = allArticles.find(a => a.id === item.articleId);
+        if (article === undefined && item.articleId === 0 && item.articleTitle && item.articleTitle.length > 0) {
+          article = allArticles.find(a => a.title === item.articleTitle);
+        }
+        if (article === undefined) {
+          continue;
+        }
+        // 双重判断是否已打卡：任务标志位 OR 实际打卡记录
+        const isChecked = item.isCheckedIn || checkedInIds.has(article.id);
+        if (isChecked) {
+          continue;
+        }
+        validNextIds.push(article.id);
+      }
+      if (validNextIds.length === 0) {
+        promptAction.showToast({ message: '没有可跳转的未完成文章', duration: 1500 });
+        return;
+      }
+      // 随机选一篇未完成的文章
+      const randomIndex: number = Math.floor(Math.random() * validNextIds.length);
+      const nextArticleId: number = validNextIds[randomIndex];
+      console.info(`Reader: 待缓再读，跳转下一篇未完成任务文章 id=${nextArticleId}`);
+      this.stopTimer();
+      this.audioService.release().catch((e: Error) => {
+        console.warn('Reader: 音频释放异常: ' + JSON.stringify(e));
+      });
+      router.replaceUrl({ url: 'pages/Reader', params: { articleId: nextArticleId } });
+    } catch (e) {
+      console.error('Reader.handleReadLater 异常: ' + JSON.stringify(e));
+    }
+  }
+
+  /**
    * 获取今天的日期字符串，格式: "2026-06-19"
    */
   private getTodayDateString(): string {
@@ -668,101 +741,101 @@ struct ReaderPage {
           if (this.article !== null) {
             Scroll() {
               Column() {
-                // ====== 显示文章文字段（iscontent=true 或无图时强制显示）======
-                // 注意：iscontent=false 但无图时自动降级为显示文字，避免空白页面
-                if (this.shouldShowContent) {
-                  Row() {
-                    Text(this.article.title)
-                      .fontSize(this.fontSize + 6)
-                      .fontWeight(FontWeight.Bold)
-                      .fontColor('#333333')
-                      .layoutWeight(1)
-                      .maxLines(2)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis })
-                      .textAlign(TextAlign.Start);
+                // ====== 标题和字数（始终显示）======
+                Row() {
+                  Text(this.article.title)
+                    .fontSize(this.fontSize + 6)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#333333')
+                    .layoutWeight(1)
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .textAlign(TextAlign.Start);
 
-                    if (this.taskTotalCount > 0) {
-                      Text(`${this.taskCheckedInCount}/${this.taskTotalCount}`)
+                  if (this.taskTotalCount > 0) {
+                    Text(`${this.taskCheckedInCount}/${this.taskTotalCount}`)
+                      .fontSize(14)
+                      .fontColor('#E53935')
+                      .fontWeight(FontWeight.Medium)
+                      .margin({ left: 8, bottom: 4 });
+                  }
+                }
+                .width('100%')
+                .alignItems(VerticalAlign.Bottom)
+                .margin({ bottom: 8 });
+
+                Text(`${this.article.chineseChars} 字`)
+                  .fontSize(12)
+                  .fontColor('#999999')
+                  .margin({ bottom: 16 })
+                  .width('100%');
+
+                // ====== 音频播放控制条（始终显示，当有音频时）======
+                if (this.hasAudio) {
+                  Column() {
+                    Row() {
+                      Text('🔊')
+                        .fontSize(16)
+                        .margin({ right: 8 });
+                      Text(this.audioLoadFailed ? '音频加载失败' : '朗读音频')
                         .fontSize(14)
-                        .fontColor('#E53935')
+                        .fontColor(this.audioLoadFailed ? '#F44336' : '#666666')
                         .fontWeight(FontWeight.Medium)
-                        .margin({ left: 8, bottom: 4 });
+                        .layoutWeight(1);
+                      Text(this.formatAudioTime(this.audioDurationMs))
+                        .fontSize(12)
+                        .fontColor('#999999');
+                    }
+                    .width('100%')
+                    .alignItems(VerticalAlign.Center)
+                    .margin({ bottom: 8 });
+
+                    if (!this.audioLoadFailed) {
+                      Row() {
+                        Text(this.isAudioPlaying ? '⏸' : '▶')
+                          .fontSize(20)
+                          .fontColor('#1976D2')
+                          .width(40)
+                          .height(40)
+                          .textAlign(TextAlign.Center)
+                          .borderRadius(20)
+                          .backgroundColor('#E3F2FD')
+                          .onClick(() => {
+                            this.onAudioToggle();
+                          });
+
+                        Text(this.formatAudioTime(this.audioCurrentMs))
+                          .fontSize(12)
+                          .fontColor('#666666')
+                          .margin({ left: 12, right: 8 });
+
+                        Slider({ value: this.getAudioProgressPercent(), min: 0, max: 100, style: SliderStyle.OutSet })
+                          .layoutWeight(1)
+                          .blockColor('#1976D2')
+                          .selectedColor('#1976D2')
+                          .trackColor('#E0E0E0')
+                          .onChange((value: number, mode: SliderChangeMode) => {
+                            this.onAudioSeek(value);
+                          });
+
+                        Text(this.formatAudioTime(this.audioDurationMs))
+                          .fontSize(12)
+                          .fontColor('#999999')
+                          .margin({ left: 8 });
+                      }
+                      .width('100%')
+                      .alignItems(VerticalAlign.Center);
                     }
                   }
                   .width('100%')
-                  .alignItems(VerticalAlign.Bottom)
-                  .margin({ bottom: 8 });
+                  .margin({ bottom: 16 })
+                  .padding(12)
+                  .backgroundColor('#F5F5F5')
+                  .borderRadius(8);
+                }
 
-                  Text(`${this.article.chineseChars} 字`)
-                    .fontSize(12)
-                    .fontColor('#999999')
-                    .margin({ bottom: 16 })
-                    .width('100%');
-
-                  // ====== 音频播放控制条（标题下方、文章内容上方）======
-                  if (this.hasAudio) {
-                    Column() {
-                      Row() {
-                        Text('🔊')
-                          .fontSize(16)
-                          .margin({ right: 8 });
-                        Text(this.audioLoadFailed ? '音频加载失败' : '朗读音频')
-                          .fontSize(14)
-                          .fontColor(this.audioLoadFailed ? '#F44336' : '#666666')
-                          .fontWeight(FontWeight.Medium)
-                          .layoutWeight(1);
-                        Text(this.formatAudioTime(this.audioDurationMs))
-                          .fontSize(12)
-                          .fontColor('#999999');
-                      }
-                      .width('100%')
-                      .alignItems(VerticalAlign.Center)
-                      .margin({ bottom: 8 });
-
-                      if (!this.audioLoadFailed) {
-                        Row() {
-                          Text(this.isAudioPlaying ? '⏸' : '▶')
-                            .fontSize(20)
-                            .fontColor('#1976D2')
-                            .width(40)
-                            .height(40)
-                            .textAlign(TextAlign.Center)
-                            .borderRadius(20)
-                            .backgroundColor('#E3F2FD')
-                            .onClick(() => {
-                              this.onAudioToggle();
-                            });
-
-                          Text(this.formatAudioTime(this.audioCurrentMs))
-                            .fontSize(12)
-                            .fontColor('#666666')
-                            .margin({ left: 12, right: 8 });
-
-                          Slider({ value: this.getAudioProgressPercent(), min: 0, max: 100, style: SliderStyle.OutSet })
-                            .layoutWeight(1)
-                            .blockColor('#1976D2')
-                            .selectedColor('#1976D2')
-                            .trackColor('#E0E0E0')
-                            .onChange((value: number, mode: SliderChangeMode) => {
-                              this.onAudioSeek(value);
-                            });
-
-                          Text(this.formatAudioTime(this.audioDurationMs))
-                            .fontSize(12)
-                            .fontColor('#999999')
-                            .margin({ left: 8 });
-                        }
-                        .width('100%')
-                        .alignItems(VerticalAlign.Center);
-                      }
-                    }
-                    .width('100%')
-                    .margin({ bottom: 16 })
-                    .padding(12)
-                    .backgroundColor('#F5F5F5')
-                    .borderRadius(8);
-                  }
-
+                // ====== 文章文字内容（仅当 shouldShowContent=true 时显示）======
+                if (this.shouldShowContent) {
                   Text() {
                       ForEach(this.contentSegments, (segment: TextSegment, index: number) => {
                         Span(segment.text)
@@ -794,13 +867,13 @@ struct ReaderPage {
                     }
                     .width('100%')
                     .justifyContent(FlexAlign.Center)
-                    .margin({ top: this.shouldShowContent ? 24 : 0 });
+                    .margin({ top: 24 });
                   } else {
                     // 图片宽度大于等于500px，宽度100%，高度按比例自适应
                     Image(this.articlePixelMap)
                       .width('100%')
                       .aspectRatio(this.articlePixelRatio)
-                      .margin({ top: this.shouldShowContent ? 24 : 0 })
+                      .margin({ top: 24 })
                       .borderRadius(8)
                       .objectFit(ImageFit.Auto)
                       .backgroundColor('#F5F5F5');
@@ -817,16 +890,35 @@ struct ReaderPage {
                       .backgroundColor('#E8F5E9')
                       .borderRadius(8);
                   } else {
-                    Text('打卡此文章')
-                      .fontSize(16)
-                      .fontColor('#FFFFFF')
-                      .fontWeight(FontWeight.Bold)
-                      .padding({ left: 24, right: 24, top: 12, bottom: 12 })
-                      .backgroundColor('#4CAF50')
-                      .borderRadius(8)
-                      .onClick(() => {
-                        this.handleCheckIn();
-                      });
+                    Row() {
+                      Text('打卡此文章')
+                        .layoutWeight(1)
+                        .textAlign(TextAlign.Center)
+                        .fontSize(16)
+                        .fontColor('#FFFFFF')
+                        .fontWeight(FontWeight.Bold)
+                        .padding({ top: 12, bottom: 12 })
+                        .backgroundColor('#4CAF50')
+                        .borderRadius(8)
+                        .onClick(() => {
+                          this.handleCheckIn();
+                        });
+
+                      Text('待缓再读')
+                        .layoutWeight(1)
+                        .textAlign(TextAlign.Center)
+                        .fontSize(16)
+                        .fontColor(this.canReadLater ? '#FFFFFF' : '#BDBDBD')
+                        .fontWeight(FontWeight.Bold)
+                        .padding({ top: 12, bottom: 12 })
+                        .backgroundColor(this.canReadLater ? '#FF9800' : '#E0E0E0')
+                        .borderRadius(8)
+                        .margin({ left: 12 })
+                        .onClick(() => {
+                          this.handleReadLater();
+                        });
+                    }
+                    .width('80%')
                   }
                 }
                 .width('100%')

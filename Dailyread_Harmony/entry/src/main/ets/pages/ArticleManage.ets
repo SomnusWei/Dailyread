@@ -6,6 +6,7 @@ import promptAction from '@ohos.promptAction';
 import image from '@ohos.multimedia.image';
 import fs from '@ohos.file.fs';
 import { common } from '@kit.AbilityKit';
+import { ServerStatusIndicator } from '../components/ServerStatusIndicator';
 
 @Entry
 @Component
@@ -452,6 +453,7 @@ struct ArticleManagePage {
                 .fontSize(24)
                 .fontWeight(FontWeight.Bold)
                 .fontColor('#333333');
+              ServerStatusIndicator();
               Blank();
               Text('多选')
                 .fontSize(14)
