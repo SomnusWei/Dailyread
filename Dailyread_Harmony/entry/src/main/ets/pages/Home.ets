@@ -21,6 +21,7 @@ interface TaskItemUI {
   isLongArticle: boolean;
   displayName: string;
   progressPercent: number;
+  hasAudio: boolean;
 }
 
 @Entry
@@ -194,7 +195,8 @@ struct HomePage {
             isRequired: this.tasks[i].isRequired,
             isLongArticle: this.tasks[i].isLongArticle,
             displayName: this.tasks[i].displayName,
-            progressPercent: this.tasks[i].progressPercent
+            progressPercent: this.tasks[i].progressPercent,
+            hasAudio: this.tasks[i].hasAudio
           };
           changed = true;
         }
@@ -272,20 +274,29 @@ struct HomePage {
       const newTasks: TaskItemUI[] = [];
       for (let i = 0; i < taskItems.length; i++) {
         const item = taskItems[i];
-        const article = allArticles.find(a => a.id === item.articleId);
+        let article: Article | undefined = allArticles.find(a => a.id === item.articleId);
+        // 兜底：articleId=0 时（SyncService 同步任务时未找到本地文章），用 articleTitle 匹配真实 id
+        if (article === undefined && item.articleId === 0 && item.articleTitle !== undefined && item.articleTitle.length > 0) {
+          article = allArticles.find(a => a.title === item.articleTitle);
+          if (article !== undefined) {
+            console.warn('Home: articleId=0 用 articleTitle 兜底匹配成功 title=' + item.articleTitle + ' → id=' + article.id);
+          }
+        }
+        const realArticleId: number = article !== undefined ? article.id : item.articleId;
         const display = item.displayName && item.displayName.length > 0
           ? item.displayName
           : (item.articleTitle || (article ? article.title : '未命名文章'));
         newTasks.push({
           taskId: item.taskId,
-          articleId: item.articleId,
+          articleId: realArticleId,
           articleTitle: item.articleTitle || (article ? article.title : ''),
           wordTarget: item.wordTarget > 0 ? item.wordTarget : (article ? article.chineseChars : 0),
-          isCheckedIn: item.isCheckedIn || checkedInArticleIds.has(item.articleId),
+          isCheckedIn: item.isCheckedIn || checkedInArticleIds.has(realArticleId),
           isRequired: item.isRequired,
           isLongArticle: item.isLongArticle,
           displayName: display,
-          progressPercent: article ? article.completionRate : 0
+          progressPercent: article ? article.completionRate : 0,
+          hasAudio: article !== undefined && article.audiobase64.length > 0
         });
       }
       console.info('Home.loadData: 最终构建 tasks.length=' + newTasks.length
@@ -442,13 +453,21 @@ struct HomePage {
       Row() {
         Column() {
           Row() {
-            Text(item.displayName)
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
-              .fontColor(this.isArticleCheckedIn(item.articleId, item.isCheckedIn) ? '#999999' : '#333333')
-              .layoutWeight(1)
-              .maxLines(2)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
+            // 标题 + 音频图标（Span 紧跟文字末尾）
+            Text() {
+              Span(item.displayName)
+                .fontSize(16)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.isArticleCheckedIn(item.articleId, item.isCheckedIn) ? '#999999' : '#333333')
+              if (item.hasAudio) {
+                Span(' 🔊')
+                  .fontSize(14)
+                  .fontColor('#1976D2')
+              }
+            }
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .layoutWeight(1);
             if (this.isArticleCheckedIn(item.articleId, item.isCheckedIn)) {
               Text('已完成')
                 .fontSize(10)

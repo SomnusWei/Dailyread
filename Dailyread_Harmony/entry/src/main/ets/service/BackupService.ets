@@ -33,6 +33,7 @@ export class BackupArticleData {
   checkInDays: number = 0;
   completionRate: number = 0;
   imagewebp: string = '';
+  audiobase64: string = '';
   createTime: string = '';
   lastModified: string = '';
 
@@ -222,6 +223,7 @@ export class BackupService {
       bd.checkInDays = a.checkInDays;
       bd.completionRate = a.completionRate;
       bd.imagewebp = a.imagewebp;
+      bd.audiobase64 = a.audiobase64;
       bd.createTime = a.createTime;
       bd.lastModified = a.lastModified || a.createTime;
       backup.articles.push(bd);
@@ -298,6 +300,7 @@ export class BackupService {
           article.checkInDays = reader.getNumber(['checkInDays', 'check_in_days', 'checkinDays'], 0);
           article.completionRate = reader.getNumber(['completionRate', 'completion_rate'], 0);
           article.imagewebp = reader.getString(['imagewebp'], '');
+          article.audiobase64 = reader.getString(['audiobase64', 'audioBase64', 'audio_base64'], '');
           article.createTime = reader.getString(['createTime', 'create_time', 'createAt', 'createdAt'], nowIso);
           article.lastModified = reader.getString(['lastModified', 'last_modified', 'updateTime', 'update_time'], '');
           if (article.lastModified.length === 0) {

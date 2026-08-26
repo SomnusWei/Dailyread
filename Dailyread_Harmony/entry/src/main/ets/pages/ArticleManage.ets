@@ -181,6 +181,8 @@ struct ArticleManagePage {
         } else {
           article.imagewebp = this.newImageWebp;
         }
+        // 保留原有 audiobase64（鸿蒙端不录入音频，避免编辑其他字段时音频丢失）
+        article.audiobase64 = this.editingArticle.audiobase64;
         // 保留原有完成率
         article.completionRate = this.editingArticle.completionRate;
         // 保留原有打卡天数、创建时间
@@ -748,6 +750,48 @@ struct ArticleManagePage {
             .border({ width: 1, color: '#E0E0E0' })
             .borderRadius(8);
 
+            // ===== 音频信息展示区块 =====
+            Column() {
+              if (this.editingArticle !== null && this.editingArticle.audiobase64 && this.editingArticle.audiobase64.length > 0) {
+                Row() {
+                  Text('🔊')
+                    .fontSize(20)
+                    .margin({ right: 12 });
+                  Column({ space: 4 }) {
+                    Text('✓ 已有音频')
+                      .fontSize(14)
+                      .fontColor('#1976D2');
+                    Text('音频将通过阅读页自动播放')
+                      .fontSize(12)
+                      .fontColor('#999999');
+                  }
+                  .alignItems(HorizontalAlign.Start);
+                }
+                .width('100%');
+              } else {
+                Row() {
+                  Text('🔇')
+                    .fontSize(20)
+                    .margin({ right: 12 });
+                  Column({ space: 4 }) {
+                    Text('暂无音频')
+                      .fontSize(14)
+                      .fontColor('#999999');
+                    Text('请在 Win 端添加音频（支持 mp3/wav 转 m4a）')
+                      .fontSize(12)
+                      .fontColor('#BBBBBB');
+                  }
+                  .alignItems(HorizontalAlign.Start);
+                }
+                .width('100%');
+              }
+            }
+            .width('100%')
+            .padding(12)
+            .margin({ top: 12 })
+            .border({ width: 1, color: '#E0E0E0' })
+            .borderRadius(8);
+
             Row() {
               Button('取消')
                 .width('45%')
@@ -875,6 +919,13 @@ struct ArticleManagePage {
               Text('★')
                 .fontSize(18)
                 .fontColor('#D32F2F')
+                .margin({ left: 4 });
+            }
+
+            if (item.audiobase64 && item.audiobase64.length > 0) {
+              Text('🔊')
+                .fontSize(14)
+                .fontColor('#1976D2')
                 .margin({ left: 4 });
             }
 

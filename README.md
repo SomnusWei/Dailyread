@@ -11,6 +11,7 @@ DailyRead 是一套帮助用户养成每日阅读习惯的工具，支持文章�
 ### 核心功能
 
 - 📚 **文章阅读**：文章管理、图片上传（WebP 压缩）、每日自动生成阅读任务
+- 🔊 **音频朗读**：文章支持 m4a 音频，Win 端录入转码（ffmpeg）、鸿蒙端 AVPlayer 自动播放/循环播放、三端同步透传
 - 🧠 **概念背诵**：按分类/学科/章节管理，随机背诵模式
 - 🏥 **临床笔记**：病机、治法、处方结构化管理，随机背诵
 - 📍 **穴位记忆**：内置常用穴位库，随机抽查
@@ -36,16 +37,16 @@ DailyRead/
 ├── Dailyread_Harmony/                      # 鸿蒙端 APP
 │   ├── entry/
 │   │   └── src/main/ets/
-│   │       ├── pages/                      # 页面（首页、阅读、设置等）
-│   │       ├── model/                      # 数据模型
-│   │       ├── repository/                 # 数据访问层
-│   │       ├── service/                    # 业务服务层
-│   │       └── database/                   # SQLite 数据库
+│   │       ├── pages/                      # 页面（首页、阅读、随心阅读、设置等）
+│   │       ├── model/                       # 数据模型（Article/Config/ApiTypes）
+│   │       ├── repository/                  # 数据访问层
+│   │       ├── service/                     # 业务服务层（含 AudioService 音频播放）
+│   │       └── database/                   # SQLite 数据库（版本化迁移）
 │   ├── AppScope/                           # 应用级资源
 │   └── README.md                           # 鸿蒙端详细文档
 │
 ├── Dailyread_win_article_concept_manager/   # Windows 端管理器
-│   ├── article_concept_manager.py          # 主程序
+│   ├── article_concept_manager.py          # 主程序（含音频转码、批量导入）
 │   ├── api_client.py                       # 后端 API 客户端
 │   ├── sync_service.py                     # WebDAV 同步服务
 │   ├── app.spec                            # PyInstaller 打包配置
@@ -113,7 +114,32 @@ python -m PyInstaller --clean --noconfirm app.spec
 
 ---
 
-## 🔗 子项目关系
+## � 音频功能（三端同步实时方案）
+
+文章支持音频朗读，全链路如下：
+
+```
+Win 端录入            后端存储                鸿蒙端播放
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│ 选 mp3/wav   │    │ articles.    │    │ 同步拉取     │
+│ ffmpeg 转码  │ ─► │ audiobase64  │ ─► │ base64 解码  │
+│ → m4a base64 │    │ LONGTEXT     │    │ → AVPlayer   │
+└──────────────┘    └──────────────┘    └──────────────┘
+```
+
+| 端 | 实现 |
+|----|------|
+| **Win 端** | `audio_to_m4a_base64()` 调用系统 ffmpeg 转码为 m4a/AAC-LC，base64 编码后写入 `audiobase64` 字段；支持单篇编辑录入与**批量导入**（选中文章→选文件夹→按标题匹配→进度条转码→自动上传） |
+| **后端** | `articles` 表新增 `audiobase64 LONGTEXT` 列，CRUD 路由透传该字段，`init.js` 自动迁移 |
+| **鸿蒙端** | `AudioService` 负责字符串清洗→`util.Base64Helper` 二进制解码→沙箱临时文件→`AVPlayer` fd 协议→状态机自动 prepare/play；`Reader`/`RandomRead` 阅读页内置控制条；`Settings` 支持「自动播放」「循环播放」开关 |
+
+**Win 端依赖**：需安装 ffmpeg 并加入 PATH。如通过 winget 安装，APP 会自动扫描 WinGet 路径作为 fallback。
+
+详见 [音频功能方案.md](音频功能方案.md)。
+
+---
+
+## � 子项目关系
 
 ```
 ┌─────────────────┐     API / WebDAV     ┌─────────────────┐
@@ -143,11 +169,11 @@ python -m PyInstaller --clean --noconfirm app.spec
 | 表名 | 说明 |
 |------|------|
 | users | 用户表（用户名、密码、角色） |
-| articles | 文章表（多端同步字段 `client_id` + `user_id` 唯一） |
+| articles | 文章表（多端同步字段 `client_id` + `user_id` 唯一；含 `imagewebp` 图片、`audiobase64` 音频） |
 | checkins | 打卡记录表 |
 | daily_tasks | 每日任务表 |
 | daily_task_items | 每日任务条目表 |
-| user_configs | 用户配置表 |
+| user_configs | 用户配置表（含 `autoPlayAudio`、`loopAudio` 等开关） |
 
 详见 [schema.sql](dailyread-server/schema.sql)。
 

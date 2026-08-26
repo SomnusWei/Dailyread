@@ -14,6 +14,7 @@ import promptAction from '@ohos.promptAction';
 import image from '@ohos.multimedia.image';
 import { common } from '@kit.AbilityKit';
 import { ImageCompressionService, SizedPixelMap } from '../service/ImageCompressionService';
+import { AudioService, AudioPlayerState } from '../service/AudioService';
 
 interface TextSegment {
   text: string;
@@ -37,11 +38,21 @@ struct ReaderPage {
   @State shouldShowContent: boolean = true; // iscontent=true 或无图时 true，纯图时 false（UI 渲染条件缓存）
   @State taskCheckedInCount: number = 0; // 今日任务已打卡数
   @State taskTotalCount: number = 0; // 今日任务总数
+  // ====== 音频播放状态 ======
+  @State hasAudio: boolean = false; // 文章是否含音频
+  @State audioPrepared: boolean = false; // AVPlayer 是否已 prepare
+  @State isAudioPlaying: boolean = false; // 是否正在播放
+  @State audioCurrentMs: number = 0; // 当前播放进度 ms
+  @State audioDurationMs: number = 0; // 总时长 ms
+  @State audioLoadFailed: boolean = false; // 音频加载失败标记
+  private autoPlayAudio: boolean = true; // 配置：进入阅读页自动播放音频
+  private loopAudio: boolean = false; // 配置：音频循环播放
   private articleId: number = 0;
   private startTimestamp: number = 0;
   private timerHandle: number = -1;
   private lastClickSide: string = '';  // 双击检测：'left' | 'right' | ''
   private lastClickTime: number = 0;
+  private audioService: AudioService = new AudioService();
 
   aboutToAppear(): void {
     const params: Record<string, Object> = router.getParams() as Record<string, Object>;
@@ -56,35 +67,68 @@ struct ReaderPage {
 
   aboutToDisappear(): void {
     this.stopTimer();
+    // 释放音频播放器（AVPlayer + fd + 临时文件），fire-and-forget 避免页面销毁阻塞
+    this.audioService.release().catch((e: Error) => {
+      console.warn('Reader: 音频释放异常: ' + JSON.stringify(e));
+    });
   }
 
   async loadData(): Promise<void> {
     this.isLoading = true;
     this.articlePixelMap = null;
     try {
-      // 读取阅读默认字号配置
+      // 读取阅读配置（字号 + 音频播放控制）
       try {
         const config: Config = await ConfigRepository.getInstance().getConfig();
         if (config.readerFontSize && config.readerFontSize > 0) {
           this.fontSize = config.readerFontSize;
         }
+        this.autoPlayAudio = config.autoPlayAudio;
+        this.loopAudio = config.loopAudio;
       } catch (cfgErr) {
-        console.error('Reader: 读取字号配置失败: ' + JSON.stringify(cfgErr));
+        console.error('Reader: 读取配置失败: ' + JSON.stringify(cfgErr));
       }
 
-      const allArticles: Article[] = await ArticleRepository.getInstance().getAllArticles();
-      for (let i: number = 0; i < allArticles.length; i++) {
-        if (allArticles[i].id === this.articleId) {
-          this.article = allArticles[i];
-          if (this.article.content) {
-            try {
-              this.contentSegments = this.parseContent(this.article.content);
-            } catch (e) {
-              console.error('parseContent failed: ' + JSON.stringify(e));
-              this.contentSegments = [{ text: this.article.content, type: 'normal' }];
-            }
+      // 单篇查询（避免 getAllArticles 全量加载所有 audiobase64，且防止单篇失败导致遍历中断）
+      const articlesById: Article[] = await ArticleRepository.getInstance().getArticleById(this.articleId);
+      console.info('Reader: getArticleById id=' + this.articleId + ' 返回 ' + articlesById.length + ' 篇');
+      if (articlesById.length > 0) {
+        this.article = articlesById[0];
+        if (this.article.content) {
+          try {
+            this.contentSegments = this.parseContent(this.article.content);
+          } catch (e) {
+            console.error('parseContent failed: ' + JSON.stringify(e));
+            this.contentSegments = [{ text: this.article.content, type: 'normal' }];
           }
-          break;
+        }
+      } else {
+        // 兜底：单篇查询失败（可能 audiobase64 大字段读取异常），降级用 getAllArticles 遍历
+        console.warn('Reader: getArticleById 返回空，降级 getAllArticles 遍历查找 id=' + this.articleId);
+        const allArticles: Article[] = await ArticleRepository.getInstance().getAllArticles();
+        console.warn('Reader: getAllArticles 返回 ' + allArticles.length + ' 篇，查找 id=' + this.articleId);
+        for (let i: number = 0; i < allArticles.length; i++) {
+          if (allArticles[i].id === this.articleId) {
+            this.article = allArticles[i];
+            if (this.article.content) {
+              try {
+                this.contentSegments = this.parseContent(this.article.content);
+              } catch (e) {
+                console.error('parseContent failed: ' + JSON.stringify(e));
+                this.contentSegments = [{ text: this.article.content, type: 'normal' }];
+              }
+            }
+            break;
+          }
+        }
+        if (this.article === null) {
+          // 打印前5篇的 id 用于诊断 id 不匹配问题
+          let ids: string = '';
+          const showCount: number = Math.min(5, allArticles.length);
+          for (let k: number = 0; k < showCount; k++) {
+            ids += allArticles[k].id + '(' + allArticles[k].title.substring(0, 6) + ') ';
+          }
+          console.error('Reader: 遍历 ' + allArticles.length + ' 篇后仍未找到 id=' + this.articleId + '，前5篇: ' + ids);
         }
       }
 
@@ -157,11 +201,130 @@ struct ReaderPage {
       }
 
       this.startTimer();
+
+      // 异步准备音频（不阻塞页面渲染，isLoading 会先置 false）
+      this.prepareArticleAudio();
     } catch (e) {
       console.error('加载文章失败: ' + JSON.stringify(e));
     } finally {
       this.isLoading = false;
     }
+  }
+
+  /**
+   * 准备并自动播放文章音频
+   * 检测 audiobase64 非空 → base64 解码 → AVPlayer.prepare → play
+   * 失败时标记 audioLoadFailed，不影响文字阅读
+   */
+  async prepareArticleAudio(): Promise<void> {
+    if (this.article === null) {
+      return;
+    }
+    const audioB64: string = this.article.audiobase64;
+    console.info('Reader: prepareArticleAudio article.id=' + this.article.id + ' audioB64.length=' + audioB64.length);
+    if (!audioB64 || audioB64.length === 0) {
+      this.hasAudio = false;
+      console.warn('Reader: article.audiobase64 为空，不显示音频控制条（可能数据库列不存在或同步未完成）');
+      return;
+    }
+    this.hasAudio = true;
+    this.audioLoadFailed = false;
+
+    const ctx: common.Context = getContext(this) as common.Context;
+    this.audioService.setCallbacks(
+      (state: AudioPlayerState) => {
+        this.onAudioStateChange(state);
+      },
+      (currentMs: number, durationMs: number) => {
+        this.audioCurrentMs = currentMs;
+        if (durationMs > 0) {
+          this.audioDurationMs = durationMs;
+        }
+      },
+      (message: string) => {
+        console.error('Reader: 音频错误: ' + message);
+        this.audioLoadFailed = true;
+        this.isAudioPlaying = false;
+        this.audioPrepared = false;
+      }
+    );
+
+    try {
+      await this.audioService.prepare(audioB64, ctx);
+      // prepare 成功后不在这里播放，等 onAudioStateChange('prepared') 回调自动播放
+    } catch (e) {
+      console.error('Reader: 音频 prepare 失败: ' + JSON.stringify(e));
+      // 保持 hasAudio=true，显示"音频加载失败"提示，让用户知道文章有音频
+      this.audioLoadFailed = true;
+    }
+  }
+
+  onAudioStateChange(state: AudioPlayerState): void {
+    if (state === 'prepared') {
+      this.audioPrepared = true;
+      // prepare 成功后根据配置决定是否自动播放
+      if (this.autoPlayAudio) {
+        this.audioService.play();
+      }
+    } else if (state === 'playing') {
+      this.isAudioPlaying = true;
+      this.audioPrepared = true;
+    } else if (state === 'paused') {
+      this.isAudioPlaying = false;
+    } else if (state === 'completed') {
+      this.isAudioPlaying = false;
+      this.audioCurrentMs = 0;
+      // 循环播放：completed 后重新播放
+      if (this.loopAudio) {
+        this.audioService.seek(0);
+        this.audioService.play();
+      }
+    } else if (state === 'error') {
+      this.isAudioPlaying = false;
+      this.audioPrepared = false;
+      this.audioLoadFailed = true;
+    } else if (state === 'released') {
+      this.isAudioPlaying = false;
+      this.audioPrepared = false;
+    }
+  }
+
+  onAudioToggle(): void {
+    this.audioService.togglePlayPause();
+  }
+
+  onAudioSeek(progress: number): void {
+    if (this.audioDurationMs > 0) {
+      const targetMs: number = Math.floor(this.audioDurationMs * progress / 100);
+      this.audioService.seek(targetMs);
+      this.audioCurrentMs = targetMs;
+    }
+  }
+
+  formatAudioTime(ms: number): string {
+    if (ms <= 0) {
+      return '00:00';
+    }
+    const totalSec: number = Math.floor(ms / 1000);
+    const m: number = Math.floor(totalSec / 60);
+    const s: number = totalSec % 60;
+    const mStr: string = m < 10 ? '0' + m.toString() : m.toString();
+    const sStr: string = s < 10 ? '0' + s.toString() : s.toString();
+    return mStr + ':' + sStr;
+  }
+
+  getAudioProgressPercent(): number {
+    if (this.audioDurationMs <= 0) {
+      return 0;
+    }
+    const p: number = this.audioCurrentMs * 100 / this.audioDurationMs;
+    if (p < 0) {
+      return 0;
+    }
+    if (p > 100) {
+      return 100;
+    }
+    return p;
   }
 
   startTimer(): void {
@@ -535,6 +698,70 @@ struct ReaderPage {
                     .fontColor('#999999')
                     .margin({ bottom: 16 })
                     .width('100%');
+
+                  // ====== 音频播放控制条（标题下方、文章内容上方）======
+                  if (this.hasAudio) {
+                    Column() {
+                      Row() {
+                        Text('🔊')
+                          .fontSize(16)
+                          .margin({ right: 8 });
+                        Text(this.audioLoadFailed ? '音频加载失败' : '朗读音频')
+                          .fontSize(14)
+                          .fontColor(this.audioLoadFailed ? '#F44336' : '#666666')
+                          .fontWeight(FontWeight.Medium)
+                          .layoutWeight(1);
+                        Text(this.formatAudioTime(this.audioDurationMs))
+                          .fontSize(12)
+                          .fontColor('#999999');
+                      }
+                      .width('100%')
+                      .alignItems(VerticalAlign.Center)
+                      .margin({ bottom: 8 });
+
+                      if (!this.audioLoadFailed) {
+                        Row() {
+                          Text(this.isAudioPlaying ? '⏸' : '▶')
+                            .fontSize(20)
+                            .fontColor('#1976D2')
+                            .width(40)
+                            .height(40)
+                            .textAlign(TextAlign.Center)
+                            .borderRadius(20)
+                            .backgroundColor('#E3F2FD')
+                            .onClick(() => {
+                              this.onAudioToggle();
+                            });
+
+                          Text(this.formatAudioTime(this.audioCurrentMs))
+                            .fontSize(12)
+                            .fontColor('#666666')
+                            .margin({ left: 12, right: 8 });
+
+                          Slider({ value: this.getAudioProgressPercent(), min: 0, max: 100, style: SliderStyle.OutSet })
+                            .layoutWeight(1)
+                            .blockColor('#1976D2')
+                            .selectedColor('#1976D2')
+                            .trackColor('#E0E0E0')
+                            .onChange((value: number, mode: SliderChangeMode) => {
+                              this.onAudioSeek(value);
+                            });
+
+                          Text(this.formatAudioTime(this.audioDurationMs))
+                            .fontSize(12)
+                            .fontColor('#999999')
+                            .margin({ left: 8 });
+                        }
+                        .width('100%')
+                        .alignItems(VerticalAlign.Center);
+                      }
+                    }
+                    .width('100%')
+                    .margin({ bottom: 16 })
+                    .padding(12)
+                    .backgroundColor('#F5F5F5')
+                    .borderRadius(8);
+                  }
 
                   Text() {
                       ForEach(this.contentSegments, (segment: TextSegment, index: number) => {

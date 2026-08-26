@@ -313,6 +313,48 @@ struct SettingsPage {
                 .backgroundColor('#FFFFFF')
                 .borderRadius(8)
 
+                // 音频自动播放卡片
+                Column() {
+                  Row() {
+                    Column() {
+                      Text('自动播放音频').fontSize(16).fontWeight(FontWeight.Medium)
+                      Text('进入阅读页时自动播放文章音频').fontSize(12).fontColor('#999999').margin({ top: 4 })
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+                    Toggle({ type: ToggleType.Switch, isOn: this.config.autoPlayAudio })
+                      .onChange((isOn: boolean) => {
+                        this.config.autoPlayAudio = isOn;
+                        this.updateConfig();
+                      })
+                  }.width('100%').alignItems(VerticalAlign.Center)
+                }
+                .width('100%')
+                .padding(16)
+                .backgroundColor('#FFFFFF')
+                .borderRadius(8)
+
+                // 音频循环播放卡片
+                Column() {
+                  Row() {
+                    Column() {
+                      Text('循环播放音频').fontSize(16).fontWeight(FontWeight.Medium)
+                      Text('音频播放结束后自动重新播放').fontSize(12).fontColor('#999999').margin({ top: 4 })
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+                    Toggle({ type: ToggleType.Switch, isOn: this.config.loopAudio })
+                      .onChange((isOn: boolean) => {
+                        this.config.loopAudio = isOn;
+                        this.updateConfig();
+                      })
+                  }.width('100%').alignItems(VerticalAlign.Center)
+                }
+                .width('100%')
+                .padding(16)
+                .backgroundColor('#FFFFFF')
+                .borderRadius(8)
+
                 this.BuildSectionTitle('数据管理')
 
                 // 数据管理卡片

@@ -88,6 +88,7 @@ export interface ArticlePayload {
   checkInDays: number;
   completionRate: number;
   imagewebp: string;
+  audiobase64: string;
   iscontent: number;
   lastModified: string;
 }

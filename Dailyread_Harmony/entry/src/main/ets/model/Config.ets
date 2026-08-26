@@ -20,6 +20,8 @@ export class Config {
   syncClinicalNotesEnabled: boolean = true;
   lastResetMonth: string = '';
   readerFontSize: number = 26; // 阅读界面默认字号
+  autoPlayAudio: boolean = true; // 进入阅读页自动播放音频
+  loopAudio: boolean = false; // 音频循环播放
 
   constructor() {
   }

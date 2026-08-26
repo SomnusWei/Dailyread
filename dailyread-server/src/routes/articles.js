@@ -14,7 +14,7 @@ const ARTICLE_FIELDS = [
   'required_days AS requiredDays', 'use_independent_check_rate AS useIndependentCheckRate',
   'independent_check_rate AS independentCheckRate', 'create_time AS createTime',
   'is_long_article AS isLongArticle', 'check_in_days AS checkInDays',
-  'completion_rate AS completionRate', 'imagewebp', 'iscontent',
+  'completion_rate AS completionRate', 'imagewebp', 'audiobase64', 'iscontent',
   'last_modified AS lastModified', 'client_id AS clientId', 'server_updated_at AS serverUpdatedAt'
 ];
 
@@ -62,7 +62,7 @@ router.post('/', authRequired, async (req, res) => {
       a.isReading !== undefined ? (a.isReading ? 1 : 0) : 1, a.isRequired ? 1 : 0,
       a.requiredDays || '', a.useIndependentCheckRate ? 1 : 0, a.independentCheckRate || 0,
       a.createTime || null, a.isLongArticle ? 1 : 0, a.checkInDays || 0,
-      a.completionRate || 0, a.imagewebp || null, a.iscontent !== undefined ? (a.iscontent ? 1 : 0) : 1,
+      a.completionRate || 0, a.imagewebp || null, a.audiobase64 || null, a.iscontent !== undefined ? (a.iscontent ? 1 : 0) : 1,
       a.lastModified || null
     ];
 
@@ -72,8 +72,8 @@ router.post('/', authRequired, async (req, res) => {
       font_family, font_size, font_color, is_bold, is_reading, is_required,
       required_days, use_independent_check_rate, independent_check_rate,
       create_time, is_long_article, check_in_days, completion_rate,
-      imagewebp, iscontent, last_modified, deleted
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      imagewebp, audiobase64, iscontent, last_modified, deleted
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     ON DUPLICATE KEY UPDATE
       title=VALUES(title), content=VALUES(content), content_html=VALUES(content_html),
       chinese_chars=VALUES(chinese_chars), font_family=VALUES(font_family),
@@ -84,7 +84,7 @@ router.post('/', authRequired, async (req, res) => {
       independent_check_rate=VALUES(independent_check_rate),
       create_time=VALUES(create_time), is_long_article=VALUES(is_long_article),
       check_in_days=VALUES(check_in_days), completion_rate=VALUES(completion_rate),
-      imagewebp=VALUES(imagewebp), iscontent=VALUES(iscontent),
+      imagewebp=VALUES(imagewebp), audiobase64=VALUES(audiobase64), iscontent=VALUES(iscontent),
       last_modified=VALUES(last_modified), deleted=0`;
     await pool.query(sql, [req.userId, a.clientId, ...values]);
 
@@ -118,7 +118,7 @@ router.post('/batch', authRequired, async (req, res) => {
         a.isReading !== undefined ? (a.isReading ? 1 : 0) : 1, a.isRequired ? 1 : 0,
         a.requiredDays || '', a.useIndependentCheckRate ? 1 : 0, a.independentCheckRate || 0,
         a.createTime || null, a.isLongArticle ? 1 : 0, a.checkInDays || 0,
-        a.completionRate || 0, a.imagewebp || null, a.iscontent !== undefined ? (a.iscontent ? 1 : 0) : 1,
+        a.completionRate || 0, a.imagewebp || null, a.audiobase64 || null, a.iscontent !== undefined ? (a.iscontent ? 1 : 0) : 1,
         a.lastModified || null
       ];
       const sql = `INSERT INTO articles (
@@ -126,8 +126,8 @@ router.post('/batch', authRequired, async (req, res) => {
         font_family, font_size, font_color, is_bold, is_reading, is_required,
         required_days, use_independent_check_rate, independent_check_rate,
         create_time, is_long_article, check_in_days, completion_rate,
-        imagewebp, iscontent, last_modified, deleted
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        imagewebp, audiobase64, iscontent, last_modified, deleted
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
       ON DUPLICATE KEY UPDATE
         title=VALUES(title), content=VALUES(content), content_html=VALUES(content_html),
         chinese_chars=VALUES(chinese_chars), font_family=VALUES(font_family),
@@ -138,7 +138,7 @@ router.post('/batch', authRequired, async (req, res) => {
         independent_check_rate=VALUES(independent_check_rate),
         create_time=VALUES(create_time), is_long_article=VALUES(is_long_article),
         check_in_days=VALUES(check_in_days), completion_rate=VALUES(completion_rate),
-        imagewebp=VALUES(imagewebp), iscontent=VALUES(iscontent),
+        imagewebp=VALUES(imagewebp), audiobase64=VALUES(audiobase64), iscontent=VALUES(iscontent),
         last_modified=VALUES(last_modified), deleted=0`;
       await pool.query(sql, [req.userId, a.clientId, ...values]);
       results.push({ clientId: a.clientId, status: 'ok' });

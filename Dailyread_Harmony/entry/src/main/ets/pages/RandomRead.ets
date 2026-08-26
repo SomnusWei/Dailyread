@@ -4,6 +4,9 @@ import { ArticleRepository } from '../repository/ArticleRepository';
 import image from '@ohos.multimedia.image';
 import { common } from '@kit.AbilityKit';
 import { ImageCompressionService, SizedPixelMap } from '../service/ImageCompressionService';
+import { AudioService, AudioPlayerState } from '../service/AudioService';
+import { Config } from '../model/Config';
+import { ConfigRepository } from '../repository/ConfigRepository';
 
 interface TextSegment {
   text: string;
@@ -23,6 +26,16 @@ struct RandomReadPage {
   @State articleImageHeight: number = 0;
   @State fontSize: number = 26;
   @State showBars: boolean = false;
+  // ====== 音频播放状态 ======
+  @State hasAudio: boolean = false;
+  @State audioPrepared: boolean = false;
+  @State isAudioPlaying: boolean = false;
+  @State audioCurrentMs: number = 0;
+  @State audioDurationMs: number = 0;
+  @State audioLoadFailed: boolean = false;
+  private autoPlayAudio: boolean = true;
+  private loopAudio: boolean = false;
+  private audioService: AudioService = new AudioService();
   private currentArticleId: number = -1;
 
   // ===== 全局数据刷新监听（和其他页面保持一致）=====
@@ -37,6 +50,12 @@ struct RandomReadPage {
     this.loadRandomArticle();
   }
 
+  aboutToDisappear(): void {
+    this.audioService.release().catch((e: Error) => {
+      console.warn('RandomRead: 音频释放异常: ' + JSON.stringify(e));
+    });
+  }
+
   onRefreshSignalChanged(): void {
     this.loadRandomArticle();
   }
@@ -44,6 +63,13 @@ struct RandomReadPage {
   async loadRandomArticle(): Promise<void> {
     this.isLoading = true;
     try {
+      try {
+        const config: Config = await ConfigRepository.getInstance().getConfig();
+        this.autoPlayAudio = config.autoPlayAudio;
+        this.loopAudio = config.loopAudio;
+      } catch (cfgErr) {
+        console.error('RandomRead: 读取配置失败: ' + JSON.stringify(cfgErr));
+      }
       const pausedArticles: Article[] = await ArticleRepository.getInstance().getPausedArticles();
       let selectedArticle: Article | null = null;
 
@@ -104,6 +130,8 @@ struct RandomReadPage {
         this.articleImageWidth = imgWidth;
         this.articleImageHeight = imgHeight;
         this.articlePixelRatio = imgRatio;
+        // 异步准备音频（不阻塞页面渲染，isLoading 会先置 false）
+        this.prepareArticleAudio();
       } else {
         this.article = null;
         this.contentSegments = [];
@@ -119,6 +147,122 @@ struct RandomReadPage {
     } finally {
       this.isLoading = false;
     }
+  }
+
+  /**
+   * 准备并自动播放文章音频
+   * 检测 audiobase64 非空 → base64 解码 → AVPlayer.prepare → play
+   * 失败时标记 audioLoadFailed，不影响文字阅读
+   */
+  async prepareArticleAudio(): Promise<void> {
+    if (this.article === null) {
+      return;
+    }
+    const audioB64: string = this.article.audiobase64;
+    console.info('RandomRead: prepareArticleAudio article.id=' + this.article.id + ' audioB64.length=' + audioB64.length);
+    if (!audioB64 || audioB64.length === 0) {
+      this.hasAudio = false;
+      console.warn('RandomRead: article.audiobase64 为空，不显示音频控制条（可能数据库列不存在或同步未完成）');
+      return;
+    }
+    this.hasAudio = true;
+    this.audioLoadFailed = false;
+
+    const ctx: common.Context = getContext(this) as common.Context;
+    this.audioService.setCallbacks(
+      (state: AudioPlayerState) => {
+        this.onAudioStateChange(state);
+      },
+      (currentMs: number, durationMs: number) => {
+        this.audioCurrentMs = currentMs;
+        if (durationMs > 0) {
+          this.audioDurationMs = durationMs;
+        }
+      },
+      (message: string) => {
+        console.error('RandomRead: 音频错误: ' + message);
+        this.audioLoadFailed = true;
+        this.isAudioPlaying = false;
+        this.audioPrepared = false;
+      }
+    );
+
+    try {
+      await this.audioService.prepare(audioB64, ctx);
+      // prepare 成功后不在这里播放，等 onAudioStateChange('prepared') 回调自动播放
+    } catch (e) {
+      console.error('RandomRead: 音频 prepare 失败: ' + JSON.stringify(e));
+      // 保持 hasAudio=true，显示"音频加载失败"提示，让用户知道文章有音频
+      this.audioLoadFailed = true;
+    }
+  }
+
+  onAudioStateChange(state: AudioPlayerState): void {
+    if (state === 'prepared') {
+      this.audioPrepared = true;
+      // prepare 成功后根据配置决定是否自动播放
+      if (this.autoPlayAudio) {
+        this.audioService.play();
+      }
+    } else if (state === 'playing') {
+      this.isAudioPlaying = true;
+      this.audioPrepared = true;
+    } else if (state === 'paused') {
+      this.isAudioPlaying = false;
+    } else if (state === 'completed') {
+      this.isAudioPlaying = false;
+      this.audioCurrentMs = 0;
+      // 循环播放：completed 后重新播放
+      if (this.loopAudio) {
+        this.audioService.seek(0);
+        this.audioService.play();
+      }
+    } else if (state === 'error') {
+      this.isAudioPlaying = false;
+      this.audioPrepared = false;
+      this.audioLoadFailed = true;
+    } else if (state === 'released') {
+      this.isAudioPlaying = false;
+      this.audioPrepared = false;
+    }
+  }
+
+  onAudioToggle(): void {
+    this.audioService.togglePlayPause();
+  }
+
+  onAudioSeek(progress: number): void {
+    if (this.audioDurationMs > 0) {
+      const targetMs: number = Math.floor(this.audioDurationMs * progress / 100);
+      this.audioService.seek(targetMs);
+      this.audioCurrentMs = targetMs;
+    }
+  }
+
+  formatAudioTime(ms: number): string {
+    if (ms <= 0) {
+      return '00:00';
+    }
+    const totalSec: number = Math.floor(ms / 1000);
+    const m: number = Math.floor(totalSec / 60);
+    const s: number = totalSec % 60;
+    const mStr: string = m < 10 ? '0' + m.toString() : m.toString();
+    const sStr: string = s < 10 ? '0' + s.toString() : s.toString();
+    return mStr + ':' + sStr;
+  }
+
+  getAudioProgressPercent(): number {
+    if (this.audioDurationMs <= 0) {
+      return 0;
+    }
+    const p: number = this.audioCurrentMs * 100 / this.audioDurationMs;
+    if (p < 0) {
+      return 0;
+    }
+    if (p > 100) {
+      return 100;
+    }
+    return p;
   }
 
   parseContent(rawContent: string, articleId: number): TextSegment[] {
@@ -264,6 +408,70 @@ struct RandomReadPage {
                   .fontColor('#999999')
                   .margin({ bottom: 16 })
                   .width('100%');
+
+                // ====== 音频播放控制条（标题下方、文章内容上方）======
+                if (this.hasAudio) {
+                  Column() {
+                    Row() {
+                      Text('🔊')
+                        .fontSize(16)
+                        .margin({ right: 8 });
+                      Text(this.audioLoadFailed ? '音频加载失败' : '朗读音频')
+                        .fontSize(14)
+                        .fontColor(this.audioLoadFailed ? '#F44336' : '#666666')
+                        .fontWeight(FontWeight.Medium)
+                        .layoutWeight(1);
+                      Text(this.formatAudioTime(this.audioDurationMs))
+                        .fontSize(12)
+                        .fontColor('#999999');
+                    }
+                    .width('100%')
+                    .alignItems(VerticalAlign.Center)
+                    .margin({ bottom: 8 });
+
+                    if (!this.audioLoadFailed) {
+                      Row() {
+                        Text(this.isAudioPlaying ? '⏸' : '▶')
+                          .fontSize(20)
+                          .fontColor('#1976D2')
+                          .width(40)
+                          .height(40)
+                          .textAlign(TextAlign.Center)
+                          .borderRadius(20)
+                          .backgroundColor('#E3F2FD')
+                          .onClick(() => {
+                            this.onAudioToggle();
+                          });
+
+                        Text(this.formatAudioTime(this.audioCurrentMs))
+                          .fontSize(12)
+                          .fontColor('#666666')
+                          .margin({ left: 12, right: 8 });
+
+                        Slider({ value: this.getAudioProgressPercent(), min: 0, max: 100, style: SliderStyle.OutSet })
+                          .layoutWeight(1)
+                          .blockColor('#1976D2')
+                          .selectedColor('#1976D2')
+                          .trackColor('#E0E0E0')
+                          .onChange((value: number, mode: SliderChangeMode) => {
+                            this.onAudioSeek(value);
+                          });
+
+                        Text(this.formatAudioTime(this.audioDurationMs))
+                          .fontSize(12)
+                          .fontColor('#999999')
+                          .margin({ left: 8 });
+                      }
+                      .width('100%')
+                      .alignItems(VerticalAlign.Center);
+                    }
+                  }
+                  .width('100%')
+                  .margin({ bottom: 16 })
+                  .padding(12)
+                  .backgroundColor('#F5F5F5')
+                  .borderRadius(8);
+                }
 
                 Text() {
                   ForEach(this.contentSegments, (segment: TextSegment) => {

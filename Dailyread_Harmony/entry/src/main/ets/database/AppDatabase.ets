@@ -2,7 +2,7 @@ import relationalStore from '@ohos.data.relationalStore';
 import { common } from '@kit.AbilityKit';
 
 const DB_NAME = 'daily_read.db';
-const DB_VERSION = 20;
+const DB_VERSION = 22;
 
 const TABLE_ARTICLES = 'contents';
 const TABLE_ACUPOINTS = 'acupoints';
@@ -35,6 +35,7 @@ const SQL_CREATE_ARTICLES = `
     checkInDays INTEGER DEFAULT 0,
     completionRate REAL DEFAULT 0,
     imagewebp TEXT DEFAULT '',
+    audiobase64 TEXT DEFAULT '',
     iscontent INTEGER DEFAULT 1,
     lastModified TEXT DEFAULT ''
   )
@@ -121,7 +122,9 @@ const SQL_CREATE_CONFIG = `
     syncConceptsEnabled INTEGER DEFAULT 1,
     syncClinicalNotesEnabled INTEGER DEFAULT 1,
     lastResetMonth TEXT DEFAULT '',
-    readerFontSize INTEGER DEFAULT 26
+    readerFontSize INTEGER DEFAULT 26,
+    autoPlayAudio INTEGER DEFAULT 1,
+    loopAudio INTEGER DEFAULT 0
   )
 `;
 
@@ -348,6 +351,25 @@ export class AppDatabase {
       // 忽略
     }
 
+    // 数据库升级：v20 -> v21，给 articles 表加 audiobase64 列（文章音频，m4a/AAC base64）
+    try {
+      await this.db.executeSql(`ALTER TABLE ${TABLE_ARTICLES} ADD COLUMN audiobase64 TEXT DEFAULT ''`);
+    } catch (e) {
+      // 列已存在时会报错，忽略即可
+    }
+
+    // 数据库升级：v21 -> v22，给 config 表加 autoPlayAudio/loopAudio 列（音频播放控制）
+    try {
+      await this.db.executeSql(`ALTER TABLE ${TABLE_CONFIG} ADD COLUMN autoPlayAudio INTEGER DEFAULT 1`);
+    } catch (e) {
+      // 列已存在时会报错，忽略即可
+    }
+    try {
+      await this.db.executeSql(`ALTER TABLE ${TABLE_CONFIG} ADD COLUMN loopAudio INTEGER DEFAULT 0`);
+    } catch (e) {
+      // 列已存在时会报错，忽略即可
+    }
+
     await this.ensureDefaultConfig();
   }
 
@@ -375,7 +397,9 @@ export class AppDatabase {
         syncConceptsEnabled: 1,
         syncClinicalNotesEnabled: 1,
         lastResetMonth: '',
-        readerFontSize: 26
+        readerFontSize: 26,
+        autoPlayAudio: 1,
+        loopAudio: 0
       };
       await this.db.insert(TABLE_CONFIG, valueBucket);
     }

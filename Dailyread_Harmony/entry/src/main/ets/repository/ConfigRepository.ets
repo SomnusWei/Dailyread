@@ -36,6 +36,8 @@ export class ConfigRepository {
       const colSyncClinicalNotesEnabled: number = result.getColumnIndex('syncClinicalNotesEnabled');
       const colLastResetMonth: number = result.getColumnIndex('lastResetMonth');
       const colReaderFontSize: number = result.getColumnIndex('readerFontSize');
+      const colAutoPlayAudio: number = result.getColumnIndex('autoPlayAudio');
+      const colLoopAudio: number = result.getColumnIndex('loopAudio');
       if (result.goToFirstRow()) {
         config.id = result.getLong(colId);
         config.dailyMinutes = result.getLong(colDailyMinutes);
@@ -54,6 +56,8 @@ export class ConfigRepository {
         config.syncClinicalNotesEnabled = result.getLong(colSyncClinicalNotesEnabled) === 1;
         config.lastResetMonth = result.getString(colLastResetMonth);
         config.readerFontSize = colReaderFontSize >= 0 && !result.isColumnNull(colReaderFontSize) ? result.getLong(colReaderFontSize) : 26;
+        config.autoPlayAudio = colAutoPlayAudio >= 0 && !result.isColumnNull(colAutoPlayAudio) ? result.getLong(colAutoPlayAudio) === 1 : true;
+        config.loopAudio = colLoopAudio >= 0 && !result.isColumnNull(colLoopAudio) ? result.getLong(colLoopAudio) === 1 : false;
       }
       result.close();
     } catch (e) {
@@ -80,7 +84,9 @@ export class ConfigRepository {
       syncConceptsEnabled: config.syncConceptsEnabled ? 1 : 0,
       syncClinicalNotesEnabled: config.syncClinicalNotesEnabled ? 1 : 0,
       lastResetMonth: config.lastResetMonth,
-      readerFontSize: config.readerFontSize
+      readerFontSize: config.readerFontSize,
+      autoPlayAudio: config.autoPlayAudio ? 1 : 0,
+      loopAudio: config.loopAudio ? 1 : 0
     };
     const predicates = new relationalStore.RdbPredicates(TableNames.CONFIG);
     predicates.equalTo('id', 1);

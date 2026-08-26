@@ -20,6 +20,7 @@ export class Article {
   checkInDays: number = 0;
   completionRate: number = 0;
   imagewebp: string = '';
+  audiobase64: string = '';
   iscontent: boolean = true;
   lastModified: string = '';
 

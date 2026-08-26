@@ -143,6 +143,7 @@ export class SyncService {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp || '',
+      audiobase64: article.audiobase64 || '',
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified || new Date().toISOString()
     };
@@ -330,6 +331,7 @@ export class SyncService {
       checkInDays: (p['checkInDays'] as number) || 0,
       completionRate: (p['completionRate'] as number) || 0,
       imagewebp: (p['imagewebp'] as string) || '',
+      audiobase64: (p['audiobase64'] as string) || '',
       iscontent: (p['iscontent'] as number) === 1,
       lastModified: (p['lastModified'] as string) || ''
     };
@@ -528,6 +530,10 @@ export class SyncService {
       const clientId = (ri['articleId'] as string) || '';
       const article = articles.find(a => a.clientId === clientId);
       const localArticleId = article ? article.id : 0;
+      if (!article && clientId.length > 0) {
+        console.warn('SyncService.mergeRemoteTasksToLocal: 未找到 clientId=' + clientId
+          + ' 的本地文章（共 ' + articles.length + ' 篇），localArticleId=0，后续 Reader 将无法定位');
+      }
       newItems.push({
         taskId: 0,
         articleId: localArticleId,

@@ -35,7 +35,7 @@ app.use(cors({ origin: config.cors.origin, credentials: true }));
 // 日志
 app.use(morgan('combined'));
 
-// JSON 解析（支持大体积，文章含 base64 图片）
+// JSON 解析（支持大体积，文章含 base64 图片与音频）
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 

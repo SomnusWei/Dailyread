@@ -43,6 +43,10 @@ export class ArticleRepository {
       const colCheckInDays: number = result.getColumnIndex('checkInDays');
       const colCompletionRate: number = result.getColumnIndex('completionRate');
       const colImageWebp: number = result.getColumnIndex('imagewebp');
+      const colAudioBase64: number = result.getColumnIndex('audiobase64');
+      if (colAudioBase64 < 0) {
+        console.error('getAllArticles: audiobase64 列不存在！数据库 v21 迁移可能失败');
+      }
       const colIsContent: number = result.getColumnIndex('iscontent');
       const colLastModified: number = result.getColumnIndex('lastModified');
       while (result.goToNextRow()) {
@@ -71,6 +75,13 @@ export class ArticleRepository {
         article.checkInDays = result.getLong(colCheckInDays);
         article.completionRate = Math.round(result.getDouble(colCompletionRate));
         article.imagewebp = colImageWebp >= 0 && !result.isColumnNull(colImageWebp) ? result.getString(colImageWebp) : '';
+        // audiobase64 大字段单独 try-catch，避免单篇读取失败导致遍历中断、后续文章全部丢失
+        try {
+          article.audiobase64 = colAudioBase64 >= 0 && !result.isColumnNull(colAudioBase64) ? result.getString(colAudioBase64) : '';
+        } catch (audioErr) {
+          console.error('getAllArticles: audiobase64 读取失败 id=' + article.id + ': ' + JSON.stringify(audioErr));
+          article.audiobase64 = '';
+        }
         article.iscontent = colIsContent >= 0 && !result.isColumnNull(colIsContent) ? result.getLong(colIsContent) === 1 : true;
         article.lastModified = result.getString(colLastModified);
         articles.push(article);
@@ -109,6 +120,7 @@ export class ArticleRepository {
       const colCheckInDays: number = result.getColumnIndex('checkInDays');
       const colCompletionRate: number = result.getColumnIndex('completionRate');
       const colImageWebp: number = result.getColumnIndex('imagewebp');
+      const colAudioBase64: number = result.getColumnIndex('audiobase64');
       const colIsContent: number = result.getColumnIndex('iscontent');
       const colLastModified: number = result.getColumnIndex('lastModified');
       while (result.goToNextRow()) {
@@ -137,6 +149,13 @@ export class ArticleRepository {
         article.checkInDays = result.getLong(colCheckInDays);
         article.completionRate = Math.round(result.getDouble(colCompletionRate));
         article.imagewebp = colImageWebp >= 0 && !result.isColumnNull(colImageWebp) ? result.getString(colImageWebp) : '';
+        // audiobase64 大字段单独 try-catch，避免读取失败导致整篇文章丢失（音频为空不影响阅读）
+        try {
+          article.audiobase64 = colAudioBase64 >= 0 && !result.isColumnNull(colAudioBase64) ? result.getString(colAudioBase64) : '';
+        } catch (audioErr) {
+          console.error('getArticleById: audiobase64 读取失败 id=' + article.id + ': ' + JSON.stringify(audioErr));
+          article.audiobase64 = '';
+        }
         article.iscontent = colIsContent >= 0 && !result.isColumnNull(colIsContent) ? result.getLong(colIsContent) === 1 : true;
         article.lastModified = result.getString(colLastModified);
         articles.push(article);
@@ -175,6 +194,7 @@ export class ArticleRepository {
       const colCheckInDays: number = result.getColumnIndex('checkInDays');
       const colCompletionRate: number = result.getColumnIndex('completionRate');
       const colImageWebp: number = result.getColumnIndex('imagewebp');
+      const colAudioBase64: number = result.getColumnIndex('audiobase64');
       const colIsContent: number = result.getColumnIndex('iscontent');
       const colLastModified: number = result.getColumnIndex('lastModified');
       while (result.goToNextRow()) {
@@ -203,6 +223,7 @@ export class ArticleRepository {
         article.checkInDays = result.getLong(colCheckInDays);
         article.completionRate = Math.round(result.getDouble(colCompletionRate));
         article.imagewebp = colImageWebp >= 0 && !result.isColumnNull(colImageWebp) ? result.getString(colImageWebp) : '';
+        article.audiobase64 = colAudioBase64 >= 0 && !result.isColumnNull(colAudioBase64) ? result.getString(colAudioBase64) : '';
         article.iscontent = colIsContent >= 0 && !result.isColumnNull(colIsContent) ? result.getLong(colIsContent) === 1 : true;
         article.lastModified = result.getString(colLastModified);
         articles.push(article);
@@ -247,6 +268,7 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp,
+      audiobase64: article.audiobase64,
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified
     };
@@ -289,6 +311,7 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp,
+      audiobase64: article.audiobase64,
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified
     };
@@ -328,6 +351,7 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp || '',
+      audiobase64: article.audiobase64 || '',
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified || new Date().toISOString()
     };
@@ -365,6 +389,7 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp,
+      audiobase64: article.audiobase64,
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified
     };

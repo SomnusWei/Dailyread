@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS articles (
     check_in_days              INT DEFAULT 0,
     completion_rate            DECIMAL(5,2) DEFAULT 0,
     imagewebp                  LONGTEXT,
+    audiobase64                LONGTEXT,
     iscontent                  TINYINT DEFAULT 1,
     last_modified              VARCHAR(32),
     server_updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

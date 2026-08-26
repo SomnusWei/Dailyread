@@ -9,7 +9,10 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import threading
 import uuid
 from datetime import datetime
@@ -22,7 +25,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
     QCheckBox, QDialogButtonBox, QTabWidget, QMainWindow,
-    QStatusBar, QGroupBox, QProgressBar, QScrollArea
+    QStatusBar, QGroupBox, QProgressBar, QScrollArea, QProgressDialog
 )
 
 # 大版本更新：用户体系 + 云同步
@@ -31,6 +34,15 @@ from sync_service import sync_service
 from auth_dialogs import show_login_or_register
 from migration_dialog import MigrationDialog
 from app_paths import data_path, resource_path
+
+
+def _debug_log(msg: str):
+    """调试日志：写到数据目录 debug_audio.log（exe 无控制台时定位问题）"""
+    try:
+        with open(data_path('debug_audio.log'), 'a', encoding='utf-8') as f:
+            f.write(f"{datetime.now().isoformat()} {msg}\n")
+    except Exception:
+        pass
 
 
 # ==================== 数据模型 ====================
@@ -51,6 +63,8 @@ class DataModel:
         self.next_concept_id = 1
         self.next_clinical_note_id = 1
         self.version = 8
+        # 写盘锁：保护异步 save() 与 closeEvent 的 save_sync() 不竞态
+        self._save_lock = threading.Lock()
         self.load()
 
     @staticmethod
@@ -72,13 +86,16 @@ class DataModel:
                     self.next_concept_id = data.get('next_concept_id', 1)
                     self.next_clinical_note_id = data.get('next_clinical_note_id', 1)
                     self.version = data.get('version', 7)
-                    # 兼容旧数据：补齐 iscontent 默认 True
+                    # 兼容旧数据：补齐 iscontent / audiobase64 默认值
                     for a in self.articles:
                         a.setdefault('iscontent', True)
+                        a.setdefault('audiobase64', '')
                     # 回填 clientId（旧数据无此字段，用 migrate-{id} 保证两端一致）
                     self._backfill_client_ids()
+                _debug_log(f"load OK articles={len(self.articles)} first_has_audio_key={'audiobase64' in self.articles[0] if self.articles else 'empty'} first_audio_len={len(self.articles[0].get('audiobase64','')) if self.articles else 0}")
             except Exception as e:
                 print(f"加载数据失败: {e}")
+                _debug_log(f"load FAIL: {e}")
                 self.articles = []
                 self.concepts = []
                 self.clinical_notes = []
@@ -110,9 +127,10 @@ class DataModel:
                         print(f"检测到旧备份文件包含 {len(self.concepts)} 条概念数据，已跳过使用")
                     if self.clinical_notes:
                         print(f"检测到旧备份文件包含 {len(self.clinical_notes)} 条临床笔记数据，已跳过使用")
-                    # 兼容旧数据：补齐 iscontent 默认 True
+                    # 兼容旧数据：补齐 iscontent / audiobase64 默认值
                     for a in self.articles:
                         a.setdefault('iscontent', True)
+                        a.setdefault('audiobase64', '')
                     # 回填 clientId
                     self._backfill_client_ids()
             except Exception as e:
@@ -139,16 +157,29 @@ class DataModel:
         t.start()
 
     def _serialize_and_write(self, filepath: str, data: dict):
-        """后台线程：序列化为 JSON 并写盘"""
-        try:
-            json_str = json.dumps(data, ensure_ascii=False)
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(json_str)
-        except Exception as e:
-            print(f"保存数据失败: {e}")
+        """后台线程：序列化为 JSON 并原子写盘（临时文件 + os.replace，避免竞态导致文件损坏）"""
+        with self._save_lock:
+            tmp_path = filepath + '.tmp'
+            try:
+                json_str = json.dumps(data, ensure_ascii=False)
+                arts = data.get('articles', [])
+                audio_items = [(a.get('id'), len(a.get('audiobase64',''))) for a in arts if a.get('audiobase64')]
+                _debug_log(f"_serialize_and_write articles={len(arts)} audio_count={len(audio_items)} audio_items={audio_items[:5]}")
+                with open(tmp_path, 'w', encoding='utf-8') as f:
+                    f.write(json_str)
+                os.replace(tmp_path, filepath)
+                _debug_log(f"_serialize_and_write OK replaced filepath={filepath}")
+            except Exception as e:
+                print(f"保存数据失败: {e}")
+                _debug_log(f"_serialize_and_write FAIL: {e}")
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
 
     def save_sync(self):
-        """同步保存（关闭窗口时确保数据写完）"""
+        """同步保存（关闭窗口时确保数据写完，原子写入避免与异步 save 竞态）"""
         data = {
             'version': self.version,
             'articles': self.articles,
@@ -158,8 +189,24 @@ class DataModel:
             'next_concept_id': 1,
             'next_clinical_note_id': 1
         }
-        with open(self.APP_DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False)
+        arts = data.get('articles', [])
+        audio_items = [(a.get('id'), len(a.get('audiobase64',''))) for a in arts if a.get('audiobase64')]
+        _debug_log(f"save_sync articles={len(arts)} audio_count={len(audio_items)} audio_items={audio_items[:5]}")
+        with self._save_lock:
+            tmp_path = self.APP_DATA_FILE + '.tmp'
+            try:
+                with open(tmp_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False)
+                os.replace(tmp_path, self.APP_DATA_FILE)
+                _debug_log(f"save_sync OK replaced filepath={self.APP_DATA_FILE}")
+            except Exception as e:
+                print(f"同步保存失败: {e}")
+                _debug_log(f"save_sync FAIL: {e}")
+                try:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
 
     def count_chinese_chars(self, text: str) -> int:
         """统计汉字数量（re 底层为 C，快于 Python 循环）"""
@@ -173,6 +220,7 @@ class DataModel:
         article_data['clientId'] = self.generate_client_id()
         article_data['chineseChars'] = self.count_chinese_chars(article_data.get('content', ''))
         article_data.setdefault('imagewebp', '')
+        article_data.setdefault('audiobase64', '')
         article_data.setdefault('iscontent', True)
         _now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         article_data['createTime'] = _now
@@ -198,10 +246,13 @@ class DataModel:
                 article_data['createTime'] = article.get('createTime', datetime.now().strftime('%Y-%m-%dT%H:%M:%S'))
                 article_data['lastModified'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
                 article_data.setdefault('imagewebp', article.get('imagewebp', ''))
+                # 音频字段：编辑时必须保留原值，避免误清空（与 checkInDays/createTime 保留约束一致）
+                article_data.setdefault('audiobase64', article.get('audiobase64', ''))
                 # iscontent: 优先用传入值，否则保留旧值，再否则默认 True
                 if 'iscontent' not in article_data:
                     article_data['iscontent'] = article.get('iscontent', True)
                 self.articles[i] = article_data
+                _debug_log(f"update_article id={article_id} audiobase64_has_key={'audiobase64' in article_data} len={len(article_data.get('audiobase64',''))}")
                 self.save()
                 # 云同步钩子（异步，不阻塞 UI）
                 try:
@@ -247,18 +298,30 @@ class DataModel:
         self.next_clinical_note_id = 1
         self.save_sync()
 
-    def batch_update_articles(self, article_ids: list, updates: dict):
-        """批量更新文章字段"""
+    def batch_update_articles(self, article_ids: list, updates: dict) -> dict:
+        """批量更新文章字段，返回 {'updated': int, 'skipped_iscontent': int} 统计"""
         ids_set = set(article_ids)
         now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
         # 收集被修改的文章副本，用于云同步推送（修改后再取 clientId）
         updated_articles = []
+        updated_count = 0
+        skipped_iscontent = 0  # 因无图片被跳过 iscontent=False 的文章数
         for article in self.articles:
             if article['id'] in ids_set:
+                applied_updates = {}
                 for key, value in updates.items():
+                    # 判定：iscontent=False 但文章无图片时，跳过该字段不修改
+                    if key == 'iscontent' and not value:
+                        has_image = bool(article.get('imagewebp')) and len(article.get('imagewebp', '')) > 0
+                        if not has_image:
+                            skipped_iscontent += 1
+                            continue  # 不应用这个字段
                     article[key] = value
-                article['lastModified'] = now
-                updated_articles.append(dict(article))
+                    applied_updates[key] = value
+                if applied_updates:  # 有实际修改才记录
+                    article['lastModified'] = now
+                    updated_articles.append(dict(article))
+                    updated_count += 1
         self.save()
         # 云同步钩子：每篇被修改的文章单独入队推送
         if updated_articles and api_client.is_logged_in():
@@ -267,6 +330,7 @@ class DataModel:
                     sync_service.enqueue_article_update(article_data)
                 except Exception as e:
                     print(f"[Sync] 批量修改 enqueue update 失败: {e}")
+        return {'updated': updated_count, 'skipped_iscontent': skipped_iscontent}
 
     def export_backup(self, filepath: str):
         """导出备份"""
@@ -591,6 +655,131 @@ def get_base64_size_kb(b64_str: str) -> float:
     return len(b64_str) * 3 / 4 / 1024
 
 
+# ==================== 音频处理工具 ====================
+
+def _find_ffmpeg() -> str:
+    """查找 ffmpeg 可执行文件：优先 PATH，其次 WinGet 常见安装路径（PATH 未刷新时 fallback）"""
+    p = shutil.which('ffmpeg')
+    if p:
+        return p
+    # WinGet 安装路径 fallback：用户通过 winget 安装的 ffmpeg 可能未及时进入当前进程 PATH
+    import glob
+    winget_glob = os.path.join(
+        os.environ.get('LOCALAPPDATA', ''),
+        'Microsoft', 'WinGet', 'Packages', 'Gyan.FFmpeg_*',
+        'ffmpeg-*_build', 'bin', 'ffmpeg.exe'
+    )
+    matches = glob.glob(winget_glob)
+    if matches:
+        return matches[0]
+    # 兼容非 _full_build 后缀的发行版
+    winget_glob2 = os.path.join(
+        os.environ.get('LOCALAPPDATA', ''),
+        'Microsoft', 'WinGet', 'Packages', 'Gyan.FFmpeg_*',
+        'ffmpeg-*', 'bin', 'ffmpeg.exe'
+    )
+    matches2 = glob.glob(winget_glob2)
+    if matches2:
+        return matches2[0]
+    return ''
+
+
+def audio_to_m4a_base64(filepath: str, max_size_kb: int = 2048) -> str:
+    """
+    将音频文件转码为 m4a（AAC-LC，单声道，44.1kHz）并返回纯 base64 字符串（无前缀）。
+    调用系统 ffmpeg 转码，无论源文件是 mp3/wav/ogg/m4a，统一输出 m4a 容器 + AAC-LC，
+    保证鸿蒙 AVPlayer 原生兼容。
+
+    体积控制：按 64k → 48k → 32k 比特率逐级降级，优先选满足 max_size_kb 的结果；
+    全部超限时返回最低比特率结果（保证可用）。单条建议 < 2MB（约 2-3 分钟朗读）。
+
+    参数：
+        filepath: 源音频文件路径
+        max_size_kb: 最大文件大小，单位 KB，默认 2048KB
+
+    返回：纯 base64 字符串（无前缀），失败返回 ''
+    """
+    ffmpeg = _find_ffmpeg()
+    if not ffmpeg:
+        print('[Audio] 未找到 ffmpeg，请确保已安装并加入 PATH')
+        return ''
+
+    out_fd, out_path = tempfile.mkstemp(suffix='.m4a')
+    os.close(out_fd)
+    try:
+        for bitrate in ('64k', '48k', '32k'):
+            if os.path.exists(out_path):
+                os.remove(out_path)
+            cmd = [
+                ffmpeg, '-y', '-i', filepath,
+                '-c:a', 'aac', '-b:a', bitrate, '-ac', '1', '-ar', '44100',
+                '-movflags', '+faststart',
+                out_path
+            ]
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=120, check=False)
+            except subprocess.TimeoutExpired:
+                print(f'[Audio] ffmpeg 转码超时（{bitrate}）')
+                continue
+            except Exception as e:
+                print(f'[Audio] ffmpeg 调用异常: {e}')
+                continue
+            if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+                continue
+            if os.path.getsize(out_path) <= max_size_kb * 1024:
+                with open(out_path, 'rb') as f:
+                    return base64.b64encode(f.read()).decode('ascii')
+        # 全部比特率都超限，用最后一次结果（最低比特率，保证可用）
+        if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
+            with open(out_path, 'rb') as f:
+                return base64.b64encode(f.read()).decode('ascii')
+        return ''
+    finally:
+        try:
+            if os.path.exists(out_path):
+                os.remove(out_path)
+        except Exception:
+            pass
+
+
+def audio_base64_to_tempfile(b64_str: str, suffix: str = '.m4a') -> str:
+    """将音频 base64 解码到临时文件，供系统播放器预览试听。返回临时文件路径，失败返回 ''。
+
+    调用方负责在试听结束后删除临时文件。"""
+    if not b64_str:
+        return ''
+    try:
+        raw = base64.b64decode(b64_str)
+        fd, path = tempfile.mkstemp(suffix=suffix)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(raw)
+        return path
+    except Exception as e:
+        print(f'[Audio] 解码到临时文件失败: {e}')
+        return ''
+
+
+def format_article_media_cell(article: dict) -> str:
+    """格式化文章媒体列显示文字（图片 + 音频），用于表格"图片"列。
+
+    返回示例：
+      - 都有：'✓ 图(25KB) | ♪ 音(580KB)'
+      - 仅有图：'✓ 有图(25KB)'
+      - 仅有音频：'♪ 有音频(580KB)'
+      - 都无：'—'
+    """
+    has_image = bool(article.get('imagewebp', ''))
+    has_audio = bool(article.get('audiobase64', ''))
+    parts = []
+    if has_image:
+        size_kb = get_base64_size_kb(article.get('imagewebp', ''))
+        parts.append(f"✓ 图({size_kb:.0f}KB)")
+    if has_audio:
+        audio_kb = get_base64_size_kb(article.get('audiobase64', ''))
+        parts.append(f"♪ 音({audio_kb:.0f}KB)")
+    return ' | '.join(parts) if parts else '—'
+
+
 # ==================== 文章编辑对话框 ====================
 
 class ArticleEditDialog(QDialog):
@@ -601,20 +790,25 @@ class ArticleEditDialog(QDialog):
         self.article = article or {}
         self.is_edit = bool(article and article.get('id'))
         self.imagewebp_data = ''
+        self.audiobase64_data = ''
+        self._audio_temp_path = ''  # 试听临时文件路径，关闭时清理
         self.setWindowTitle("编辑文章" if self.is_edit else "添加文章")
-        
+
         # 强制设置窗口大小（覆盖任何保存的设置）
         from PyQt6.QtCore import QSettings
         settings = QSettings("DailyRead", "ArticleConceptManager")
         settings.clear()  # 清除所有旧设置
-        
+
         self.setFixedWidth(900)
-        self.setFixedHeight(550)
+        self.setFixedHeight(620)
         self.setStyleSheet("QDialog { margin-top: 0px; }")
         self.setup_ui()
         if self.article and self.article.get('imagewebp'):
             self.imagewebp_data = self.article.get('imagewebp', '')
             self.update_image_preview()
+        if self.article and self.article.get('audiobase64'):
+            self.audiobase64_data = self.article.get('audiobase64', '')
+            self.update_audio_preview()
 
     def restore_geometry(self):
         """恢复窗口几何信息"""
@@ -629,6 +823,13 @@ class ArticleEditDialog(QDialog):
         from PyQt6.QtCore import QSettings
         settings = QSettings("DailyRead", "ArticleConceptManager")
         settings.setValue("article_dialog_geometry", self.saveGeometry())
+        # 清理试听临时文件
+        if self._audio_temp_path and os.path.exists(self._audio_temp_path):
+            try:
+                os.remove(self._audio_temp_path)
+            except Exception:
+                pass
+            self._audio_temp_path = ''
         event.accept()
 
     def setup_ui(self):
@@ -691,6 +892,37 @@ class ArticleEditDialog(QDialog):
         image_btn_layout.addWidget(self.imageSizeLabel)
         image_btn_layout.addStretch()
         left_layout.addLayout(image_btn_layout)
+
+        # 音频设置标签
+        audio_label = QLabel("音频设置")
+        audio_label.setStyleSheet("font-weight: bold;")
+        left_layout.addWidget(audio_label)
+
+        # 音频信息标签（显示文件大小与状态）
+        self.audioInfoLabel = QLabel("（暂无音频）")
+        self.audioInfoLabel.setWordWrap(True)
+        self.audioInfoLabel.setStyleSheet("QLabel { border: 1px dashed #999; padding: 8px; color: #666; }")
+        left_layout.addWidget(self.audioInfoLabel)
+
+        # 音频操作按钮
+        audio_btn_layout = QHBoxLayout()
+        self.selectAudioBtn = QPushButton("选择音频...")
+        self.selectAudioBtn.setToolTip("选择音频文件，自动转码为 m4a（AAC-LC），鸿蒙阅读页自动播放")
+        self.selectAudioBtn.clicked.connect(self.on_select_audio)
+        audio_btn_layout.addWidget(self.selectAudioBtn)
+
+        self.previewAudioBtn = QPushButton("试听")
+        self.previewAudioBtn.setToolTip("调用系统播放器试听当前音频")
+        self.previewAudioBtn.clicked.connect(self.on_preview_audio)
+        self.previewAudioBtn.setEnabled(False)
+        audio_btn_layout.addWidget(self.previewAudioBtn)
+
+        self.removeAudioBtn = QPushButton("移除")
+        self.removeAudioBtn.clicked.connect(self.on_remove_audio)
+        self.removeAudioBtn.setEnabled(False)
+        audio_btn_layout.addWidget(self.removeAudioBtn)
+        audio_btn_layout.addStretch()
+        left_layout.addLayout(audio_btn_layout)
 
         # 选项设置
         options_group = QGroupBox("选项设置")
@@ -871,6 +1103,80 @@ class ArticleEditDialog(QDialog):
             self.imagePreviewLabel.setText("（暂无图片）")
             self.imageSizeLabel.setText("")
 
+    def on_select_audio(self):
+        """选择音频文件并转码为 m4a（AAC-LC）base64"""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "选择音频", "",
+            "音频文件 (*.mp3 *.wav *.m4a *.aac *.ogg *.flac *.wma);;所有文件 (*.*)"
+        )
+        if not filepath:
+            return
+        # 先检查 ffmpeg 是否可用，给用户明确提示
+        if not _find_ffmpeg():
+            QMessageBox.critical(
+                self, "缺少 ffmpeg",
+                "未找到 ffmpeg，音频转码无法进行。\n"
+                "请安装 ffmpeg（例如 winget install Gyan.FFmpeg 或官网下载）后重试。"
+            )
+            return
+        b64 = audio_to_m4a_base64(filepath, max_size_kb=2048)
+        if not b64:
+            QMessageBox.warning(self, "提示", "音频转码失败，请选择其他文件或检查 ffmpeg")
+            return
+        self.audiobase64_data = b64
+        self.update_audio_preview()
+
+    def on_preview_audio(self):
+        """调用系统默认播放器试听当前音频"""
+        if not self.audiobase64_data:
+            return
+        # 清理上一次的临时文件
+        if self._audio_temp_path and os.path.exists(self._audio_temp_path):
+            try:
+                os.remove(self._audio_temp_path)
+            except Exception:
+                pass
+            self._audio_temp_path = ''
+        tmp = audio_base64_to_tempfile(self.audiobase64_data, suffix='.m4a')
+        if not tmp:
+            QMessageBox.warning(self, "提示", "音频解码失败，无法试听")
+            return
+        self._audio_temp_path = tmp
+        try:
+            os.startfile(tmp)  # Windows 调用系统默认播放器
+        except Exception as e:
+            QMessageBox.warning(self, "提示", f"调用播放器失败: {e}")
+
+    def on_remove_audio(self):
+        """移除音频"""
+        self.audiobase64_data = ''
+        # 同步清理试听临时文件
+        if self._audio_temp_path and os.path.exists(self._audio_temp_path):
+            try:
+                os.remove(self._audio_temp_path)
+            except Exception:
+                pass
+            self._audio_temp_path = ''
+        self.update_audio_preview()
+
+    def update_audio_preview(self):
+        """更新音频信息显示与按钮状态"""
+        if self.audiobase64_data:
+            size_kb = get_base64_size_kb(self.audiobase64_data)
+            self.audioInfoLabel.setText(f"已加载音频（m4a/AAC）\n约 {size_kb:.1f} KB")
+            self.audioInfoLabel.setStyleSheet(
+                "QLabel { border: 1px solid #4CAF50; padding: 8px; color: #2E7D32; background: #F1F8E9; }"
+            )
+            self.previewAudioBtn.setEnabled(True)
+            self.removeAudioBtn.setEnabled(True)
+        else:
+            self.audioInfoLabel.setText("（暂无音频）")
+            self.audioInfoLabel.setStyleSheet(
+                "QLabel { border: 1px dashed #999; padding: 8px; color: #666; }"
+            )
+            self.previewAudioBtn.setEnabled(False)
+            self.removeAudioBtn.setEnabled(False)
+
     def on_ok(self):
         """点击OK按钮时的验证"""
         title = self.titleEdit.text().strip()
@@ -915,9 +1221,10 @@ class ArticleEditDialog(QDialog):
                             'checkInDays': self.checkInDaysSpin.value(),
                             'completionRate': self.completionRateSpin.value(),
                             'imagewebp': '',
+                            'audiobase64': '',
                             'iscontent': True
                         })
-            return result if result else [{'title': title, 'content': content, 'imagewebp': '', 'iscontent': True}]
+            return result if result else [{'title': title, 'content': content, 'imagewebp': '', 'audiobase64': '', 'iscontent': True}]
 
         # 正常返回单条数据
         return [{
@@ -931,6 +1238,7 @@ class ArticleEditDialog(QDialog):
             'checkInDays': self.checkInDaysSpin.value(),
             'completionRate': self.completionRateSpin.value(),
             'imagewebp': self.imagewebp_data,
+            'audiobase64': self.audiobase64_data,
             'iscontent': self.isContentCheck.isChecked()
         }]
 
@@ -1193,6 +1501,22 @@ class BatchEditDialog(QDialog):
         indep_rate_layout.addWidget(self.indep_rate_spin)
         layout.addWidget(indep_rate_group)
 
+        # 是否显示文章开关
+        iscontent_group = QGroupBox("是否显示文章内容")
+        iscontent_layout = QHBoxLayout(iscontent_group)
+        self.iscontent_check = QCheckBox("修改")
+        self.iscontent_combo = QComboBox()
+        self.iscontent_combo.addItems(["显示", "不显示"])
+        self.iscontent_combo.setEnabled(False)
+        self.iscontent_check.toggled.connect(self.iscontent_combo.setEnabled)
+        iscontent_layout.addWidget(self.iscontent_check)
+        iscontent_layout.addWidget(self.iscontent_combo)
+        iscontent_hint = QLabel("提示：没有图片的文章将被跳过（无图不显示会导致文章空白）")
+        iscontent_hint.setStyleSheet("font-size: 11px; color: #999;")
+        iscontent_hint.setWordWrap(True)
+        iscontent_layout.addWidget(iscontent_hint, 1)
+        layout.addWidget(iscontent_group)
+
         # 按钮
         btn_layout = QHBoxLayout()
         ok_btn = QPushButton("确定修改")
@@ -1210,7 +1534,8 @@ class BatchEditDialog(QDialog):
             self.reading_check.isChecked(),
             self.required_check.isChecked(),
             self.indep_switch_check.isChecked(),
-            self.indep_rate_check.isChecked()
+            self.indep_rate_check.isChecked(),
+            self.iscontent_check.isChecked()
         ]):
             QMessageBox.warning(self, "提示", "请至少勾选一个要修改的字段")
             return
@@ -1227,6 +1552,8 @@ class BatchEditDialog(QDialog):
             updates['useIndependentCheckRate'] = self.indep_switch_combo.currentText() == "开启"
         if self.indep_rate_check.isChecked():
             updates['independentCheckRate'] = self.indep_rate_spin.value()
+        if self.iscontent_check.isChecked():
+            updates['iscontent'] = self.iscontent_combo.currentText() == "显示"
         return updates
 
     def get_summary_list(self) -> list:
@@ -1240,6 +1567,8 @@ class BatchEditDialog(QDialog):
             items.append(f"独立完成率开关={self.indep_switch_combo.currentText()}")
         if self.indep_rate_check.isChecked():
             items.append(f"独立完成率={self.indep_rate_spin.value()}%")
+        if self.iscontent_check.isChecked():
+            items.append(f"显示文章内容={self.iscontent_combo.currentText()}")
         return items
 
 
@@ -1275,6 +1604,11 @@ class ArticlePage(QWidget):
         batch_edit_btn.setStyleSheet("background-color: #107c10; color: white; padding: 5px 15px;")
         batch_edit_btn.clicked.connect(self.batch_edit_articles)
         toolbar_layout.addWidget(batch_edit_btn)
+
+        batch_audio_btn = QPushButton("批量导入音频")
+        batch_audio_btn.setStyleSheet("background-color: #9c27b0; color: white; padding: 5px 15px;")
+        batch_audio_btn.clicked.connect(self.batch_import_audio)
+        toolbar_layout.addWidget(batch_audio_btn)
 
         quick_paste_btn = QPushButton("快速粘贴")
         quick_paste_btn.clicked.connect(self.quick_paste)
@@ -1418,13 +1752,8 @@ class ArticlePage(QWidget):
             item9 = _QTableWidgetItem(str(article.get('completionRate', 0)) + "%")
             item9.setTextAlignment(_align)
             self.table.setItem(row, 9, item9)
-            # 图片
-            has_image = bool(article.get('imagewebp', ''))
-            if has_image:
-                size_kb = get_base64_size_kb(article.get('imagewebp', ''))
-                item_img = _QTableWidgetItem(f"✓ 有图({size_kb:.0f}KB)")
-            else:
-                item_img = _QTableWidgetItem("—")
+            # 图片/音频
+            item_img = _QTableWidgetItem(format_article_media_cell(article))
             item_img.setTextAlignment(_align)
             self.table.setItem(row, 10, item_img)
             # 内容
@@ -1537,13 +1866,8 @@ class ArticlePage(QWidget):
             item9 = _QTableWidgetItem(str(article.get('completionRate', 0)) + "%")
             item9.setTextAlignment(_align)
             self.table.setItem(target_row, 9, item9)
-            # 图片(10)
-            has_image = bool(article.get('imagewebp', ''))
-            if has_image:
-                size_kb = get_base64_size_kb(article.get('imagewebp', ''))
-                item_img = _QTableWidgetItem(f"✓ 有图({size_kb:.0f}KB)")
-            else:
-                item_img = _QTableWidgetItem("—")
+            # 图片/音频(10)
+            item_img = _QTableWidgetItem(format_article_media_cell(article))
             item_img.setTextAlignment(_align)
             self.table.setItem(target_row, 10, item_img)
             # 内容(11)
@@ -1657,9 +1981,126 @@ class ArticlePage(QWidget):
             reply = QMessageBox.question(self, "确认修改",
                 f"将对 {len(ids)} 篇文章执行以下修改：\n{summary}\n\n是否继续？")
             if reply == QMessageBox.StandardButton.Yes:
-                self.data_model.batch_update_articles(ids, updates)
+                result = self.data_model.batch_update_articles(ids, updates)
                 self.update_table_cells(ids)
-                self.window().statusBar().showMessage(f"已批量修改 {len(ids)} 篇文章", 3000)
+                msg = f"已批量修改 {result['updated']} 篇文章"
+                if result['skipped_iscontent'] > 0:
+                    msg += f"\n\n因无图片跳过'不显示文章内容'：{result['skipped_iscontent']} 篇（无图不显示会导致文章空白）"
+                    QMessageBox.information(self, "修改完成", msg)
+                self.window().statusBar().showMessage(msg.replace('\n\n', '，').replace('\n', '，'), 5000)
+
+    def batch_import_audio(self):
+        """批量导入音频：选中文章 → 选择文件夹 → 按标题匹配音频文件 → 转码 m4a → 写入 audiobase64 → 上传服务器"""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, "提示", "请先选择要导入音频的文章")
+            return
+
+        ids = [int(self.table.item(row.row(), 0).text()) for row in selected_rows]
+        selected_articles = [a for a in self.data_model.articles if a['id'] in ids]
+        if not selected_articles:
+            QMessageBox.warning(self, "提示", "未找到选中的文章")
+            return
+
+        # 选择文件夹
+        folder = QFileDialog.getExistingDirectory(self, "选择音频文件所在文件夹")
+        if not folder:
+            return
+
+        # 扫描文件夹，建立 文件名(无扩展名) → 路径 映射
+        audio_extensions = ('.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.wma')
+        file_map: dict = {}
+        try:
+            for fname in os.listdir(folder):
+                name, ext = os.path.splitext(fname)
+                if ext.lower() in audio_extensions:
+                    file_map[name] = os.path.join(folder, fname)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"读取文件夹失败: {e}")
+            return
+
+        if not file_map:
+            QMessageBox.warning(self, "提示", f"文件夹中未找到音频文件（支持 {', '.join(audio_extensions)}）")
+            return
+
+        # 匹配：文章标题 → 音频文件
+        matched: list = []
+        unmatched: list = []
+        for article in selected_articles:
+            title = article.get('title', '').strip()
+            if title and title in file_map:
+                matched.append((article, file_map[title]))
+            else:
+                unmatched.append(title)
+
+        if not matched:
+            unmatched_preview = "\n".join(unmatched[:5]) + (f"\n... 等 {len(unmatched)} 篇" if len(unmatched) > 5 else "")
+            QMessageBox.warning(self, "提示", f"选中文章的标题均未在文件夹中找到匹配的音频文件\n\n未匹配标题：\n{unmatched_preview}")
+            return
+
+        # 确认
+        matched_preview = "\n".join(f"• {a['title']}" for a, _ in matched[:5])
+        if len(matched) > 5:
+            matched_preview += f"\n... 等 {len(matched)} 篇"
+        reply = QMessageBox.question(self, "确认导入",
+            f"匹配到 {len(matched)} 篇文章的音频文件：\n{matched_preview}\n\n"
+            f"未匹配 {len(unmatched)} 篇\n\n是否开始转码导入？")
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # 进度条
+        progress = QProgressDialog("正在转码导入音频...", "取消", 0, len(matched), self)
+        progress.setWindowTitle("批量导入音频")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setMinimumWidth(400)
+        progress.show()
+
+        success_count = 0
+        fail_count = 0
+        fail_titles: list = []
+        for i, (article, audio_path) in enumerate(matched):
+            if progress.wasCanceled():
+                break
+            progress.setLabelText(f"转码中 ({i + 1}/{len(matched)}): {article['title']}")
+            progress.setValue(i)
+            QApplication.processEvents()  # 刷新 UI
+
+            try:
+                b64 = audio_to_m4a_base64(audio_path)
+                if b64:
+                    # 更新文章 audiobase64（update_article 会 enqueue_article_update 上传服务器）
+                    article['audiobase64'] = b64
+                    article['lastModified'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+                    self.data_model.update_article(article['id'], article)
+                    success_count += 1
+                else:
+                    print(f"[Audio] 转码失败: {article['title']}")
+                    fail_count += 1
+                    fail_titles.append(article['title'])
+            except Exception as e:
+                print(f"[Audio] 导入异常 {article['title']}: {e}")
+                fail_count += 1
+                fail_titles.append(article['title'])
+
+        progress.setValue(len(matched))
+        progress.close()
+
+        # 刷新表格 + 保存
+        self.update_table_cells([a['id'] for a, _ in matched])
+        self.data_model.save()
+
+        # 结果提示
+        msg = f"批量导入完成\n\n成功: {success_count} 篇\n失败: {fail_count} 篇\n未匹配: {len(unmatched)} 篇"
+        if fail_count > 0:
+            msg += f"\n\n失败文章:\n" + "\n".join(f"• {t}" for t in fail_titles[:5])
+            if len(fail_titles) > 5:
+                msg += f"\n... 等 {len(fail_titles)} 篇"
+            QMessageBox.warning(self, "导入结果", msg)
+        else:
+            QMessageBox.information(self, "导入成功", msg)
+        self.window().statusBar().showMessage(
+            f"批量导入音频完成: 成功 {success_count}, 失败 {fail_count}, 未匹配 {len(unmatched)}", 5000)
 
     def quick_paste(self):
         """快速粘贴"""
@@ -1826,6 +2267,9 @@ class BackupPage(QWidget):
 
     def _on_articles_pulled(self, remote_articles, next_since):
         """服务端增量文章合并到本地（按 clientId 去重，保留本地 id）"""
+        _debug_log(f"_on_articles_pulled remote_count={len(remote_articles)}")
+        for ra in remote_articles:
+            _debug_log(f"  remote cid={ra.get('clientId')} has_audio_key={'audiobase64' in ra} audio_len={len(ra.get('audiobase64','') if ra.get('audiobase64') else '')}")
         existing_by_cid = {}
         for a in self.data_model.articles:
             cid = a.get('clientId')
@@ -1840,6 +2284,12 @@ class BackupPage(QWidget):
                 # 更新本地：保留本地 id，其他字段用服务端
                 local = existing_by_cid[cid]
                 ra['id'] = local.get('id')
+                # 保留本地 audiobase64 / imagewebp：服务端旧数据可能无此字段，
+                # 避免拉取增量时用服务端空值覆盖本地音频/图片导致丢失
+                if not ra.get('audiobase64'):
+                    ra['audiobase64'] = local.get('audiobase64', '')
+                if not ra.get('imagewebp'):
+                    ra['imagewebp'] = local.get('imagewebp', '')
                 for i, a in enumerate(self.data_model.articles):
                     if a is local:
                         self.data_model.articles[i] = ra
@@ -2619,7 +3069,17 @@ class MainWindow(QMainWindow):
 
     def _on_articles_pulled_full(self, remote_articles, next_since):
         """全量替换：用服务端文章完全替换本地数据（切换账号/首次登录时调用）"""
+        _debug_log(f"_on_articles_pulled_full ENTER remote_count={len(remote_articles)} local_before={len(self.data_model.articles)}")
+        for ra in remote_articles:
+            _debug_log(f"  remote cid={ra.get('clientId')} has_audio_key={'audiobase64' in ra} audio_len={len(ra.get('audiobase64','') if ra.get('audiobase64') else '')}")
         new_articles = []
+        # 构建本地 clientId → 本地文章映射，全量替换时保留本地 audiobase64/imagewebp
+        # （服务端旧数据可能无此字段，避免拉取覆盖导致音频/图片丢失）
+        local_by_cid: dict = {}
+        for a in self.data_model.articles:
+            cid = a.get('clientId')
+            if cid:
+                local_by_cid[str(cid)] = a
         for ra in remote_articles:
             cid = str(ra.get('clientId') or '')
             if not cid:
@@ -2627,11 +3087,19 @@ class MainWindow(QMainWindow):
             ra['clientId'] = cid
             ra['id'] = len(new_articles) + 1
             ra.setdefault('iscontent', True)
+            # 保留本地 audiobase64/imagewebp：服务端为空时用本地值
+            local = local_by_cid.get(cid)
+            if local:
+                if not ra.get('audiobase64'):
+                    ra['audiobase64'] = local.get('audiobase64', '')
+                if not ra.get('imagewebp'):
+                    ra['imagewebp'] = local.get('imagewebp', '')
             new_articles.append(ra)
         self.data_model.articles = new_articles
         self.data_model.next_article_id = len(new_articles) + 1
         self.data_model.save_sync()
         self.refresh_all()
+        _debug_log(f"_on_articles_pulled_full DONE local_after={len(self.data_model.articles)}")
 
     def auto_save_timer(self):
         """自动保存定时器"""

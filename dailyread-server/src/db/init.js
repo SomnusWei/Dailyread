@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS articles (
     check_in_days              INT DEFAULT 0,
     completion_rate            DECIMAL(5,2) DEFAULT 0,
     imagewebp                  LONGTEXT,
+    audiobase64                LONGTEXT,
     iscontent                  TINYINT DEFAULT 1,
     last_modified              VARCHAR(32),
     server_updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -119,6 +120,11 @@ CREATE TABLE IF NOT EXISTS user_configs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 `;
 
+// 迁移：为已存在的 articles 表添加 audiobase64 列（音频 base64，m4a/AAC，纯 base64 无前缀）
+const SQL_ALTER_ARTICLES_ADD_AUDIO = `
+ALTER TABLE articles ADD COLUMN audiobase64 LONGTEXT AFTER imagewebp
+`;
+
 async function init() {
   // 用 root 连接（不指定 database）建库 + 建用户
   const rootConn = await mysql.createConnection({
@@ -173,6 +179,18 @@ async function init() {
   } catch (e) {
     if (e.message && e.message.includes('Duplicate column')) {
       console.log('  - migration: role column already exists, skipped');
+    } else {
+      console.error('  - migration error:', e.message);
+    }
+  }
+
+  // 迁移：为已有 articles 表添加 audiobase64 列（音频 base64，如果不存在）
+  try {
+    await conn.query(SQL_ALTER_ARTICLES_ADD_AUDIO);
+    console.log('  - migration: audiobase64 column added to articles OK');
+  } catch (e) {
+    if (e.message && e.message.includes('Duplicate column')) {
+      console.log('  - migration: audiobase64 column already exists, skipped');
     } else {
       console.error('  - migration error:', e.message);
     }
