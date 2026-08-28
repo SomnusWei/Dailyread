@@ -145,7 +145,8 @@
   var NAV_ITEMS = [
     { key: 'messages', icon: '🔔', label: '消息', show: true },
     { key: 'handouts', icon: '📨', label: '讲义库', show: true },
-    { key: 'assignments', icon: '📝', label: '作业', show: true },
+    { key: 'assignments', icon: '📝', label: '作业管理', show: true },
+    { key: 'dailyread', icon: '📚', label: '每日阅读', show: true, external: '/center/dr/bind.html' },
     { key: 'manage', icon: '🛠️', label: '管理', show: isStaff },
     { key: 'profile', icon: '👤', label: '我的', show: true }
   ];
@@ -166,7 +167,10 @@
           + (item.key === 'messages'
             ? '<span class="lc-nav-badge" style="' + (unreadCount ? '' : 'display:none') + '">' + unreadCount + '</span>'
             : '');
-        b.addEventListener('click', function () { go(item.key); });
+        b.addEventListener('click', function () {
+          if (item.external) { location.href = item.external; return; }
+          go(item.key);
+        });
         return b;
       };
       var sb = mkBtn('');
@@ -199,10 +203,22 @@
   // 管理页快速跳转按钮（分发讲义/布置作业）
   document.querySelectorAll('[data-goto-manage]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      go('manage');
       switchManageTab(btn.getAttribute('data-goto-manage'));
     });
   });
+
+  // 讲义库中的"分发讲义"按钮 → 展开/隐藏分发表单
+  var toggleHandoutBtn = document.getElementById('toggleHandoutForm');
+  if (toggleHandoutBtn) {
+    toggleHandoutBtn.addEventListener('click', function () {
+      var p = document.getElementById('panel-handout');
+      if (!p) return;
+      var isOpen = p.style.display !== 'none';
+      p.style.display = isOpen ? 'none' : '';
+      toggleHandoutBtn.textContent = isOpen ? '＋ 分发讲义' : '收起表单';
+      if (!isOpen) loadMyHandouts();
+    });
+  }
 
   // ================= 未读轮询 =================
   async function refreshUnread() {
@@ -620,6 +636,7 @@
       toast(e.message || '打开失败', 'error');
     }
   }
+  window.openSubmissionFile = openSubmissionFile;
   function triggerDownload(url, name) {
     var a = document.createElement('a');
     a.href = url;
@@ -784,7 +801,7 @@
     document.querySelectorAll('#manageTabs .lc-sub-tab').forEach(function (t) {
       t.classList.toggle('active', t.getAttribute('data-tab') === tab && t.style.display !== 'none');
     });
-    ['handout', 'assignment', 'message', 'users'].forEach(function (k) {
+    ['message', 'users'].forEach(function (k) {
       var p = document.getElementById('panel-' + k);
       if (p) p.style.display = (k === tab) ? '' : 'none';
     });
@@ -792,6 +809,206 @@
   document.querySelectorAll('#manageTabs .lc-sub-tab').forEach(function (tab) {
     tab.addEventListener('click', function () { switchManageTab(tab.getAttribute('data-tab')); });
   });
+
+  // ================= 作业管理子标签 =================
+  var assignMgmtTab = 'list';
+  function switchAssignMgmt(tab) {
+    assignMgmtTab = tab;
+    document.querySelectorAll('#assignMgmtTabs .lc-sub-tab').forEach(function (t) {
+      t.classList.toggle('active', t.getAttribute('data-atab') === tab && t.style.display !== 'none');
+    });
+    ['list', 'query', 'publish', 'completion'].forEach(function (k) {
+      var p = document.getElementById('apanel-' + k);
+      if (p) p.style.display = (k === tab) ? '' : 'none';
+    });
+    if (tab === 'publish') loadMyAssignments();
+    if (tab === 'query') initAqLevel();
+    if (tab === 'completion') initCompletionPanel();
+  }
+  document.querySelectorAll('#assignMgmtTabs .lc-sub-tab').forEach(function (tab) {
+    tab.addEventListener('click', function () { switchAssignMgmt(tab.getAttribute('data-atab')); });
+  });
+
+  // ---------- 作业查询 ----------
+  // 初始化等级下拉
+  function initAqLevel() {
+    var sel = document.getElementById('aqLevel');
+    if (!sel || sel.children.length > 1) return;
+    Object.keys(ROLE_LABELS).forEach(function (r) {
+      if (r === 'admin' || r === 'teacher') return;
+      var o = document.createElement('option');
+      o.value = r; o.textContent = ROLE_LABELS[r];
+      sel.appendChild(o);
+    });
+  }
+  var aqQueryBtn = document.getElementById('aqQueryBtn');
+  if (aqQueryBtn) aqQueryBtn.addEventListener('click', loadAssignmentQuery);
+
+  async function loadAssignmentQuery() {
+    initAqLevel();
+    var user = document.getElementById('aqUser') ? document.getElementById('aqUser').value.trim() : '';
+    var level = document.getElementById('aqLevel') ? document.getElementById('aqLevel').value : '';
+    var result = document.getElementById('aqResult');
+    var tbody = document.getElementById('aqTbody');
+    var summary = document.getElementById('aqSummary');
+    var countEl = document.getElementById('aqCount');
+    if (!user && !level) { alert('请输入用户名或选择等级'); return; }
+    if (result) result.style.display = '';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">查询中…</td></tr>';
+    try {
+      var params = [];
+      if (user) params.push('user=' + encodeURIComponent(user));
+      if (level) params.push('level=' + encodeURIComponent(level));
+      var data = await api('/assignments-query?' + params.join('&'));
+      if (countEl) countEl.textContent = '共 ' + (data.list ? data.list.length : 0) + ' 条记录';
+      if (summary) {
+        var submitted = 0, graded = 0, pending = 0;
+        (data.list || []).forEach(function (r) {
+          if (r.submission) { submitted++; if (r.submission.score != null) graded++; else pending++; }
+        });
+        summary.innerHTML =
+          '<div style="background:rgba(102,126,234,0.08); padding:10px 14px; border-radius:10px; flex:1; min-width:100px;"><span style="font-size:12px;color:var(--text-muted)">总记录</span><br><b style="font-size:18px;">' + (data.list ? data.list.length : 0) + '</b></div>' +
+          '<div style="background:rgba(25,118,210,0.08); padding:10px 14px; border-radius:10px; flex:1; min-width:100px;"><span style="font-size:12px;color:var(--text-muted)">已提交</span><br><b style="font-size:18px;color:#1565C0;">' + submitted + '</b></div>' +
+          '<div style="background:rgba(76,175,80,0.08); padding:10px 14px; border-radius:10px; flex:1; min-width:100px;"><span style="font-size:12px;color:var(--text-muted)">已批改</span><br><b style="font-size:18px;color:#2E7D32;">' + graded + '</b></div>' +
+          '<div style="background:rgba(255,167,38,0.08); padding:10px 14px; border-radius:10px; flex:1; min-width:100px;"><span style="font-size:12px;color:var(--text-muted)">待批改</span><br><b style="font-size:18px;color:#B8720A;">' + pending + '</b></div>';
+      }
+      if (!data.list || data.list.length === 0) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--text-muted)">无匹配记录</td></tr>';
+        return;
+      }
+      if (tbody) {
+        tbody.innerHTML = data.list.map(function (r) {
+          var sub = r.submission;
+          var statusHtml = sub
+            ? '<span class="lc-sub-badge lc-sub-sent">已提交</span>'
+            : '<span class="lc-sub-badge" style="background:rgba(0,0,0,0.06); color:var(--text-muted);">未提交</span>';
+          var scoreHtml = sub && sub.score != null
+            ? '<b style="color:#2E7D32;">' + sub.score + ' 分</b>'
+            : (sub ? '<span style="color:var(--text-muted);">待批改</span>' : '—');
+          var timeHtml = sub ? fmtTime(sub.submitted_at) : '—';
+          var actionHtml = sub
+            ? '<a class="lc-link-action" href="/api/learning/submissions/' + sub.id + '/file" target="_blank" onclick="event.preventDefault(); openSubmissionFile(' + sub.id + ', \'' + esc(sub.original_name || sub.filename || '').replace(/'/g, "\\'") + '\')">查看</a>'
+            : '—';
+          return '<tr>' +
+            '<td>' + esc(r.title) + '</td>' +
+            '<td>' + esc(r.student_nickname || r.student_username) + '</td>' +
+            '<td>' + esc(ROLE_LABELS[r.student_role] || r.student_role) + '</td>' +
+            '<td>' + statusHtml + '</td>' +
+            '<td>' + scoreHtml + '</td>' +
+            '<td style="font-size:12px;">' + timeHtml + '</td>' +
+            '<td>' + actionHtml + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+    } catch (e) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="color:var(--error)">查询失败：' + esc(e.message) + '</td></tr>';
+    }
+  }
+
+  // ---------- 完成率（周/月视图） ----------
+  var compCurrentView = 'week';
+  var compCurrentStudent = null;
+  function initCompletionPanel() {
+    var levelSel = document.getElementById('compLevel');
+    if (levelSel && levelSel.children.length <= 1) {
+      Object.keys(ROLE_LABELS).forEach(function (r) {
+        if (r === 'admin' || r === 'teacher') return;
+        var o = document.createElement('option');
+        o.value = r; o.textContent = ROLE_LABELS[r];
+        levelSel.appendChild(o);
+      });
+    }
+    var filterBtn = document.getElementById('compFilterBtn');
+    if (filterBtn && !filterBtn._bound) { filterBtn._bound = true; filterBtn.addEventListener('click', loadCompStudents); }
+    var weekBtn = document.getElementById('compViewWeek');
+    var monthBtn = document.getElementById('compViewMonth');
+    if (weekBtn && !weekBtn._bound) { weekBtn._bound = true; weekBtn.addEventListener('click', function () { compCurrentView = 'week'; loadCompChart(); }); }
+    if (monthBtn && !monthBtn._bound) { monthBtn._bound = true; monthBtn.addEventListener('click', function () { compCurrentView = 'month'; loadCompChart(); });
+      monthBtn.addEventListener('change', loadCompChart);
+    }
+    var dateInput = document.getElementById('compDate');
+    if (dateInput && !dateInput._bound) {
+      dateInput._bound = true;
+      var cd = new Date();
+      dateInput.value = cd.getFullYear() + '-' + String(cd.getMonth() + 1).padStart(2, '0') + '-' + String(cd.getDate()).padStart(2, '0');
+      dateInput.addEventListener('change', loadCompChart);
+    }
+    if (!compCurrentStudent) loadCompStudents();
+  }
+
+  async function loadCompStudents() {
+    var level = document.getElementById('compLevel') ? document.getElementById('compLevel').value : '';
+    var listEl = document.getElementById('compStudentList');
+    var detailEl = document.getElementById('compDetail');
+    if (detailEl) detailEl.style.display = 'none';
+    compCurrentStudent = null;
+    if (listEl) listEl.innerHTML = '<p style="color:var(--text-muted);">加载中…</p>';
+    try {
+      var url = '/dr/completion-rates/students' + (level ? '?level=' + encodeURIComponent(level) : '');
+      var data = await api(url);
+      if (!data.list || data.list.length === 0) {
+        if (listEl) listEl.innerHTML = '<p style="color:var(--text-muted);">该等级暂无已绑定 DailyRead 的学生</p>';
+        return;
+      }
+      if (listEl) {
+        listEl.innerHTML = data.list.map(function (s) {
+          return '<button class="lc-cat-chip" data-comp-student="' + s.lcUserId + '" data-dr-student="' + s.drUserId + '">' +
+            esc(s.lcNickname || s.lcUsername) + ' (' + esc(ROLE_LABELS[s.lcRole] || s.lcRole) + ')</button>';
+        }).join('');
+        listEl.querySelectorAll('[data-comp-student]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            listEl.querySelectorAll('[data-comp-student]').forEach(function (b) { b.classList.remove('on'); });
+            btn.classList.add('on');
+            compCurrentStudent = { lcUserId: parseInt(btn.getAttribute('data-comp-student')), drUserId: parseInt(btn.getAttribute('data-dr-student')) };
+            if (detailEl) detailEl.style.display = '';
+            loadCompChart();
+          });
+        });
+      }
+    } catch (e) {
+      if (listEl) listEl.innerHTML = '<p style="color:var(--error);">加载失败：' + esc(e.message) + '</p>';
+    }
+  }
+
+  async function loadCompChart() {
+    if (!compCurrentStudent) return;
+    var chartEl = document.getElementById('compChart');
+    var date = document.getElementById('compDate') ? document.getElementById('compDate').value : '';
+    if (!date) return;
+    if (chartEl) chartEl.innerHTML = '<p style="color:var(--text-muted);">加载中…</p>';
+    try {
+      var url = '/dr/completion-rates/student?userId=' + compCurrentStudent.lcUserId +
+        '&view=' + compCurrentView + '&date=' + encodeURIComponent(date);
+      var data = await api(url);
+      if (!data.list || data.list.length === 0) {
+        if (chartEl) chartEl.innerHTML = '<p style="color:var(--text-muted);">该时间段暂无完成率数据</p>';
+        return;
+      }
+      // 渲染柱状图
+      var maxRate = 100;
+      var barHeight = 24;
+      var barGap = 6;
+      if (chartEl) {
+        chartEl.innerHTML = '<div style="display:flex; align-items:flex-end; gap:4px; height:' + (data.list.length * (barHeight + barGap)) + 'px; flex-direction:column; overflow-x:auto;">' +
+          data.list.map(function (r) {
+            var w = Math.max(2, Math.round(r.completionRate / maxRate * 300));
+            var color = r.completionRate >= 80 ? '#4CAF50' : (r.completionRate >= 50 ? '#FFA726' : '#E53935');
+            var label = compCurrentView === 'week'
+              ? r.taskDate
+              : r.taskDate;
+            return '<div style="display:flex; align-items:center; gap:8px; height:' + barHeight + 'px;">' +
+              '<span style="font-size:12px; color:var(--text-muted); min-width:90px; text-align:right;">' + label + '</span>' +
+              '<div style="width:' + w + 'px; height:' + (barHeight - 4) + 'px; background:' + color + '; border-radius:4px; transition:width 0.3s;"></div>' +
+              '<span style="font-size:12px; font-weight:700;">' + r.completionRate + '%</span>' +
+              '<span style="font-size:11px; color:var(--text-muted);">(' + r.checkedItems + '/' + r.totalItems + ')</span>' +
+              '</div>';
+          }).join('') +
+          '</div>';
+      }
+    } catch (e) {
+      if (chartEl) chartEl.innerHTML = '<p style="color:var(--error);">加载失败：' + esc(e.message) + '</p>';
+    }
+  }
 
   // 等级组
   var hoLevels = buildLevelGroup(document.getElementById('hoLevels'), { allowAll: true, roles: ALL_ROLES });

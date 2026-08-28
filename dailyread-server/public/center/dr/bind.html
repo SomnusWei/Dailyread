@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>DailyRead 账号绑定 · 炎武班学习中心</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/center/css/center.css">
+  <link rel="stylesheet" href="/center/dr/css/dr.css">
+</head>
+<body class="lc-body">
+  <div class="dr-bind-wrap">
+    <div class="dr-bind-card">
+      <div class="dr-bind-logo">📚</div>
+      <h1 class="dr-bind-title">绑定 DailyRead 账号</h1>
+      <p class="dr-bind-desc">绑定后即可在学习中心内使用每日阅读、文章管理、音频朗读、磨耳跟背等功能，数据与绑定的 DailyRead 账号实时同步。</p>
+
+      <!-- 已绑定状态 -->
+      <div id="boundPanel" class="dr-bound-panel" style="display:none;">
+        <div class="dr-bound-info">
+          <span class="dr-bound-label">当前绑定</span>
+          <span class="dr-bound-user" id="boundUser">—</span>
+        </div>
+        <div class="dr-bound-actions">
+          <a class="dr-btn dr-btn-primary" href="/center/dr/app.html">进入每日阅读 →</a>
+          <button class="dr-btn dr-btn-ghost" id="unbindBtn">解除绑定</button>
+        </div>
+      </div>
+
+      <!-- 未绑定表单 -->
+      <form id="bindForm" class="dr-bind-form" style="display:none;">
+        <div class="dr-field">
+          <label>DailyRead 用户名</label>
+          <input type="text" id="drUsername" autocomplete="username" placeholder="请输入 DailyRead 账号用户名" required>
+        </div>
+        <div class="dr-field">
+          <label>DailyRead 密码</label>
+          <input type="password" id="drPassword" autocomplete="current-password" placeholder="请输入 DailyRead 账号密码" required>
+        </div>
+        <p class="dr-bind-note">· 绑定仅验证账号密码，不记录密码，不签发 DailyRead 登录凭证<br>· 一个学习中心账号最多绑定一个 DailyRead 账号<br>· DailyRead 账号不能用于登录学习中心，必须通过学习中心账号登录</p>
+        <button type="submit" class="dr-btn dr-btn-primary" id="bindBtn">确认绑定</button>
+        <a class="dr-btn dr-btn-ghost" href="/center/app.html">返回学习中心</a>
+      </form>
+
+      <!-- 加载中 -->
+      <div id="loadingPanel" class="dr-loading">
+        <div class="dr-spinner"></div>
+        <p>正在检查绑定状态…</p>
+      </div>
+
+      <p class="dr-bind-error" id="errorMsg"></p>
+
+      <!-- DailyRead 注册 & 客户端下载 -->
+      <div class="dr-resources">
+        <div class="dr-resources-title">📥 快速开始</div>
+        <div class="dr-resource-grid">
+          <a class="dr-resource-card" href="/register.html" target="_blank" rel="noopener">
+            <div class="dr-resource-icon">📝</div>
+            <div class="dr-resource-info">
+              <div class="dr-resource-name">注册 DailyRead 账号</div>
+              <div class="dr-resource-desc">还没有 DailyRead 账号？点此注册</div>
+            </div>
+          </a>
+          <a class="dr-resource-card" href="/downloads/DailyRead_Win.zip" download>
+            <div class="dr-resource-icon">🖥️</div>
+            <div class="dr-resource-info">
+              <div class="dr-resource-name">下载 Win 端管理器</div>
+              <div class="dr-resource-desc">Windows 桌面客户端（45MB）</div>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/center/dr/js/bind.js"></script>
+</body>
+</html>

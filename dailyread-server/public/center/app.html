@@ -51,42 +51,12 @@
             <h2 class="lc-view-title">讲义库</h2>
             <p class="lc-view-desc">教师与管理员分发的 HTML 讲义，点击即可在线阅读</p>
           </div>
-          <button class="btn btn-primary btn-sm lc-staff-only" data-goto-manage="handout">＋ 分发讲义</button>
+          <button class="btn btn-primary btn-sm lc-staff-only" id="toggleHandoutForm">＋ 分发讲义</button>
         </div>
         <div class="lc-cat-filter" id="handoutCatFilter"></div>
         <div class="lc-card-list" id="handoutList"></div>
-      </section>
-
-      <!-- 作业 -->
-      <section class="lc-view" id="view-assignments">
-        <div class="lc-view-head">
-          <div>
-            <h2 class="lc-view-title">我的作业</h2>
-            <p class="lc-view-desc">按等级下发的课程作业与练习要求</p>
-          </div>
-          <button class="btn btn-primary btn-sm lc-staff-only" data-goto-manage="assignment">＋ 布置作业</button>
-        </div>
-        <div class="lc-card-list" id="assignList"></div>
-      </section>
-
-      <!-- 管理后台（管理员/教师） -->
-      <section class="lc-view" id="view-manage">
-        <div class="lc-view-head">
-          <div>
-            <h2 class="lc-view-title">管理后台</h2>
-            <p class="lc-view-desc">讲义分发、作业布置、消息发送与账号管理</p>
-          </div>
-        </div>
-
-        <div class="lc-sub-tabs" id="manageTabs">
-          <button class="lc-sub-tab active" data-tab="handout">📨 讲义分发</button>
-          <button class="lc-sub-tab" data-tab="assignment">📝 作业布置</button>
-          <button class="lc-sub-tab lc-admin-only" data-tab="message">📢 发送消息</button>
-          <button class="lc-sub-tab lc-admin-only" data-tab="users">👥 用户管理</button>
-        </div>
-
-        <!-- 讲义分发 -->
-        <div class="lc-manage-panel" id="panel-handout">
+        <!-- 讲义分发表单（可展开/隐藏） -->
+        <div class="lc-manage-panel" id="panel-handout" style="display:none;">
           <form class="lc-form-panel" id="handoutForm">
             <h3>📤 分发 HTML 讲义</h3>
             <div class="lc-field">
@@ -119,9 +89,55 @@
             </div>
           </div>
         </div>
+      </section>
 
-        <!-- 作业布置 -->
-        <div class="lc-manage-panel" id="panel-assignment" style="display:none;">
+      <!-- 作业 -->
+      <section class="lc-view" id="view-assignments">
+        <div class="lc-view-head">
+          <div>
+            <h2 class="lc-view-title">作业管理</h2>
+            <p class="lc-view-desc">作业列表、提交查询、作业发布与阅读完成率</p>
+          </div>
+        </div>
+        <div class="lc-sub-tabs" id="assignMgmtTabs">
+          <button class="lc-sub-tab active" data-atab="list">📋 作业列表</button>
+          <button class="lc-sub-tab lc-staff-only" data-atab="query">🔍 作业查询</button>
+          <button class="lc-sub-tab lc-staff-only" data-atab="publish">📤 作业发布</button>
+          <button class="lc-sub-tab lc-staff-only" data-atab="completion">📊 完成率</button>
+        </div>
+        <!-- 作业列表面板 -->
+        <div id="apanel-list">
+          <div class="lc-card-list" id="assignList"></div>
+        </div>
+        <!-- 作业查询面板 -->
+        <div class="lc-manage-panel" id="apanel-query" style="display:none;">
+          <div class="lc-form-panel">
+            <h3>🔍 作业提交查询</h3>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+              <div class="lc-field" style="margin:0; flex:1; min-width:180px;">
+                <label>指定用户（用户名/昵称）</label>
+                <input type="text" id="aqUser" placeholder="输入用户名或昵称">
+              </div>
+              <div class="lc-field" style="margin:0; min-width:140px;">
+                <label>或按等级</label>
+                <select id="aqLevel"><option value="">全部等级</option></select>
+              </div>
+              <button class="btn btn-primary btn-sm" id="aqQueryBtn" style="height:38px;">查询</button>
+            </div>
+          </div>
+          <div class="lc-form-panel" id="aqResult" style="display:none;">
+            <h3>📋 查询结果 <span class="lc-view-desc" id="aqCount"></span></h3>
+            <div id="aqSummary" style="margin-bottom:12px; display:flex; gap:12px; flex-wrap:wrap;"></div>
+            <div style="overflow-x:auto;">
+              <table class="lc-user-table" id="aqTable">
+                <thead><tr><th>作业标题</th><th>学生</th><th>等级</th><th>提交状态</th><th>成绩</th><th>提交时间</th><th>操作</th></tr></thead>
+                <tbody id="aqTbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- 作业发布面板 -->
+        <div class="lc-manage-panel" id="apanel-publish" style="display:none;">
           <form class="lc-form-panel" id="assignForm">
             <h3>📝 布置作业（富文本）</h3>
             <div class="lc-field">
@@ -166,6 +182,45 @@
               </table>
             </div>
           </div>
+        </div>
+        <!-- 完成率面板 -->
+        <div class="lc-manage-panel" id="apanel-completion" style="display:none;">
+          <div class="lc-form-panel">
+            <h3>📊 阅读完成率</h3>
+            <p class="lc-view-desc">每天 12:00 自动结算，支持按学生查看周/月视图</p>
+            <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-top:12px;">
+              <div class="lc-field" style="margin:0; min-width:140px;">
+                <label>按等级筛选学生</label>
+                <select id="compLevel"><option value="">全部等级</option></select>
+              </div>
+              <button class="btn btn-primary btn-sm" id="compFilterBtn" style="height:38px;">筛选学生</button>
+            </div>
+            <div id="compStudentList" style="margin:12px 0;"></div>
+            <div id="compDetail" style="display:none;">
+              <div style="display:flex; gap:10px; align-items:center; margin:12px 0; flex-wrap:wrap;">
+                <b style="font-size:13px;">视图模式：</b>
+                <button class="btn btn-sm" id="compViewWeek" style="border:1.5px solid var(--border);">周视图</button>
+                <button class="btn btn-sm" id="compViewMonth" style="border:1.5px solid var(--border);">月视图</button>
+                <input type="date" id="compDate" style="padding:6px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+              </div>
+              <div id="compChart"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 管理后台（管理员/教师） -->
+      <section class="lc-view" id="view-manage">
+        <div class="lc-view-head">
+          <div>
+            <h2 class="lc-view-title">管理后台</h2>
+            <p class="lc-view-desc">发送消息与账号管理</p>
+          </div>
+        </div>
+
+        <div class="lc-sub-tabs" id="manageTabs">
+          <button class="lc-sub-tab active" data-tab="message">📢 发送消息</button>
+          <button class="lc-sub-tab lc-admin-only" data-tab="users">👥 用户管理</button>
         </div>
 
         <!-- 发送消息 -->

@@ -70,3 +70,10 @@ server.md
 dailyread-server/node_modules/
 dailyread-server/.env
 dailyread-server/uploads/
+dailyread-server/public/downloads/
+
+# 构建产物
+*.zip
+*.exe
+dist/
+build/

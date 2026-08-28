@@ -4,6 +4,7 @@
  */
 const cron = require('node-cron');
 const { pool } = require('./db');
+const { settleAllCompletionRates } = require('./cron/drSettle');
 
 /**
  * 获取所有有文章的用户ID
@@ -59,6 +60,20 @@ function startScheduler() {
   });
 
   console.log('[Cron] 定时任务已启动: 每天 00:00 (Asia/Shanghai) 重新生成所有用户的每日任务');
+
+  // 每天 12:00 结算 PWA 每日阅读完成率（仅学习中心已绑定账号，不影响 DailyRead 原有逻辑）
+  cron.schedule('0 12 * * *', async () => {
+    console.log('[Cron] 触发每日阅读完成率结算 @', new Date().toISOString());
+    try {
+      await settleAllCompletionRates();
+    } catch (e) {
+      console.error('[Cron] 每日阅读完成率结算异常:', e);
+    }
+  }, {
+    scheduled: true,
+    timezone: 'Asia/Shanghai'
+  });
+  console.log('[Cron] 定时任务已启动: 每天 12:00 (Asia/Shanghai) 结算 PWA 每日阅读完成率');
 }
 
 module.exports = { startScheduler, regenerateAllDailyTasks };

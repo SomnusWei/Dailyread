@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>每日阅读 · 炎武班学习中心</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/center/css/center.css">
+  <link rel="stylesheet" href="/center/dr/css/dr.css">
+</head>
+<body class="lc-body dr-body">
+  <!-- 顶栏 -->
+  <header class="lc-header dr-header">
+    <a class="lc-brand" href="/center/app.html">
+      <span class="brand-icon">📚</span>
+      <span>每日阅读</span>
+      <span class="lc-brand-sub">/ 炎武班</span>
+    </a>
+    <div class="lc-spacer"></div>
+    <div class="lc-user-chip" id="userChip">
+      <span class="lc-avatar" id="userAvatar">—</span>
+      <span class="lc-chip-name" id="userName">—</span>
+    </div>
+  </header>
+
+  <div class="lc-layout dr-layout">
+    <!-- 侧边导航（桌面端） -->
+    <nav class="lc-side-nav" id="sideNav"></nav>
+
+    <!-- 主内容区 -->
+    <main class="lc-main dr-main">
+      <!-- 首页：今日任务 + 状态灯 + 任务卡片 -->
+      <section class="lc-view" id="view-home"></section>
+
+      <!-- 文章管理：列表 + 增删改 -->
+      <section class="lc-view" id="view-articles"></section>
+
+      <!-- 随心阅读：暂停文章随机读 -->
+      <section class="lc-view" id="view-random"></section>
+
+      <!-- 磨耳跟背：仅有音频的文章 -->
+      <section class="lc-view" id="view-ear"></section>
+
+      <!-- 设置：目标/字号/解绑/返回学习中心 -->
+      <section class="lc-view" id="view-settings"></section>
+    </main>
+  </div>
+
+  <!-- 移动端底部导航（动态渲染） -->
+  <nav class="lc-bottom-nav" id="bottomNav"></nav>
+
+  <!-- 阅读页浮层（打卡 + 音频 + 字号，覆盖整个屏幕） -->
+  <div class="dr-reader-mask" id="readerMask" style="display:none;">
+    <div class="dr-reader-bar">
+      <button class="dr-reader-back" id="readerBack">← 返回</button>
+      <span class="dr-reader-title" id="readerTitle">—</span>
+      <button class="dr-reader-font" id="readerFontBtn" title="字号">Aa</button>
+    </div>
+    <div class="dr-reader-scroll" id="readerScroll">
+      <div class="dr-reader-content" id="readerContent"></div>
+    </div>
+    <!-- 音频控制条 -->
+    <div class="dr-audio-bar" id="audioBar" style="display:none;">
+      <button class="dr-audio-play" id="audioPlayBtn">▶</button>
+      <span class="dr-audio-time" id="audioTime">00:00</span>
+      <label class="dr-audio-loop">
+        <input type="checkbox" id="audioLoopChk"> 循环
+      </label>
+    </div>
+    <!-- 双击打卡提示 -->
+    <div class="dr-checkin-hint" id="checkinHint"></div>
+  </div>
+
+  <script src="/center/dr/js/app.js"></script>
+</body>
+</html>

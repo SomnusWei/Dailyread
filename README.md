@@ -79,18 +79,22 @@ DailyRead/
 │   │   │   ├── dailyTasks.js               # 每日任务
 │   │   │   ├── admin.js                    # 管理后台
 │   │   │   ├── migrate.js                  # 数据迁移
-│   │   │   └── learning.js                 # 炎武班学习中心 API
-│   │   ├── middleware/
-│   │   │   ├── auth.js                     # 认证中间件（区分 DailyRead / Learning Center token）
-│   │   │   └── errorHandler.js
-│   │   ├── db/
-│   │   │   ├── init.js                     # DailyRead 表初始化与迁移
-│   │   │   └── learning_init.js            # 学习中心表初始化（lc_users/lc_handouts/lc_assignments/lc_inbox/lc_submissions）
-│   │   ├── utils/response.js
-│   │   ├── config.js                       # 配置加载
-│   │   ├── db.js                           # 数据库连接池
-│   │   ├── cron.js                         # 定时任务（每日 00:00 生成阅读任务）
-│   │   └── index.js                        # 服务入口
+│   │   │   ├── learning.js                 # 炎武班学习中心 API
+│   │   │   └── drProxy.js                  # DailyRead PWA 代理路由（/api/dr/* 按 drUserId 转发）
+│   ├── cron.js                         # 定时任务（00:00 生成阅读任务 / 12:00 结算完成率）
+│   ├── cron/
+│   │   └── drSettle.js                 # DailyRead PWA 完成率结算（每天 12:00）
+│   ├── middleware/
+│   │   ├── auth.js                     # 认证中间件（区分 DailyRead / Learning Center token）
+│   │   ├── lcDrProxyAuth.js            # 学习中心 DailyRead 代理鉴权（lc token + 绑定检查 + 注入 drUserId）
+│   │   └── errorHandler.js
+│   ├── db/
+│   │   ├── init.js                     # DailyRead 表初始化与迁移
+│   │   └── learning_init.js            # 学习中心表初始化（含 lc_users.dr_user_id 绑定 + lc_dr_completion_rates 完成率）
+│   ├── utils/response.js
+│   ├── config.js                       # 配置加载
+│   ├── db.js                           # 数据库连接池
+│   └── index.js                        # 服务入口
 │   ├── public/
 │   │   ├── index.html                      # 门户首页（DailyRead 介绍 + 炎武班介绍 + 双入口）
 │   │   ├── register.html                   # DailyRead 用户注册
@@ -107,7 +111,16 @@ DailyRead/
 │   │       ├── js/
 │   │       │   ├── login.js                # 学习中心登录
 │   │       │   └── app.js                  # SPA 核心逻辑（分类筛选/时间窗/提交/批改）
-│   │       └── icons/                      # PWA 图标
+│   │       ├── icons/                      # PWA 图标
+│   │       └── dr/                         # DailyRead PWA 嵌入版
+│   │           ├── bind.html               # DailyRead 账号绑定引导页
+│   │           ├── app.html                # DailyRead PWA 主应用（代理模式）
+│   │           ├── css/dr.css              # DailyRead PWA 样式
+│   │           └── js/
+│   │               ├── bind.js             # 绑定逻辑（lc token → DailyRead 鉴权 → 写入绑定）
+│   │               └── app.js              # PWA 核心逻辑（代理请求注入 req.drUserId）
+│   ├── downloads/                          # 可执行下载资源
+│   │   └── DailyRead_Win.zip               # Windows 端管理器打包（从 PyInstaller dist 导出）
 │   ├── scripts/
 │   │   ├── account_manager.py             # 账号管理工具
 │   │   ├── delete-user.js                 # 删除用户（含数据级联清理）
@@ -243,11 +256,12 @@ Win 端录入            后端存储                鸿蒙端播放
 
 | 表名 | 说明 |
 |------|------|
-| lc_users | 学习中心用户（username/password_hash/nickname/role 等级） |
+| lc_users | 学习中心用户（username/password_hash/nickname/role 等级；新增 `dr_user_id` + `dr_bound_at` 单向绑定 DailyRead 账号） |
 | lc_handouts | 讲义（uploader_id/level_scope 分发等级/category 分类 12 选 1/html_file 路径） |
-| lc_assignments | 作业（uploader_id/level_scope/start_at/due_at 时间窗/content 富文本） |
+| lc_assignments | 作业（uploader_id/levels 分发等级数组/start_at/due_at 时间窗/content 富文本） |
 | lc_inbox | 收件箱（receiver_id/sender_id/type 类型/title/body/read 已读） |
 | lc_submissions | 学员作业提交（assignment_id/student_id 唯一约束/filename/original_name/file_size/score/comment/graded_at/graded_by） |
+| lc_dr_completion_rates | DailyRead PWA 完成率结算（lc_user_id/task_date 唯一约束/completion_rate 百分比/打卡数） |
 
 ---
 
@@ -271,11 +285,16 @@ Win 端录入            后端存储                鸿蒙端播放
 |------|----------|------|
 | 认证 | `/api/learning/auth` | 学习中心注册/登录/JWT（与 DailyRead 隔离） |
 | 讲义 | `/api/learning/handouts` | 讲义分发/列表/详情/分类筛选/文件下载 |
-| 作业 | `/api/learning/assignments` | 作业布置/列表/详情/时间窗判断 |
+| 作业 | `/api/learning/assignments` | 作业布置/列表/详情/时间窗判断（字段名 `levels` 数组，非 `level_scope`） |
+| 作业查询 | `/api/learning/assignments-query` | 按用户/等级查询学员 × 作业提交情况（STAFF 权限；路径用 `-` 避 `/assignments/:id` 匹配冲突） |
 | 提交 | `/api/learning/assignments/:id/submit` | 学员作业上传（multipart：Word/Excel/PDF/图片 ≤20MB） |
-| 批改 | `/api/learning/submissions/:id/grade` | 教师批改分数+评语 |
+| 批改 | `/api/learning/submissions/:id/grade` | 教师批改（**POST** 方法，非 PATCH） |
 | 提交文件 | `/api/learning/submissions/:id/file` | 提交文件下载（需 JWT 鉴权） |
 | 收件箱 | `/api/learning/inbox` | 消息通知列表/已读/批量已读 |
+| DailyRead 绑定 | `/api/learning/dr/*` | 学习中心 DailyRead 代理鉴权：绑定/解绑/状态查询（lc token → DailyRead 鉴权 → 写入 `lc_users.dr_user_id`） |
+| DailyRead PWA 代理 | `/api/dr/*` | DailyRead PWA 主应用代理路由（经 `lcDrProxyAuth` 注入 `req.drUserId`，按绑定账号转发请求） |
+| 完成率 | `/api/learning/dr/completion-rates/students` | 按等级查已绑定学生列表（STAFF 权限） |
+| 完成率 | `/api/learning/dr/completion-rates/student` | 查指定学生周/月完成率柱状图（`?student=&range=week|month`） |
 
 ---
 
@@ -300,6 +319,8 @@ Win 端录入            后端存储                鸿蒙端播放
 | 管理后台 | https://dailyread.sonnusww.top/admin/ |
 | 炎武班学习中心 | https://dailyread.sonnusww.top/center/ |
 | 学习中心登录 | https://dailyread.sonnusww.top/center/login.html |
+| DailyRead PWA（学习中心内嵌） | https://dailyread.sonnusww.top/center/dr/bind.html |
+| Win 端管理器下载 | https://dailyread.sonnusww.top/downloads/DailyRead_Win.zip |
 | API | https://dailyread.sonnusww.top/api |
 | 健康检查 | https://dailyread.sonnusww.top/health |
 | GitHub | https://github.com/SomnusWei/Dailyread |
@@ -321,8 +342,17 @@ Win 端录入            后端存储                鸿蒙端播放
 - 📬 消息通知：讲义/作业分发、批改结果自动推送学员收件箱，支持已读/未读筛选与批量已读
 - 💾 Win 端新增「全量导出（服务器）」：从服务器拉取账号全量数据（文章含音频/图片 base64、打卡记录、用户配置、今日任务）打包备份
 - 🌐 门户首页重构：DailyRead 项目管理与注册入口 + 炎武班学习中心入口双栏布局，展示炎武班团队介绍
+- 📚 DailyRead PWA 嵌入学习中心：学习中心导航栏新增「每日阅读」入口，支持学习中心账号绑定 DailyRead 账号后直接在 PWA 内使用（账号单向绑定：lc_users.dr_user_id）
+- 🎯 作业管理重构为 4 子标签：作业列表 / 作业查询（按用户/等级筛选） / 作业发布 / 完成率（按等级→学生→周/月柱状图）
+- ⏰ 每天 12:00 自动结算 DailyRead PWA 完成率（`drSettle.js` cron），写入 `lc_dr_completion_rates` 表
+- 🖥️ Win 端管理器下载入口：学习中心 DailyRead 绑定页底部新增「注册 DailyRead 账号」和「下载 Win 端管理器」卡片链接
 
 **问题修复：**
+- 🔧 `/assignments-query` 路由冲突：Express 路由 `/assignments/:id` 先匹配 query 路径，改为 `/assignments-query` 带连字符
+- 🔧 `openSubmissionFile` 内联 onclick 找不到函数：函数定义在 IIFE 局部作用域，改为 `window.openSubmissionFile = openSubmissionFile` 全局暴露
+- 🔧 POST `/assignments` 字段名：前端传 `levels` 数组而非 `level_scope`
+- 🔧 批改接口方法：`POST /submissions/:id/grade` 而非 PATCH
+- 🔧 Service Worker 缓存版本升级 v2→v3
 - 🔧 三端 since 增量游标按 user_id 隔离：鸿蒙端 ApiClient.ets / Win 端 sync_service.py / 新增账号登录后自动重置 since 触发全量拉取，避免切换账号时继承旧账号游标导致数据不显示
 - 🔧 学习中心提交文件下载鉴权：由 `<a href>` 改为 `fetch + JWT`，修复批改/查看文件时报 401 未登录
 - 🔧 首页炎武班介绍文案首行缩进 2 个汉字

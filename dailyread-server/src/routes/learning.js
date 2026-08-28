@@ -224,6 +224,285 @@ router.get('/me', lcAuthRequired, async (req, res) => {
 });
 
 // ============================================================
+// DailyRead 账号绑定（学习中心账号单向绑定 DailyRead 账号）
+// 不签发 DailyRead token，仅记录 dr_user_id，PWA 通过代理路由访问
+// ============================================================
+
+// GET /api/learning/dr/status  查询当前学习中心账号的 DailyRead 绑定状态
+router.get('/dr/status', lcAuthRequired, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT dr_user_id, dr_bound_at FROM lc_users WHERE id = ? LIMIT 1',
+      [req.lcUser.id]
+    );
+    if (rows.length === 0) return res.status(404).json(error('用户不存在', 404));
+    const r = rows[0];
+    if (!r.dr_user_id) {
+      return res.json(success({ bound: false, drUser: null }));
+    }
+    // JOIN DailyRead users 表获取用户名/昵称
+    const [drRows] = await pool.query(
+      'SELECT id, username, nickname FROM users WHERE id = ? LIMIT 1',
+      [r.dr_user_id]
+    );
+    if (drRows.length === 0) {
+      // 绑定的 DailyRead 账号已不存在，自动解绑
+      await pool.query('UPDATE lc_users SET dr_user_id = NULL, dr_bound_at = NULL WHERE id = ?', [req.lcUser.id]);
+      return res.json(success({ bound: false, drUser: null }));
+    }
+    return res.json(success({
+      bound: true,
+      boundAt: r.dr_bound_at,
+      drUser: { id: drRows[0].id, username: drRows[0].username, nickname: drRows[0].nickname }
+    }));
+  } catch (e) {
+    console.error('[learning/dr:status]', e);
+    return res.status(500).json(error('查询失败', 500));
+  }
+});
+
+// POST /api/learning/dr/bind  { drUsername, drPassword }
+// 验证 DailyRead 账号密码，绑定到当前学习中心账号（不签发 DailyRead token）
+router.post('/dr/bind', lcAuthRequired, [
+  body('drUsername').isLength({ min: 3, max: 32 }).withMessage('DailyRead 用户名长度 3-32'),
+  body('drPassword').isLength({ min: 6, max: 64 }).withMessage('DailyRead 密码长度 6-64')
+], async (req, res) => {
+  const errs = validationResult(req);
+  if (!errs.isEmpty()) return res.status(400).json(error(errs.array()[0].msg, 400));
+  const { drUsername, drPassword } = req.body;
+  try {
+    // 查 DailyRead 用户（独立 users 表）
+    const [drRows] = await pool.query(
+      'SELECT id, username, password, nickname FROM users WHERE username = ? LIMIT 1',
+      [drUsername]
+    );
+    if (drRows.length === 0) return res.status(401).json(error('DailyRead 用户名或密码错误', 401));
+    const drUser = drRows[0];
+    const ok = await bcrypt.compare(drPassword, drUser.password);
+    if (!ok) return res.status(401).json(error('DailyRead 用户名或密码错误', 401));
+    // 检查该 DailyRead 账号是否已被其他学习中心账号绑定
+    const [exist] = await pool.query(
+      'SELECT id FROM lc_users WHERE dr_user_id = ? AND id != ? LIMIT 1',
+      [drUser.id, req.lcUser.id]
+    );
+    if (exist.length > 0) {
+      return res.status(409).json(error('该 DailyRead 账号已被其他学习中心账号绑定', 409));
+    }
+    await pool.query('UPDATE lc_users SET dr_user_id = ?, dr_bound_at = NOW() WHERE id = ?', [drUser.id, req.lcUser.id]);
+    return res.json(success({
+      bound: true,
+      drUser: { id: drUser.id, username: drUser.username, nickname: drUser.nickname }
+    }, 'DailyRead 账号绑定成功'));
+  } catch (e) {
+    console.error('[learning/dr:bind]', e);
+    return res.status(500).json(error('绑定失败: ' + e.message, 500));
+  }
+});
+
+// POST /api/learning/dr/unbind  解除当前学习中心账号的 DailyRead 绑定
+router.post('/dr/unbind', lcAuthRequired, async (req, res) => {
+  try {
+    await pool.query('UPDATE lc_users SET dr_user_id = NULL, dr_bound_at = NULL WHERE id = ?', [req.lcUser.id]);
+    return res.json(success({ ok: true }, '已解除 DailyRead 账号绑定'));
+  } catch (e) {
+    console.error('[learning/dr:unbind]', e);
+    return res.status(500).json(error('解绑失败', 500));
+  }
+});
+
+// GET /api/learning/dr/completion-rates?date=YYYY-MM-DD
+// 教师和管理员可查所有已绑定学生的每日阅读完成率（PWA 12:00 结算）
+router.get('/dr/completion-rates', lcAuthRequired, async (req, res) => {
+  // 仅教师和管理员可查
+  if (!STAFF_ROLES.includes(req.lcUser.role)) {
+    return res.status(403).json(error('仅教师和管理员可查看阅读完成率', 403));
+  }
+  // 日期默认今天（Asia/Shanghai）
+  const d = new Date();
+  const tz = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  const defaultDate = tz.toISOString().slice(0, 10);
+  const date = req.query.date || defaultDate;
+  try {
+    const [rows] = await pool.query(
+      `SELECT r.lc_user_id AS lcUserId, r.dr_user_id AS drUserId,
+              r.task_date AS taskDate, r.total_items AS totalItems,
+              r.checked_items AS checkedItems, r.completion_rate AS completionRate,
+              r.settled_at AS settledAt,
+              u.username AS lcUsername, u.nickname AS lcNickname, u.role AS lcRole
+       FROM lc_dr_completion_rates r
+       INNER JOIN lc_users u ON u.id = r.lc_user_id
+       WHERE r.task_date = ?
+       ORDER BY r.completion_rate DESC, u.nickname ASC`,
+      [date]
+    );
+    // 汇总统计
+    const totalUsers = rows.length;
+    const avgRate = totalUsers > 0
+      ? Math.round(rows.reduce(function (sum, r) { return sum + (r.completionRate || 0); }, 0) / totalUsers)
+      : 0;
+    return res.json(success({
+      date: date,
+      totalUsers: totalUsers,
+      avgRate: avgRate,
+      list: rows
+    }));
+  } catch (e) {
+    console.error('[learning/dr:completion-rates]', e);
+    return res.status(500).json(error('查询失败: ' + e.message, 500));
+  }
+});
+
+// GET /api/learning/dr/completion-rates/students?level=
+// 教师和管理员查所有已绑定 DailyRead 的学生列表（可按等级筛选）
+router.get('/dr/completion-rates/students', lcAuthRequired, async (req, res) => {
+  if (!STAFF_ROLES.includes(req.lcUser.role)) {
+    return res.status(403).json(error('仅教师和管理员可查看', 403));
+  }
+  try {
+    const params = [];
+    let sql = `SELECT id AS lcUserId, username AS lcUsername, nickname AS lcNickname,
+                      role AS lcRole, dr_user_id AS drUserId
+               FROM lc_users WHERE dr_user_id IS NOT NULL`;
+    if (req.query.level) {
+      sql += ' AND role = ?';
+      params.push(req.query.level);
+    }
+    sql += ' ORDER BY role, nickname';
+    const [rows] = await pool.query(sql, params);
+    return res.json(success({ list: rows }));
+  } catch (e) {
+    console.error('[learning/dr:students]', e);
+    return res.status(500).json(error('查询失败: ' + e.message, 500));
+  }
+});
+
+// GET /api/learning/dr/completion-rates/student?userId=&view=week|month&date=YYYY-MM-DD
+// 教师和管理员查指定学生的周/月完成率
+router.get('/dr/completion-rates/student', lcAuthRequired, async (req, res) => {
+  if (!STAFF_ROLES.includes(req.lcUser.role)) {
+    return res.status(403).json(error('仅教师和管理员可查看', 403));
+  }
+  const lcUserId = parseInt(req.query.userId);
+  if (!lcUserId) return res.status(400).json(error('缺少 userId', 400));
+  const view = req.query.view === 'month' ? 'month' : 'week';
+  const dateStr = req.query.date || new Date().toISOString().slice(0, 10);
+
+  // 计算日期范围
+  const d = new Date(dateStr);
+  let startDate, endDate;
+  if (view === 'week') {
+    // 周视图：以 dateStr 为周的中间一天，向前3天向后3天，共7天
+    startDate = new Date(d.getTime() - 3 * 86400000);
+    endDate = new Date(d.getTime() + 3 * 86400000);
+  } else {
+    // 月视图：dateStr 所在月的前后各15天，共30天
+    startDate = new Date(d.getTime() - 15 * 86400000);
+    endDate = new Date(d.getTime() + 15 * 86400000);
+  }
+  const fmt = function (dt) {
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  };
+  try {
+    const [rows] = await pool.query(
+      `SELECT task_date AS taskDate, total_items AS totalItems, checked_items AS checkedItems,
+              completion_rate AS completionRate, settled_at AS settledAt
+       FROM lc_dr_completion_rates
+       WHERE lc_user_id = ? AND task_date BETWEEN ? AND ?
+       ORDER BY task_date ASC`,
+      [lcUserId, fmt(startDate), fmt(endDate)]
+    );
+    return res.json(success({
+      userId: lcUserId,
+      view: view,
+      startDate: fmt(startDate),
+      endDate: fmt(endDate),
+      list: rows
+    }));
+  } catch (e) {
+    console.error('[learning/dr:student]', e);
+    return res.status(500).json(error('查询失败: ' + e.message, 500));
+  }
+});
+
+// GET /api/learning/assignments-query?user=&level=
+// 教师和管理员按用户名/等级查询作业提交情况
+router.get('/assignments-query', lcAuthRequired, async (req, res) => {
+  if (!STAFF_ROLES.includes(req.lcUser.role)) {
+    return res.status(403).json(error('仅教师和管理员可查询', 403));
+  }
+  try {
+    const userQuery = (req.query.user || '').trim();
+    const level = req.query.level || '';
+
+    // 查学生
+    let studentSql = 'SELECT id, username, nickname, role FROM lc_users WHERE 1=1';
+    const studentParams = [];
+    if (userQuery) {
+      studentSql += ' AND (username LIKE ? OR nickname LIKE ?)';
+      const kw = '%' + userQuery + '%';
+      studentParams.push(kw, kw);
+    }
+    if (level) {
+      studentSql += ' AND role = ?';
+      studentParams.push(level);
+    }
+    studentSql += ' ORDER BY role, nickname';
+    const [students] = await pool.query(studentSql, studentParams);
+
+    if (students.length === 0) {
+      return res.json(success({ list: [] }));
+    }
+
+    // 查所有作业
+    const [assignments] = await pool.query(
+      'SELECT id, title, level_scope, created_at FROM lc_assignments ORDER BY created_at DESC'
+    );
+
+    // 查这些学生的提交记录
+    const studentIds = students.map(s => s.id);
+    const ph = studentIds.map(() => '?').join(',');
+    const [subs] = await pool.query(
+      `SELECT id, assignment_id, student_id, original_name, submitted_at, score, comment
+       FROM lc_submissions WHERE student_id IN (${ph})`,
+      studentIds
+    );
+    const subMap = {};
+    subs.forEach(s => { subMap[s.student_id + '_' + s.assignment_id] = s; });
+
+    // 组装结果：学生 × 作业
+    const list = [];
+    students.forEach(s => {
+      assignments.forEach(a => {
+        let scope;
+        try { scope = JSON.parse(a.level_scope); } catch (e) { scope = []; }
+        if (scope.length > 0 && !scope.includes(s.role)) return; // 该作业不面向该等级
+        const sub = subMap[s.id + '_' + a.id] || null;
+        list.push({
+          assignmentId: a.id,
+          title: a.title,
+          studentId: s.id,
+          student_username: s.username,
+          student_nickname: s.nickname || s.username,
+          student_role: s.role,
+          submission: sub ? {
+            id: sub.id,
+            original_name: sub.original_name,
+            submitted_at: sub.submitted_at,
+            score: sub.score,
+            comment: sub.comment
+          } : null
+        });
+      });
+    });
+
+    return res.json(success({ list: list }));
+  } catch (e) {
+    console.error('[learning/assignments:query]', e);
+    return res.status(500).json(error('查询失败: ' + e.message, 500));
+  }
+});
+
+// ============================================================
 // 收件箱 / 消息
 // ============================================================
 

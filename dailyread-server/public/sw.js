@@ -4,7 +4,7 @@
 //   /uploads/*        -> 仅网络（讲义内容需实时）
 //   页面导航          -> 网络优先，失败回退缓存
 //   静态资源(css/js/图标) -> 缓存优先 + 后台更新 (stale-while-revalidate)
-var CACHE_NAME = 'lc-mission-v4';
+var CACHE_NAME = 'lc-mission-v3';
 
 var CORE_ASSETS = [
   '/',
@@ -14,6 +14,11 @@ var CORE_ASSETS = [
   '/center/css/center.css',
   '/center/js/login.js',
   '/center/js/app.js',
+  '/center/dr/app.html',
+  '/center/dr/bind.html',
+  '/center/dr/css/dr.css',
+  '/center/dr/js/app.js',
+  '/center/dr/js/bind.js',
   '/manifest.json',
   '/center/icons/icon-192.png',
   '/center/icons/icon-512.png'

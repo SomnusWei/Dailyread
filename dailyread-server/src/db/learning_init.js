@@ -78,7 +78,7 @@ const SQL_ALTER_LC_ASSIGNMENTS_ADD_DUE_AT = `
 ALTER TABLE lc_assignments ADD COLUMN due_at BIGINT NULL AFTER start_at
 `;
 
-// 学生作业提交表：每人每作业一份，重复提交覆盖文件并重置成绩
+// 迁移：学生作业提交表（每人每作业一份，重复提交覆盖文件并重置成绩）
 const SQL_CREATE_LC_SUBMISSIONS = `
 CREATE TABLE IF NOT EXISTS lc_submissions (
     id               BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -101,6 +101,33 @@ CREATE TABLE IF NOT EXISTS lc_submissions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 `;
 
+// 迁移：学习中心账号绑定 DailyRead 账号（单向，一个 lc 账号最多绑一个 dr 账号）
+// dr_user_id 关联 dailyread_db.users.id，不冗余存用户名（查询时 JOIN users 表）
+const SQL_ALTER_LC_USERS_ADD_DR_USER_ID = `
+ALTER TABLE lc_users ADD COLUMN dr_user_id BIGINT NULL AFTER role
+`;
+const SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT = `
+ALTER TABLE lc_users ADD COLUMN dr_bound_at DATETIME NULL AFTER dr_user_id
+`;
+
+// 每日阅读完成率记录表（PWA 12:00 结算，教师/管理员可查）
+// lc_user_id + task_date 唯一约束：每天每账号一条，重复结算覆盖
+const SQL_CREATE_LC_DR_COMPLETION_RATES = `
+CREATE TABLE IF NOT EXISTS lc_dr_completion_rates (
+    id               BIGINT PRIMARY KEY AUTO_INCREMENT,
+    lc_user_id       BIGINT NOT NULL,
+    dr_user_id       BIGINT NOT NULL,
+    task_date        DATE NOT NULL,
+    total_items      INT DEFAULT 0,
+    checked_items    INT DEFAULT 0,
+    completion_rate  INT DEFAULT 0,
+    settled_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_lc_date (lc_user_id, task_date),
+    INDEX idx_dr_date (dr_user_id, task_date),
+    INDEX idx_task_date (task_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+`;
+
 async function ensureLearningSchema() {
   console.log('[Learning] 初始化学习中心表...');
   await pool.query(SQL_CREATE_LC_USERS);
@@ -108,12 +135,15 @@ async function ensureLearningSchema() {
   await pool.query(SQL_CREATE_LC_ASSIGNMENTS);
   await pool.query(SQL_CREATE_LC_INBOX);
   await pool.query(SQL_CREATE_LC_SUBMISSIONS);
+  await pool.query(SQL_CREATE_LC_DR_COMPLETION_RATES);
 
   const migrations = [
     ['lc_inbox.content', SQL_ALTER_LC_INBOX_ADD_CONTENT],
     ['lc_handouts.category', SQL_ALTER_LC_HANDOUTS_ADD_CATEGORY],
     ['lc_assignments.start_at', SQL_ALTER_LC_ASSIGNMENTS_ADD_START_AT],
-    ['lc_assignments.due_at', SQL_ALTER_LC_ASSIGNMENTS_ADD_DUE_AT]
+    ['lc_assignments.due_at', SQL_ALTER_LC_ASSIGNMENTS_ADD_DUE_AT],
+    ['lc_users.dr_user_id', SQL_ALTER_LC_USERS_ADD_DR_USER_ID],
+    ['lc_users.dr_bound_at', SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT]
   ];
   for (const [name, sql] of migrations) {
     try {

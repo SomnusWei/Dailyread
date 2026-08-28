@@ -20,6 +20,7 @@ const configRoutes = require('./routes/config');
 const migrateRoutes = require('./routes/migrate');
 const adminRoutes = require('./routes/admin');
 const learningRoutes = require('./routes/learning');
+const drProxyRoutes = require('./routes/drProxy');
 const { ensureLearningSchema } = require('./db/learning_init');
 const { startScheduler } = require('./cron');
 
@@ -71,6 +72,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/migrate', migrateRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/learning', learningRoutes);
+app.use('/api/dr', drProxyRoutes);
 
 // 健康检查
 app.get('/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
