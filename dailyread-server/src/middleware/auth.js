@@ -12,6 +12,10 @@ async function authRequired(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, config.jwt.secret);
+    // 学习中心 token 不允许访问 DailyRead API
+    if (decoded.scope === 'lc') {
+      return res.status(401).json(error('token 无效', 401));
+    }
     req.userId = decoded.userId;
     req.username = decoded.username;
     req.deviceId = decoded.deviceId || '';
@@ -42,9 +46,13 @@ function authOptional(req, res, next) {
     const token = authHeader.split(' ')[1];
     try {
       const decoded = jwt.verify(token, config.jwt.secret);
-      req.userId = decoded.userId;
-      req.username = decoded.username;
-      req.deviceId = decoded.deviceId || '';
+      if (decoded.scope === 'lc') {
+        // 学习中心 token：忽略
+      } else {
+        req.userId = decoded.userId;
+        req.username = decoded.username;
+        req.deviceId = decoded.deviceId || '';
+      }
     } catch (e) {
       // 忽略错误，继续
     }

@@ -141,7 +141,7 @@ struct Login {
           .borderRadius(8)
           .onSubmit(() => { this.doLogin(); });
 
-        // 记住密码复选框
+        // 记住密码复选框（左移让复选框/文字起点与上方输入框内容左侧对齐）
         Row() {
           Checkbox()
             .select(this.rememberPassword)
@@ -155,7 +155,7 @@ struct Login {
         }
         .width('100%')
         .justifyContent(FlexAlign.Start)
-        .margin({ left: 32, right: 32, bottom: 16 });
+        .margin({ left: 56, right: 32, bottom: 16 });
 
         if (this.statusMsg.length > 0) {
           Text(this.statusMsg)

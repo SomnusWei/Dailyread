@@ -88,6 +88,11 @@ class ApiClient:
             self.token = data['token']
             self.user = data['user']
             self._save_token()
+            try:
+                from sync_service import sync_service
+                sync_service.reset_sync_state()
+            except Exception as e:
+                print(f"[ApiClient] 注册成功重置同步状态失败: {e}")
         return r
 
     def login(self, username, password):
@@ -98,6 +103,12 @@ class ApiClient:
             self.token = data['token']
             self.user = data['user']
             self._save_token()
+            # 登录成功即重置同步状态：防止跨账号共用游标 since 导致增量拉取不到新账号文章
+            try:
+                from sync_service import sync_service
+                sync_service.reset_sync_state()
+            except Exception as e:
+                print(f"[ApiClient] 登录成功重置同步状态失败: {e}")
         return r
 
     def check_username(self, username):

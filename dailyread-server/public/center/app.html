@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>炎武班 · 学习中心</title>
+  <meta name="theme-color" content="#667eea">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/center/css/center.css">
+</head>
+<body class="lc-body">
+
+  <!-- 顶栏 -->
+  <header class="lc-header">
+    <a class="lc-brand" href="/center/app.html">
+      <span class="brand-icon">🎓</span><b>学习中心</b><span class="lc-brand-sub">· 炎武班</span>
+    </a>
+    <div class="lc-spacer"></div>
+    <div class="lc-user-chip" id="userChip">
+      <span class="lc-avatar" id="avatar">?</span>
+      <span class="lc-chip-name" id="chipName">加载中…</span>
+      <span class="lc-chip-role" id="chipRole">—</span>
+    </div>
+    <button class="lc-logout-btn" id="logoutBtn" title="退出登录">退出 ⏏</button>
+  </header>
+
+  <div class="lc-layout">
+    <!-- 桌面端侧边导航 -->
+    <nav class="lc-side-nav" id="sideNav"></nav>
+
+    <!-- 主内容区 -->
+    <main class="lc-main">
+      <!-- 消息 -->
+      <section class="lc-view" id="view-messages">
+        <div class="lc-view-head">
+          <div>
+            <h2 class="lc-view-title">消息中心</h2>
+            <p class="lc-view-desc" id="msgDesc">收到讲义分发、作业布置与管理员通知</p>
+          </div>
+          <button class="btn btn-outline btn-sm" id="markAllReadBtn">全部已读</button>
+        </div>
+        <div class="lc-card-list" id="inboxList"></div>
+      </section>
+
+      <!-- 讲义库 -->
+      <section class="lc-view" id="view-handouts">
+        <div class="lc-view-head">
+          <div>
+            <h2 class="lc-view-title">讲义库</h2>
+            <p class="lc-view-desc">教师与管理员分发的 HTML 讲义，点击即可在线阅读</p>
+          </div>
+          <button class="btn btn-primary btn-sm lc-staff-only" data-goto-manage="handout">＋ 分发讲义</button>
+        </div>
+        <div class="lc-cat-filter" id="handoutCatFilter"></div>
+        <div class="lc-card-list" id="handoutList"></div>
+      </section>
+
+      <!-- 作业 -->
+      <section class="lc-view" id="view-assignments">
+        <div class="lc-view-head">
+          <div>
+            <h2 class="lc-view-title">我的作业</h2>
+            <p class="lc-view-desc">按等级下发的课程作业与练习要求</p>
+          </div>
+          <button class="btn btn-primary btn-sm lc-staff-only" data-goto-manage="assignment">＋ 布置作业</button>
+        </div>
+        <div class="lc-card-list" id="assignList"></div>
+      </section>
+
+      <!-- 管理后台（管理员/教师） -->
+      <section class="lc-view" id="view-manage">
+        <div class="lc-view-head">
+          <div>
+            <h2 class="lc-view-title">管理后台</h2>
+            <p class="lc-view-desc">讲义分发、作业布置、消息发送与账号管理</p>
+          </div>
+        </div>
+
+        <div class="lc-sub-tabs" id="manageTabs">
+          <button class="lc-sub-tab active" data-tab="handout">📨 讲义分发</button>
+          <button class="lc-sub-tab" data-tab="assignment">📝 作业布置</button>
+          <button class="lc-sub-tab lc-admin-only" data-tab="message">📢 发送消息</button>
+          <button class="lc-sub-tab lc-admin-only" data-tab="users">👥 用户管理</button>
+        </div>
+
+        <!-- 讲义分发 -->
+        <div class="lc-manage-panel" id="panel-handout">
+          <form class="lc-form-panel" id="handoutForm">
+            <h3>📤 分发 HTML 讲义</h3>
+            <div class="lc-field">
+              <label>讲义标题</label>
+              <input type="text" id="hoTitle" maxlength="128" placeholder="例如：第二讲 · 经络总论" required>
+            </div>
+            <div class="lc-field">
+              <label>讲义分类</label>
+              <select id="hoCategory"></select>
+            </div>
+            <div class="lc-field">
+              <label>HTML 文件（≤10MB）</label>
+              <input type="file" id="hoFile" accept=".html,.htm" required>
+              <p class="lc-editor-note">所选 HTML 文件将原样保存，可包含图片/样式/脚本。</p>
+            </div>
+            <div class="lc-field">
+              <label>分发等级</label>
+              <div class="lc-check-group" id="hoLevels"></div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="hoSubmitBtn">发布并分发</button>
+          </form>
+          <!-- 我的分发记录 -->
+          <div class="lc-form-panel">
+            <h3>🗂️ 我的分发记录 <span class="lc-view-desc" id="myHandoutCount"></span></h3>
+            <div style="overflow-x:auto;">
+              <table class="lc-user-table" id="myHandoutTable">
+                <thead><tr><th>标题</th><th>分类</th><th>面向等级</th><th>发布时间</th><th>操作</th></tr></thead>
+                <tbody id="myHandoutTbody"><tr><td colspan="5" style="color:var(--text-muted)">加载中…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 作业布置 -->
+        <div class="lc-manage-panel" id="panel-assignment" style="display:none;">
+          <form class="lc-form-panel" id="assignForm">
+            <h3>📝 布置作业（富文本）</h3>
+            <div class="lc-field">
+              <label>作业标题</label>
+              <input type="text" id="asTitle" maxlength="128" placeholder="例如：本周练习 · 十二经循行默写" required>
+            </div>
+            <div class="lc-field">
+              <label>作业内容</label>
+              <div class="lc-editor-wrap">
+                <div class="lc-editor-toolbar" id="edToolbar"></div>
+                <div class="lc-editor-area" id="edArea" contenteditable="true"></div>
+              </div>
+              <p class="lc-editor-note">支持加粗/斜体/标题/列表/引用/链接/图片等格式；图片将以 URL 插入。</p>
+            </div>
+            <div class="lc-field">
+              <label>提交时间范围（选填，超期学员不可再提交，仅可查看与评分）</label>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);">开始时间</label>
+                  <input type="datetime-local" id="asStartAt">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);">截止时间</label>
+                  <input type="datetime-local" id="asDueAt">
+                </div>
+              </div>
+              <p class="lc-editor-note">留空表示不限时；截止后学员仅可查看作业与评分评语。</p>
+            </div>
+            <div class="lc-field">
+              <label>分发等级（仅学员）</label>
+              <div class="lc-check-group" id="asLevels"></div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="asSubmitBtn">发布作业</button>
+          </form>
+          <!-- 我的作业与批改 -->
+          <div class="lc-form-panel">
+            <h3>📋 我的作业与批改 <span class="lc-view-desc" id="myAssignCount"></span></h3>
+            <div style="overflow-x:auto;">
+              <table class="lc-user-table" id="myAssignTable">
+                <thead><tr><th>标题</th><th>面向等级</th><th>截止</th><th>提交/已批</th><th>发布时间</th><th>操作</th></tr></thead>
+                <tbody id="myAssignTbody"><tr><td colspan="6" style="color:var(--text-muted)">加载中…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- 发送消息 -->
+        <div class="lc-manage-panel" id="panel-message" style="display:none;">
+          <form class="lc-form-panel" id="msgForm">
+            <h3>📢 发送消息</h3>
+            <div class="lc-field">
+              <label>标题</label>
+              <input type="text" id="mTitle" maxlength="120" placeholder="通知标题" required>
+            </div>
+            <div class="lc-field">
+              <label>正文</label>
+              <textarea id="mContent" placeholder="通知内容（选填）"></textarea>
+            </div>
+            <div class="lc-field">
+              <label>接收等级（可多选）</label>
+              <div class="lc-check-group" id="mLevels"></div>
+            </div>
+            <button type="submit" class="btn btn-primary" id="mSubmitBtn">发送消息</button>
+          </form>
+        </div>
+
+        <!-- 用户管理 -->
+        <div class="lc-manage-panel" id="panel-users" style="display:none;">
+          <!-- 新建账号 -->
+          <form class="lc-form-panel" id="createUserForm">
+            <h3>🧑‍🏫 新建账号（不开放注册，由管理员创建后分发）</h3>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap:14px;">
+              <div class="lc-field" style="margin-bottom:0;"><label>用户名</label><input type="text" id="cuName" required></div>
+              <div class="lc-field" style="margin-bottom:0;"><label>昵称（选填）</label><input type="text" id="cuNick"></div>
+              <div class="lc-field" style="margin-bottom:0;"><label>初始密码</label><input type="password" id="cuPass" placeholder="≥6位" required></div>
+              <div class="lc-field" style="margin-bottom:0;"><label>等级</label><select id="cuRole"></select></div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top:16px;" id="cuBtn">创建账号</button>
+            <div id="cuResult" class="lc-result-panel" style="display:none;"></div>
+          </form>
+          <!-- 列表 -->
+          <div class="lc-form-panel">
+            <h3>👥 账号列表 <span class="lc-view-desc" id="userCount"></span></h3>
+            <div style="overflow-x:auto;">
+              <table class="lc-user-table" id="userTable">
+                <thead><tr><th>用户名</th><th>昵称</th><th>等级</th><th>创建时间</th><th>最近登录</th><th>操作</th></tr></thead>
+                <tbody id="userTbody"><tr><td colspan="6" style="color:var(--text-muted)">加载中…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 我的 -->
+      <section class="lc-view" id="view-profile">
+        <div class="lc-form-panel" style="display:flex; align-items:center; gap:20px; flex-wrap:wrap;">
+          <span class="lc-avatar" id="pfAvatar" style="width:64px;height:64px;font-size:26px;"></span>
+          <div style="flex:1; min-width:200px;">
+            <div style="font-size:18px;font-weight:800;" id="pfName">—</div>
+            <div style="font-size:13px;color:var(--text-muted);" id="pfUsername">@—</div>
+          </div>
+          <span class="lc-chip-role" id="pfRole" style="font-size:13px;padding:6px 16px;">—</span>
+        </div>
+        <div class="lc-form-panel">
+          <h3>ℹ️ 账号说明</h3>
+          <ul style="padding-left:18px; font-size:13px; color:var(--text-secondary); line-height:2;">
+            <li>本中心不提供公开注册，账号由管理员创建并分发，密码遗失请联系管理员重置。</li>
+            <li>等级由管理员设置：管理员、教师、博士生、研究生、本科生、师承生。讲义按等级可见，作业面向学员等级下发。</li>
+            <li>支持安装到手机桌面（PWA）：浏览器菜单中选择「添加到主屏幕」，像原生应用一样使用。</li>
+            <li>网页地址：dailyread.sonnusww.top/center/ ，数据实时云端存储。</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 移动端底部导航 -->
+  <nav class="lc-bottom-nav" id="bottomNav"></nav>
+
+  <!-- 内容查看模态框 -->
+  <div class="lc-modal-mask" id="modalMask">
+    <div class="lc-modal">
+      <div class="lc-modal-head">
+        <span class="lc-cat-badge" id="modalCat">通知</span>
+        <span class="lc-modal-title" id="modalTitle">—</span>
+        <button class="lc-modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="lc-modal-meta" id="modalMeta"></div>
+      <div class="lc-modal-body" id="modalBody"></div>
+      <div class="lc-modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <div id="lcToast"></div>
+
+  <script src="/center/js/app.js"></script>
+</body>
+</html>

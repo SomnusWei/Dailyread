@@ -3,25 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DailyRead · 每日阅读 - 跨平台阅读习惯养成工具</title>
-  <meta name="description" content="DailyRead 是一套帮助用户养成每日阅读习惯的跨平台应用，支持文章管理、音频朗读、磨耳跟背等功能。">
+  <title>Learning Center | 炎武班</title>
+  <meta name="description" content="炎武班学习中心：讲义分发、作业布置、消息通知；同时提供 DailyRead 每日阅读跨平台应用的注册与管理入口。">
+  <meta name="theme-color" content="#1976D2">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/center/icons/icon-192.png">
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
 </head>
 <body>
   <!-- Navigation -->
   <nav class="nav">
     <div class="nav-inner">
       <a href="/" class="nav-brand">
-        <span class="brand-icon">📖</span>
-        <span class="brand-text">DailyRead</span>
+        <span class="brand-icon">🎓</span>
+        <span class="brand-text">Learning Center<span class="brand-sub"> | 炎武班</span></span>
       </a>
       <div class="nav-links">
         <a href="/" class="nav-link active">首页</a>
         <a href="#features" class="nav-link">功能</a>
         <a href="#architecture" class="nav-link">架构</a>
         <a href="#tech" class="nav-link">技术栈</a>
-        <a href="/register.html" class="btn btn-primary">注册账号</a>
+        <a href="/center/index.html" class="btn btn-outline btn-sm">学习中心登录</a>
+        <a href="/register.html" class="btn btn-primary btn-sm">DailyRead 注册</a>
       </div>
     </div>
   </nav>
@@ -30,24 +34,21 @@
   <section class="hero">
     <div class="container">
       <div class="hero-content">
-        <div class="hero-badge">跨平台阅读工具</div>
+        <div class="hero-badge">Learning Center · 炎武班</div>
         <h1 class="hero-title">
-          养成每日阅读习惯<br>
-          <span class="gradient-text">让学习更高效</span>
+          一个学习中心<br>
+          <span class="gradient-text">承载每次成长</span>
         </h1>
-        <p class="hero-desc">
-          鸿蒙端 APP + Windows 管理器 + 云端同步，三端联动。
-          文章管理、音频朗读、磨耳跟背，一站式解决阅读习惯养成。
-        </p>
+        <div class="hero-desc">
+          <p>由魏玮教授组建的炎武班组建于2024年，是一支理论教学、经典传承与临床带教于一体的高素质中医传承团队。现有专任教师5人，其中教授、副教授3人，讲师2人；具有博士学位4人，硕士学位1人，全国老中医药专家学术经验继承工作指导老师1人，省级教学名师1人。炎武班传承已有47人，博士占比32%、硕士占比45%、中医师承23%。</p>
+          <p>团队秉持“读经典、跟名师、多临床、育良才”的育人理念，以中医四大经典为根基，以临床能力培养为核心，构建了“经典引领＋案例研讨＋床边教学”三位一体的课程体系。近年来主持省部级教学改革项目2项，主编、参编国家级规划教材4部，获省级教学成果奖5项；中医经典诵读与临床思维训练已成为团队特色品牌。</p>
+        </div>
         <div class="hero-actions">
-          <a href="/register.html" class="btn btn-primary btn-lg">
-            立即注册
+          <a href="/center/index.html" class="btn btn-primary btn-lg">
+            进入学习中心
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </a>
-          <a href="https://github.com/SomnusWei/Dailyread" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-            GitHub
-          </a>
+          <a href="#portals" class="btn btn-outline btn-lg">查看全部入口</a>
         </div>
         <div class="hero-stats">
           <div class="stat">
@@ -61,13 +62,62 @@
           </div>
           <div class="stat-divider"></div>
           <div class="stat">
-            <span class="stat-num">0</span>
-            <span class="stat-label">成本（开源）</span>
+            <span class="stat-num">6</span>
+            <span class="stat-label">成员等级</span>
           </div>
         </div>
       </div>
     </div>
     <div class="hero-bg"></div>
+  </section>
+
+  <!-- Portals Section -->
+  <section id="portals" class="portals">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">网站入口</span>
+        <h2 class="section-title">从这里开始</h2>
+        <p class="section-desc">选择要前往的入口：炎武班学习中心，或 DailyRead 每日阅读工具</p>
+      </div>
+
+      <div class="portal-grid">
+        <div class="portal-card portal-center">
+          <div class="portal-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">🎓</div>
+          <h3 class="portal-title">炎武班 · 学习中心</h3>
+          <p class="portal-desc">
+            学员统一登录入口。可查看讲义分发、完成作业、接收管理员通知。
+            不开放自助注册，账号由管理员创建后分发。
+          </p>
+          <div class="portal-tags">
+            <span class="tech-tag">讲义库</span>
+            <span class="tech-tag">作业</span>
+            <span class="tech-tag">消息</span>
+            <span class="tech-tag">PWA 可安装</span>
+          </div>
+          <div class="portal-actions">
+            <a href="/center/index.html" class="btn btn-primary btn-lg">登录学习中心</a>
+          </div>
+        </div>
+
+        <div class="portal-card">
+          <div class="portal-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">📖</div>
+          <h3 class="portal-title">DailyRead · 每日阅读</h3>
+          <p class="portal-desc">
+            跨平台阅读习惯养成工具。用户在此注册后可在鸿蒙端 APP 或 Windows 管理器中登录使用；
+            已有账号的管理员可进入后台管理。
+          </p>
+          <div class="portal-tags">
+            <span class="tech-tag">文章管理</span>
+            <span class="tech-tag">音频朗读</span>
+            <span class="tech-tag">磨耳跟背</span>
+          </div>
+          <div class="portal-actions">
+            <a href="/register.html" class="btn btn-primary btn-lg">注册入口</a>
+            <a href="/login.html" class="btn btn-outline btn-lg">管理入口</a>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- Features Section -->
@@ -105,9 +155,9 @@
         </div>
 
         <div class="feature-card">
-          <div class="feature-icon" style="background: linear-gradient(135deg, fa709a 0%, #f093fb 100%);">⚙️</div>
+          <div class="feature-icon" style="background: linear-gradient(135deg, #fa709a 0%, #f093fb 100%);">⚙️</div>
           <h3 class="feature-title">配置同步</h3>
-          <p class="feature-desc">每日阅读时长、目标完成率、自动播放/循环播放、字号等配置双端共享、实时同步</p>
+          <p class="feature-desc">每日阅读时长、目标完成率、自动播放/循环播放等配置双端共享、实时同步</p>
         </div>
 
         <div class="feature-card">
@@ -124,8 +174,8 @@
     <div class="container">
       <div class="section-header">
         <span class="section-tag">系统架构</span>
-        <h2 class="section-title">三端联动，实时同步</h2>
-        <p class="section-desc">鸿蒙端、Windows 端、云端服务协同工作，数据实时互通</p>
+        <h2 class="section-title">多端联动，实时同步</h2>
+        <p class="section-desc">学习中心 PWA、鸿蒙端、Windows 端、云端服务协同工作，数据实时互通</p>
       </div>
 
       <div class="arch-diagram">
@@ -135,6 +185,13 @@
             <div class="node-info">
               <h4>鸿蒙端 APP</h4>
               <p>ArkTS / ArkUI</p>
+            </div>
+          </div>
+          <div class="arch-node node-web">
+            <div class="node-icon">🌐</div>
+            <div class="node-info">
+              <h4>学习中心 PWA</h4>
+              <p>HTML5 / Service Worker</p>
             </div>
           </div>
           <div class="arch-connections">
@@ -176,6 +233,15 @@
 
       <div class="tech-grid">
         <div class="tech-category">
+          <h4>学习中心</h4>
+          <div class="tech-tags">
+            <span class="tech-tag">PWA</span>
+            <span class="tech-tag">Service Worker</span>
+            <span class="tech-tag">富文本编辑器</span>
+            <span class="tech-tag">JWT</span>
+          </div>
+        </div>
+        <div class="tech-category">
           <h4>鸿蒙端</h4>
           <div class="tech-tags">
             <span class="tech-tag">ArkTS</span>
@@ -200,7 +266,6 @@
             <span class="tech-tag">Node.js</span>
             <span class="tech-tag">Express</span>
             <span class="tech-tag">MySQL</span>
-            <span class="tech-tag">JWT</span>
             <span class="tech-tag">Nginx</span>
             <span class="tech-tag">Let's Encrypt</span>
           </div>
@@ -213,11 +278,11 @@
   <section class="cta">
     <div class="container">
       <div class="cta-card">
-        <h2>开始你的阅读之旅</h2>
-        <p>注册账号，开启每日阅读习惯养成之旅</p>
+        <h2>现在就开始</h2>
+        <p>选择你的入口：进入炎武班学习中心，或注册使用 DailyRead</p>
         <div class="cta-actions">
-          <a href="/register.html" class="btn btn-primary btn-lg">立即注册</a>
-          <a href="https://github.com/SomnusWei/Dailyread" class="btn btn-outline btn-lg" target="_blank" rel="noopener">查看 GitHub</a>
+          <a href="/center/index.html" class="btn btn-primary btn-lg">登录学习中心</a>
+          <a href="/register.html" class="btn btn-outline btn-lg">注册 DailyRead</a>
         </div>
       </div>
     </div>
@@ -228,21 +293,29 @@
     <div class="container">
       <div class="footer-inner">
         <div class="footer-brand">
-          <span class="brand-icon">📖</span>
-          <span class="brand-text">DailyRead</span>
+          <span class="brand-icon">🎓</span>
+          <span class="brand-text">Learning Center | 炎武班</span>
         </div>
         <div class="footer-links">
           <a href="/">首页</a>
-          <a href="/register.html">注册</a>
+          <a href="/center/index.html">学习中心</a>
+          <a href="/register.html">DailyRead 注册</a>
           <a href="https://github.com/SomnusWei/Dailyread" target="_blank" rel="noopener">GitHub</a>
         </div>
         <div class="footer-copy">
-          © 2026 DailyRead. MIT License.
+          © 2026 Learning Center | 炎武班 · DailyRead MIT License.
         </div>
       </div>
     </div>
   </footer>
 
   <script src="/js/main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
 </body>
 </html>

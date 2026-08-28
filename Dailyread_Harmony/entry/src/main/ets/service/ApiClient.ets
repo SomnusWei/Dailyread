@@ -27,10 +27,16 @@ const BASE_URL: string = 'https://dailyread.sonnusww.top';
 const PREF_STORE: string = 'dailyread_auth';
 const KEY_TOKEN: string = 'token';
 const KEY_USER: string = 'user';
+const KEY_LAST_UID: string = 'last_uid';
+// 旧版全局 since key：保留常量名仅作向后兼容迁移用（登录成功会被清理）
 const KEY_ARTICLE_SINCE: string = 'article_since';
 const KEY_CHECKIN_SINCE: string = 'checkin_since';
 const KEY_DEVICE_ID: string = 'device_id';
 const KEY_CONFIG_SINCE: string = 'config_since';
+// 用户维度 since key（避免多账号切换共用游标准增量拉取不到账号独有的数据）
+function articleSinceKey(uid: number | string): string { return 'article_since_' + uid; }
+function checkinSinceKey(uid: number | string): string { return 'checkin_since_' + uid; }
+function configSinceKey(uid: number | string): string  { return 'config_since_' + uid; }
 
 export class ApiClient {
   private static instance: ApiClient;
@@ -61,6 +67,7 @@ export class ApiClient {
 
   /**
    * 初始化 Preferences（在 EntryAbility 中调用）
+   * since 游标按用户 id 隔离：优先读取用户维度 key，不存在则从旧全局 key 做一次性迁移
    */
   async init(context: common.Context): Promise<void> {
     this.prefs = await preferences.getPreferences(context, PREF_STORE);
@@ -73,9 +80,48 @@ export class ApiClient {
         console.error('ApiClient: 解析用户失败: ' + JSON.stringify(e));
       }
     }
-    this.articleSince = await this.prefs.get(KEY_ARTICLE_SINCE, '') as string;
-    this.checkinSince = await this.prefs.get(KEY_CHECKIN_SINCE, '') as string;
-    this.configSince = await this.prefs.get(KEY_CONFIG_SINCE, '') as string;
+    const uid = this.user?.id?.toString() ?? (await this.prefs.get(KEY_LAST_UID, '') as string);
+    if (uid) {
+      // 按用户维度读取 since，缺省用空串（null 不是合法 ValueType，禁止传入）
+      // 迁移策略：若用户维度读不到有效值但旧全局 key 有值，则一次性迁移并删除旧 key
+      let v = await this.prefs.get(articleSinceKey(uid), '') as string;
+      if (!v) {
+        const legacy = await this.prefs.get(KEY_ARTICLE_SINCE, '') as string;
+        if (legacy) {
+          await this.prefs.put(articleSinceKey(uid), legacy);
+          await this.prefs.delete(KEY_ARTICLE_SINCE);
+          v = legacy;
+        }
+      }
+      this.articleSince = v;
+
+      let c = await this.prefs.get(checkinSinceKey(uid), '') as string;
+      if (!c) {
+        const legacy = await this.prefs.get(KEY_CHECKIN_SINCE, '') as string;
+        if (legacy) {
+          await this.prefs.put(checkinSinceKey(uid), legacy);
+          await this.prefs.delete(KEY_CHECKIN_SINCE);
+          c = legacy;
+        }
+      }
+      this.checkinSince = c;
+
+      let cf = await this.prefs.get(configSinceKey(uid), '') as string;
+      if (!cf) {
+        const legacy = await this.prefs.get(KEY_CONFIG_SINCE, '') as string;
+        if (legacy) {
+          await this.prefs.put(configSinceKey(uid), legacy);
+          await this.prefs.delete(KEY_CONFIG_SINCE);
+          cf = legacy;
+        }
+      }
+      this.configSince = cf;
+      await this.prefs.flush();
+    } else {
+      this.articleSince = '';
+      this.checkinSince = '';
+      this.configSince = '';
+    }
 
     // 加载或生成设备ID
     this.deviceId = await this.prefs.get(KEY_DEVICE_ID, '') as string;
@@ -116,17 +162,37 @@ export class ApiClient {
     return this.user;
   }
 
+  /**
+   * 登录/注册成功后保存：① token + user + last_uid
+   *                      ② 重置当前用户维度 since 为空（触发全量拉取）
+   *                      ③ 清理旧全局 key，杜绝跨账号继承游标准增量拉取不到数据
+   */
   private async saveAuth(token: string, user: User): Promise<void> {
     this.token = token;
     this.user = user;
+    this.articleSince = '';
+    this.checkinSince = '';
+    this.configSince = '';
     if (this.prefs) {
+      const uid = user.id.toString();
       await this.prefs.put(KEY_TOKEN, token);
       await this.prefs.put(KEY_USER, JSON.stringify(user));
+      await this.prefs.put(KEY_LAST_UID, uid);
+      // 清旧全局
+      await this.prefs.delete(KEY_ARTICLE_SINCE);
+      await this.prefs.delete(KEY_CHECKIN_SINCE);
+      await this.prefs.delete(KEY_CONFIG_SINCE);
+      // 重置用户维度 since 为空 → 下次 pullArticles 传 since="" 即全量拉取
+      await this.prefs.put(articleSinceKey(uid), '');
+      await this.prefs.put(checkinSinceKey(uid), '');
+      await this.prefs.put(configSinceKey(uid), '');
       await this.prefs.flush();
     }
   }
 
   async clearAuth(): Promise<void> {
+    const uid = this.user?.id?.toString()
+      ?? (this.prefs ? (await this.prefs.get(KEY_LAST_UID, '') as string) : '');
     this.token = '';
     this.user = null;
     this.articleSince = '';
@@ -135,9 +201,17 @@ export class ApiClient {
     if (this.prefs) {
       await this.prefs.delete(KEY_TOKEN);
       await this.prefs.delete(KEY_USER);
+      await this.prefs.delete(KEY_LAST_UID);
+      // 清旧全局遗留
       await this.prefs.delete(KEY_ARTICLE_SINCE);
       await this.prefs.delete(KEY_CHECKIN_SINCE);
       await this.prefs.delete(KEY_CONFIG_SINCE);
+      // 清当前用户维度
+      if (uid) {
+        await this.prefs.delete(articleSinceKey(uid));
+        await this.prefs.delete(checkinSinceKey(uid));
+        await this.prefs.delete(configSinceKey(uid));
+      }
       await this.prefs.flush();
     }
   }
@@ -156,24 +230,30 @@ export class ApiClient {
 
   async setArticleSince(since: string): Promise<void> {
     this.articleSince = since;
-    if (this.prefs) {
-      await this.prefs.put(KEY_ARTICLE_SINCE, since);
+    const uid = this.user?.id?.toString() ?? '';
+    if (this.prefs && uid) {
+      await this.prefs.put(articleSinceKey(uid), since);
+      await this.prefs.delete(KEY_ARTICLE_SINCE); // 清理旧全局（防回退）
       await this.prefs.flush();
     }
   }
 
   async setCheckinSince(since: string): Promise<void> {
     this.checkinSince = since;
-    if (this.prefs) {
-      await this.prefs.put(KEY_CHECKIN_SINCE, since);
+    const uid = this.user?.id?.toString() ?? '';
+    if (this.prefs && uid) {
+      await this.prefs.put(checkinSinceKey(uid), since);
+      await this.prefs.delete(KEY_CHECKIN_SINCE);
       await this.prefs.flush();
     }
   }
 
   async setConfigSince(since: string): Promise<void> {
     this.configSince = since;
-    if (this.prefs) {
-      await this.prefs.put(KEY_CONFIG_SINCE, since);
+    const uid = this.user?.id?.toString() ?? '';
+    if (this.prefs && uid) {
+      await this.prefs.put(configSinceKey(uid), since);
+      await this.prefs.delete(KEY_CONFIG_SINCE);
       await this.prefs.flush();
     }
   }

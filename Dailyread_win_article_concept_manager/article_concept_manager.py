@@ -2894,6 +2894,11 @@ class SettingsPage(QWidget):
         import_btn.clicked.connect(self._import_backup)
         backup_layout.addWidget(import_btn)
 
+        full_export_btn = QPushButton("🌐 全量导出（服务器）")
+        full_export_btn.setStyleSheet("background-color: #e17007; color: white; padding: 6px 16px;")
+        full_export_btn.clicked.connect(self._export_full_server_backup)
+        backup_layout.addWidget(full_export_btn)
+
         layout.addWidget(backup_group)
 
         # ── 云同步 ──
@@ -3014,6 +3019,81 @@ class SettingsPage(QWidget):
             QMessageBox.information(self, "成功", "备份已保存到：" + filepath + "\n\n包含文章：" + str(count) + " 篇")
         except Exception as e:
             QMessageBox.critical(self, "错误", "导出失败：" + str(e))
+
+    def _export_full_server_backup(self):
+        """从服务器全量拉取当前账号所有数据（文章+打卡+配置+每日任务），导出为 JSON 备份"""
+        if not api_client.is_logged_in():
+            QMessageBox.warning(self, "提示", "请先登录后再执行全量导出。")
+            return
+        default_name = "dailyread_full_backup_" + datetime.now().strftime('%Y%m%d_%H%M%S') + ".json"
+        filepath, _ = QFileDialog.getSaveFileName(self, "保存全量备份", default_name, "JSON Files (*.json)")
+        if not filepath:
+            return
+        try:
+            # 1. 拉取全部文章（含音频/图片 base64）
+            articles_resp = api_client.fetch_articles()
+            if articles_resp.get('code') != 0:
+                raise Exception("拉取文章失败: " + articles_resp.get('message', ''))
+            raw_data = articles_resp.get('data') or {}
+            if isinstance(raw_data, list):
+                articles = raw_data
+            else:
+                articles = raw_data.get('articles', [])
+
+            # 2. 拉取全部打卡记录
+            checkins_resp = api_client.fetch_checkins()
+            if checkins_resp.get('code') != 0:
+                raise Exception("拉取打卡记录失败: " + checkins_resp.get('message', ''))
+            checkins_data = checkins_resp.get('data') or {}
+            if isinstance(checkins_data, list):
+                checkins = checkins_data
+            else:
+                checkins = checkins_data.get('checkins', []) if isinstance(checkins_data, dict) else []
+
+            # 3. 拉取用户配置
+            config_resp = api_client.fetch_config()
+            if config_resp.get('code') != 0:
+                raise Exception("拉取配置失败: " + config_resp.get('message', ''))
+            config = config_resp.get('data', {})
+
+            # 4. 拉取今日任务
+            today_task_resp = api_client.fetch_today_task()
+            today_task = today_task_resp.get('data') if today_task_resp.get('code') == 0 else None
+
+            # 组装全量备份数据
+            backup = {
+                'version': '2.0',
+                'exportTime': datetime.now().strftime('%Y-%m-%dT%H:%M:%S'),
+                'dataType': 'daily_read_full_backup',
+                'source': 'server',
+                'account': (api_client.user or {}).get('username', ''),
+                'articles': articles,
+                'checkins': checkins,
+                'config': config,
+                'todayTask': today_task,
+                'stats': {
+                    'articleCount': len(articles),
+                    'checkinCount': len(checkins),
+                    'hasAudio': sum(1 for a in articles if a.get('audiobase64')),
+                    'hasImage': sum(1 for a in articles if a.get('imagewebp'))
+                }
+            }
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(backup, f, ensure_ascii=False, indent=2)
+
+            stats = backup['stats']
+            file_size = os.path.getsize(filepath) / 1024 / 1024
+            QMessageBox.information(self, "全量导出成功",
+                f"备份已保存到：{filepath}\n\n"
+                f"文章数量：{stats['articleCount']} 篇\n"
+                f"含音频文章：{stats['hasAudio']} 篇\n"
+                f"含图片文章：{stats['hasImage']} 篇\n"
+                f"打卡记录：{stats['checkinCount']} 条\n"
+                f"文件大小：{file_size:.1f} MB")
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            QMessageBox.critical(self, "错误", "全量导出失败：" + str(e) + "\n\n" + tb)
 
     def _import_backup(self):
         filepath, _ = QFileDialog.getOpenFileName(self, "选择备份文件", "", "JSON Files (*.json)")

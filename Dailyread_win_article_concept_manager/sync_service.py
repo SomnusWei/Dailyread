@@ -72,7 +72,10 @@ class OfflineWriteQueue:
 
 # ---------- 同步服务 ----------
 class SyncService:
-    """同步服务：消费写队列 + 增量拉取"""
+    """同步服务：消费写队列 + 增量拉取
+    自 v9 起：同步游标按 user_id 隔离，避免账号切换时共用游标准增量拉取不到新账号数据。
+    兼容策略：读优先读取用户维度 key；若无则一次性从旧全局 key 迁移并删除。
+    """
 
     SYNC_STATE_FILE = data_path("sync_state.json")
 
@@ -84,16 +87,47 @@ class SyncService:
         self._last_article_since = self._load_since('article')
         self._last_checkin_since = self._load_since('checkin')
 
+    # ---------- 账号维度游标辅助 ----------
+    @staticmethod
+    def _current_uid() -> str:
+        """返回当前登录用户 id 字符串，未登录返回空串"""
+        user = getattr(api_client, 'user', None)
+        if isinstance(user, dict) and user.get('id') is not None:
+            return str(user['id'])
+        return ''
+
     def _load_since(self, kind):
+        uid = self._current_uid()
+        if not uid:
+            return ''
+        state_key_user = f'{kind}_since_{uid}'
+        state_key_legacy = f'{kind}_since'
         if os.path.exists(self.SYNC_STATE_FILE):
             try:
                 with open(self.SYNC_STATE_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f).get(f'{kind}_since', '')
+                    data = json.load(f)
+                # 优先用户维度
+                if state_key_user in data:
+                    return data.get(state_key_user, '')
+                # 兼容旧全局：一次性迁移到用户维度并删除旧 key（防回退到下次误用）
+                if state_key_legacy in data:
+                    val = data.get(state_key_legacy, '')
+                    try:
+                        data[state_key_user] = val
+                        del data[state_key_legacy]
+                        with open(self.SYNC_STATE_FILE, 'w', encoding='utf-8') as f:
+                            json.dump(data, f, ensure_ascii=False)
+                    except Exception as e:
+                        print(f"[Sync] since key迁移失败: {e}")
+                    return val
             except Exception:
                 pass
         return ''
 
     def _save_since(self, kind, value):
+        uid = self._current_uid()
+        state_key_user = f'{kind}_since_{uid}' if uid else None
+        state_key_legacy = f'{kind}_since'
         data = {}
         if os.path.exists(self.SYNC_STATE_FILE):
             try:
@@ -101,7 +135,10 @@ class SyncService:
                     data = json.load(f)
             except Exception:
                 pass
-        data[f'{kind}_since'] = value
+        if state_key_user:
+            data[state_key_user] = value
+        # 始终清理旧全局 key，避免下次切账号读到旧值
+        data.pop(state_key_legacy, None)
         try:
             with open(self.SYNC_STATE_FILE, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
@@ -198,9 +235,26 @@ class SyncService:
             self._thread.join(timeout=2)
 
     def reset_sync_state(self):
-        """重置同步状态（切换账号时调用）"""
+        """重置同步状态（切换账号/登录成功时调用）
+        清空当前用户维度游标缓存，保证 pull_* 走全量拉取；同时清离线写队列。"""
+        uid = self._current_uid()
         self._last_article_since = ''
         self._last_checkin_since = ''
+        # 1. 清当前用户维度
+        if os.path.exists(self.SYNC_STATE_FILE):
+            try:
+                with open(self.SYNC_STATE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                data.pop(f'article_since_{uid}', None)
+                data.pop(f'checkin_since_{uid}', None)
+                # 旧全局遗留也清理（保证切换账号后绝不读到其他账号的游标）
+                data.pop('article_since', None)
+                data.pop('checkin_since', None)
+                with open(self.SYNC_STATE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False)
+            except Exception:
+                pass
+        # 2. 用新 save 机制再写一次空值（确保用户维度存在）
         self._save_since('article', '')
         self._save_since('checkin', '')
         # 清空离线写队列

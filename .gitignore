@@ -63,3 +63,10 @@ serverssh
 serverssh.pub
 SSH密钥登录配置.md
 server.md
+
+# ==================
+# 服务端运行时产物
+# ==================
+dailyread-server/node_modules/
+dailyread-server/.env
+dailyread-server/uploads/
