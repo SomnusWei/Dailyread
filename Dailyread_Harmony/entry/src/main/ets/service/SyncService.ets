@@ -273,21 +273,29 @@ export class SyncService {
     if (!this.api.isLoggedIn()) {
       return 0;
     }
-    const since: string = this.api.getArticleSince();
-    const data = await this.api.fetchArticles(since);
-    if (!data) {
-      return 0;
-    }
-    const articles = (data['articles'] as Object[]) || [];
-    const nextSince = (data['nextSince'] as string) || '';
+    let since: string = this.api.getArticleSince();
     let merged: number = 0;
-    if (articles.length > 0) {
-      merged = await this.mergeArticles(articles);
+    // 分批循环拉取（batch=1 单批约 3MB）：直到空批次或游标不再推进
+    for (let round = 0; round < 500; round++) {
+      const data = await this.api.fetchArticles(since);
+      if (!data) {
+        break; // 请求失败：保留 since 不动，下次重试
+      }
+      const articles = (data['articles'] as Object[]) || [];
+      const nextSince = (data['nextSince'] as string) || '';
+      if (articles.length > 0) {
+        merged += await this.mergeArticles(articles);
+      }
+      if (nextSince) {
+        await this.api.setArticleSince(nextSince);
+      }
+      // 空批次（已拉完）或游标未推进 → 结束
+      if (articles.length === 0 || !nextSince || nextSince === since) {
+        break;
+      }
+      since = nextSince;
     }
-    if (nextSince) {
-      await this.api.setArticleSince(nextSince);
-    }
-    this.notify('拉取 ' + articles.length + ' 篇增量文章');
+    this.notify('拉取 ' + merged + ' 篇增量文章');
     return merged;
   }
 

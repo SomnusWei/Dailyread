@@ -275,7 +275,9 @@ export class ApiClient {
         method: method as http.RequestMethod,
         header: headers,
         connectTimeout: 15000,
-        readTimeout: 30000
+        readTimeout: 60000,
+        // 响应体上限调到 16MB（默认 5MB，文章含音频/图片 base64 分批后单批约 3MB，留足余量）
+        maxLimit: 16 * 1024 * 1024
       };
       if (body) {
         option.extraData = JSON.stringify(body);
@@ -400,7 +402,11 @@ export class ApiClient {
 
   // ---------- 文章 ----------
   async fetchArticles(since: string): Promise<Record<string, Object> | null> {
-    const path: string = since ? '/api/articles?since=' + encodeURIComponent(since) : '/api/articles';
+    // batch=1：服务端按体积分批返回（单批约 3MB），配合 SyncService 循环拉取
+    let path: string = '/api/articles?batch=1';
+    if (since) {
+      path += '&since=' + encodeURIComponent(since);
+    }
     const r = await this.request('GET', path);
     if (r.code === 0) {
       return r.data as Record<string, Object>;

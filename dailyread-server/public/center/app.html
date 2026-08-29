@@ -83,8 +83,8 @@
             <h3>🗂️ 我的分发记录 <span class="lc-view-desc" id="myHandoutCount"></span></h3>
             <div style="overflow-x:auto;">
               <table class="lc-user-table" id="myHandoutTable">
-                <thead><tr><th>标题</th><th>分类</th><th>面向等级</th><th>发布时间</th><th>操作</th></tr></thead>
-                <tbody id="myHandoutTbody"><tr><td colspan="5" style="color:var(--text-muted)">加载中…</td></tr></tbody>
+                <thead><tr><th>标题</th><th>分类</th><th>面向等级</th><th>指定账号</th><th>发布时间</th><th>操作</th></tr></thead>
+                <tbody id="myHandoutTbody"><tr><td colspan="6" style="color:var(--text-muted)">加载中…</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -103,7 +103,7 @@
           <button class="lc-sub-tab active" data-atab="list">📋 作业列表</button>
           <button class="lc-sub-tab lc-staff-only" data-atab="query">🔍 作业查询</button>
           <button class="lc-sub-tab lc-staff-only" data-atab="publish">📤 作业发布</button>
-          <button class="lc-sub-tab lc-staff-only" data-atab="completion">📊 完成率</button>
+          <button class="lc-sub-tab lc-staff-only" data-atab="completion">📊 阅读完成率</button>
         </div>
         <!-- 作业列表面板 -->
         <div id="apanel-list">
@@ -187,7 +187,7 @@
         <div class="lc-manage-panel" id="apanel-completion" style="display:none;">
           <div class="lc-form-panel">
             <h3>📊 阅读完成率</h3>
-            <p class="lc-view-desc">每天 12:00 自动结算，支持按学生查看周/月视图</p>
+            <p class="lc-view-desc">实时读取学生绑定 DailyRead 账号的每日打卡数据，支持按学生查看周/月视图</p>
             <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-top:12px;">
               <div class="lc-field" style="margin:0; min-width:140px;">
                 <label>按等级筛选学生</label>
@@ -201,7 +201,14 @@
                 <b style="font-size:13px;">视图模式：</b>
                 <button class="btn btn-sm" id="compViewWeek" style="border:1.5px solid var(--border);">周视图</button>
                 <button class="btn btn-sm" id="compViewMonth" style="border:1.5px solid var(--border);">月视图</button>
-                <input type="date" id="compDate" style="padding:6px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+                <span id="compWeekWrap" style="display:inline-flex; align-items:center; gap:6px;">
+                  <input type="date" id="compWeekDate" style="padding:6px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+                  <small style="color:var(--text-muted);">选任意一天，显示该自然周</small>
+                </span>
+                <span id="compMonthWrap" style="display:none; align-items:center; gap:6px;">
+                  <input type="month" id="compMonthInput" style="padding:6px 10px; border:1.5px solid var(--border); border-radius:8px; font-size:13px;">
+                  <small style="color:var(--text-muted);">显示该自然月</small>
+                </span>
               </div>
               <div id="compChart"></div>
             </div>

@@ -70,6 +70,11 @@ const SQL_ALTER_LC_HANDOUTS_ADD_CATEGORY = `
 ALTER TABLE lc_handouts ADD COLUMN category VARCHAR(32) NOT NULL DEFAULT '' AFTER title
 `;
 
+// 迁移：讲义指定账号分发（JSON 数组，存 lc_users.id；可见性 = 等级匹配 OR 指定账号）
+const SQL_ALTER_LC_HANDOUTS_ADD_EXTRA_USERS = `
+ALTER TABLE lc_handouts ADD COLUMN extra_users TEXT NULL AFTER level_scope
+`;
+
 // 迁移：作业时间范围（毫秒时间戳，NULL 表示不限；比较在应用层做以规避时区问题）
 const SQL_ALTER_LC_ASSIGNMENTS_ADD_START_AT = `
 ALTER TABLE lc_assignments ADD COLUMN start_at BIGINT NULL AFTER level_scope
@@ -142,6 +147,7 @@ async function ensureLearningSchema() {
     ['lc_handouts.category', SQL_ALTER_LC_HANDOUTS_ADD_CATEGORY],
     ['lc_assignments.start_at', SQL_ALTER_LC_ASSIGNMENTS_ADD_START_AT],
     ['lc_assignments.due_at', SQL_ALTER_LC_ASSIGNMENTS_ADD_DUE_AT],
+    ['lc_handouts.extra_users', SQL_ALTER_LC_HANDOUTS_ADD_EXTRA_USERS],
     ['lc_users.dr_user_id', SQL_ALTER_LC_USERS_ADD_DR_USER_ID],
     ['lc_users.dr_bound_at', SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT]
   ];

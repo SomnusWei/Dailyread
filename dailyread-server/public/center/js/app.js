@@ -411,7 +411,9 @@
 
   function renderHandoutItem(h) {
     var canDelete = isAdmin || h.uploader_id === me.id;
+    var canDistribute = isStaff;
     var cat = h.category || '未分类';
+    var extraNames = h.extra_names || [];
     return (
       '<div class="lc-card" data-handout-id="' + h.id + '">'
       + '<div class="lc-card-head">'
@@ -423,10 +425,12 @@
       + '<span>' + fmtTime(h.created_at) + '</span>'
       + (h.file_size ? '<span>' + fmtSize(h.file_size) + '</span>' : '')
       + '<span class="lc-scope-tag">面向：' + esc((h.level_scope || []).map(scopeName).join(' ')) + '</span>'
+      + (extraNames.length ? '<span class="lc-scope-tag">指定账号：' + esc(extraNames.join('、')) + '</span>' : '')
       + '</div>'
       + '<div class="lc-card-actions">'
       + '<button class="btn btn-primary btn-sm" data-act="read">📖 在线阅读</button>'
       + '<a class="btn btn-outline btn-sm" href="/uploads/handouts/' + encodeURIComponent(h.filename) + '" target="_blank" rel="noopener">新窗口打开</a>'
+      + (canDistribute ? '<button class="btn btn-outline btn-sm" data-act="distribute">＋ 追加分发</button>' : '')
       + (canDelete ? '<button class="lc-link-danger" data-act="del">删除</button>' : '')
       + '</div>'
       + '</div>'
@@ -437,6 +441,11 @@
     document.querySelectorAll('#handoutList .lc-card').forEach(function (card) {
       var id = Number(card.getAttribute('data-handout-id'));
       card.querySelector('[data-act="read"]').addEventListener('click', function () { openHandoutDirect(id); });
+      var dist = card.querySelector('[data-act="distribute"]');
+      if (dist) dist.addEventListener('click', function () {
+        var h = handoutCache.find(function (x) { return x.id === id; });
+        if (h) openDistributeHandout(h);
+      });
       var del = card.querySelector('[data-act="del"]');
       if (del) del.addEventListener('click', function () {
         if (!confirm('确认删除该讲义？此操作不可恢复。')) return;
@@ -444,6 +453,71 @@
           .then(function () { toast('讲义已删除', 'success'); renderHandouts(); })
           .catch(function (e) { toast(e.message, 'error'); });
       });
+    });
+  }
+
+  // ---------- 追加分发（等级 + 指定账号） ----------
+  async function openDistributeHandout(h) {
+    var recips = [];
+    try { recips = (await api('/handouts/recipients')).list || []; }
+    catch (e) { return toast('加载学生账号失败：' + e.message, 'error'); }
+    var node = document.createElement('div');
+    var extraNow = (h.extra_names || []).length ? ' ＋ 指定账号：' + esc(h.extra_names.join('、')) : '';
+    node.innerHTML =
+      '<p style="margin:0 0 10px; font-size:13px;">当前面向：<b>' + esc((h.level_scope || []).map(scopeName).join(' ')) + '</b>' + extraNow + '</p>'
+      + '<div class="lc-field"><label>追加分发等级（可多选）</label><div id="dhLevels" style="display:flex; flex-wrap:wrap; gap:6px;"></div></div>'
+      + '<div class="lc-field"><label>追加指定账号（可多选，新账号将立即可见该讲义）</label>'
+      + '<input type="text" id="dhUserSearch" placeholder="搜索用户名/昵称…" style="margin-bottom:6px;">'
+      + '<div id="dhUserList" style="max-height:220px; overflow-y:auto; border:1.5px solid var(--border); border-radius:8px; padding:8px;"></div>'
+      + '</div>';
+    // 等级多选 chips
+    var lvWrap = node.querySelector('#dhLevels');
+    ['all'].concat(STUDENT_ROLES).forEach(function (r) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lc-cat-chip';
+      b.textContent = ROLE_LABELS[r] || r;
+      b.dataset.level = r;
+      b.addEventListener('click', function () { b.classList.toggle('on'); });
+      lvWrap.appendChild(b);
+    });
+    // 账号多选列表 + 搜索
+    var listBox = node.querySelector('#dhUserList');
+    var searchInput = node.querySelector('#dhUserSearch');
+    function renderUserList(kw) {
+      var k = (kw || '').toLowerCase();
+      var filtered = recips.filter(function (u) {
+        return !k || (u.username || '').toLowerCase().indexOf(k) >= 0 || (u.displayName || '').toLowerCase().indexOf(k) >= 0;
+      });
+      if (filtered.length === 0) { listBox.innerHTML = '<p style="color:var(--text-muted); font-size:13px; margin:4px;">无匹配账号</p>'; return; }
+      listBox.innerHTML = filtered.map(function (u) {
+        return '<label style="display:flex; gap:8px; align-items:center; padding:4px 2px; cursor:pointer; font-size:13px;">'
+          + '<input type="checkbox" data-uid="' + u.id + '">'
+          + '<span>' + esc(u.displayName) + ' <small style="color:var(--text-muted)">@' + esc(u.username) + ' · ' + esc(ROLE_LABELS[u.role] || u.role) + '</small></span>'
+          + '</label>';
+      }).join('');
+    }
+    renderUserList('');
+    searchInput.addEventListener('input', function () { renderUserList(searchInput.value); });
+    openModal({
+      cat: 'handout', catLabel: '追加分发', title: h.title,
+      bodyNode: node,
+      buttons: [{
+        label: '确认追加分发',
+        onClick: function () {
+          var addLevels = Array.prototype.slice.call(node.querySelectorAll('#dhLevels .on')).map(function (b) { return b.dataset.level; });
+          var addUserIds = Array.prototype.slice.call(node.querySelectorAll('#dhUserList input:checked')).map(function (i) { return parseInt(i.getAttribute('data-uid')); });
+          if (addLevels.length === 0 && addUserIds.length === 0) { toast('请至少选择一个等级或账号', 'error'); return; }
+          api('/handouts/' + h.id + '/distribute', { method: 'PATCH', body: JSON.stringify({ addLevels: addLevels, addUserIds: addUserIds }) })
+            .then(function (r) {
+              toast(r.message || '追加分发成功', 'success');
+              closeModal();
+              renderHandouts();
+              renderMyHandoutRecords();
+            })
+            .catch(function (e) { toast(e.message, 'error'); });
+        }
+      }]
     });
   }
 
@@ -905,7 +979,7 @@
     }
   }
 
-  // ---------- 完成率（周/月视图） ----------
+  // ---------- 阅读完成率（周/月视图，独立时间范围） ----------
   var compCurrentView = 'week';
   var compCurrentStudent = null;
   function initCompletionPanel() {
@@ -920,19 +994,33 @@
     }
     var filterBtn = document.getElementById('compFilterBtn');
     if (filterBtn && !filterBtn._bound) { filterBtn._bound = true; filterBtn.addEventListener('click', loadCompStudents); }
+    // 默认时间：周=今天；月=当月（各自独立，互不影响）
+    var weekInput = document.getElementById('compWeekDate');
+    var monthInput = document.getElementById('compMonthInput');
+    var now = new Date();
+    if (weekInput && !weekInput._init) {
+      weekInput._init = true;
+      weekInput.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+      weekInput.addEventListener('change', loadCompChart);
+    }
+    if (monthInput && !monthInput._init) {
+      monthInput._init = true;
+      monthInput.value = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+      monthInput.addEventListener('change', loadCompChart);
+    }
     var weekBtn = document.getElementById('compViewWeek');
     var monthBtn = document.getElementById('compViewMonth');
-    if (weekBtn && !weekBtn._bound) { weekBtn._bound = true; weekBtn.addEventListener('click', function () { compCurrentView = 'week'; loadCompChart(); }); }
-    if (monthBtn && !monthBtn._bound) { monthBtn._bound = true; monthBtn.addEventListener('click', function () { compCurrentView = 'month'; loadCompChart(); });
-      monthBtn.addEventListener('change', loadCompChart);
+    function applyView() {
+      var ww = document.getElementById('compWeekWrap');
+      var mw = document.getElementById('compMonthWrap');
+      if (ww) ww.style.display = compCurrentView === 'week' ? 'inline-flex' : 'none';
+      if (mw) mw.style.display = compCurrentView === 'month' ? 'inline-flex' : 'none';
+      if (weekBtn) weekBtn.style.borderColor = compCurrentView === 'week' ? 'var(--primary)' : 'var(--border)';
+      if (monthBtn) monthBtn.style.borderColor = compCurrentView === 'month' ? 'var(--primary)' : 'var(--border)';
     }
-    var dateInput = document.getElementById('compDate');
-    if (dateInput && !dateInput._bound) {
-      dateInput._bound = true;
-      var cd = new Date();
-      dateInput.value = cd.getFullYear() + '-' + String(cd.getMonth() + 1).padStart(2, '0') + '-' + String(cd.getDate()).padStart(2, '0');
-      dateInput.addEventListener('change', loadCompChart);
-    }
+    if (weekBtn && !weekBtn._bound) { weekBtn._bound = true; weekBtn.addEventListener('click', function () { compCurrentView = 'week'; applyView(); loadCompChart(); }); }
+    if (monthBtn && !monthBtn._bound) { monthBtn._bound = true; monthBtn.addEventListener('click', function () { compCurrentView = 'month'; applyView(); loadCompChart(); }); }
+    applyView();
     if (!compCurrentStudent) loadCompStudents();
   }
 
@@ -973,12 +1061,18 @@
   async function loadCompChart() {
     if (!compCurrentStudent) return;
     var chartEl = document.getElementById('compChart');
-    var date = document.getElementById('compDate') ? document.getElementById('compDate').value : '';
-    if (!date) return;
+    var url;
+    if (compCurrentView === 'month') {
+      var month = document.getElementById('compMonthInput') ? document.getElementById('compMonthInput').value : '';
+      if (!month) return;
+      url = '/dr/completion-rates/student?userId=' + compCurrentStudent.lcUserId + '&view=month&month=' + encodeURIComponent(month);
+    } else {
+      var date = document.getElementById('compWeekDate') ? document.getElementById('compWeekDate').value : '';
+      if (!date) return;
+      url = '/dr/completion-rates/student?userId=' + compCurrentStudent.lcUserId + '&view=week&date=' + encodeURIComponent(date);
+    }
     if (chartEl) chartEl.innerHTML = '<p style="color:var(--text-muted);">加载中…</p>';
     try {
-      var url = '/dr/completion-rates/student?userId=' + compCurrentStudent.lcUserId +
-        '&view=' + compCurrentView + '&date=' + encodeURIComponent(date);
       var data = await api(url);
       if (!data.list || data.list.length === 0) {
         if (chartEl) chartEl.innerHTML = '<p style="color:var(--text-muted);">该时间段暂无完成率数据</p>';
@@ -989,15 +1083,13 @@
       var barHeight = 24;
       var barGap = 6;
       if (chartEl) {
-        chartEl.innerHTML = '<div style="display:flex; align-items:flex-end; gap:4px; height:' + (data.list.length * (barHeight + barGap)) + 'px; flex-direction:column; overflow-x:auto;">' +
+        chartEl.innerHTML = '<p style="font-size:12px; color:var(--text-muted); margin:0 0 8px;">范围：' + esc(data.startDate) + ' ~ ' + esc(data.endDate) + '（数据来自绑定的 DailyRead 账号，实时统计）</p>' +
+          '<div style="display:flex; align-items:flex-end; gap:4px; height:' + (data.list.length * (barHeight + barGap)) + 'px; flex-direction:column; overflow-x:auto;">' +
           data.list.map(function (r) {
             var w = Math.max(2, Math.round(r.completionRate / maxRate * 300));
             var color = r.completionRate >= 80 ? '#4CAF50' : (r.completionRate >= 50 ? '#FFA726' : '#E53935');
-            var label = compCurrentView === 'week'
-              ? r.taskDate
-              : r.taskDate;
             return '<div style="display:flex; align-items:center; gap:8px; height:' + barHeight + 'px;">' +
-              '<span style="font-size:12px; color:var(--text-muted); min-width:90px; text-align:right;">' + label + '</span>' +
+              '<span style="font-size:12px; color:var(--text-muted); min-width:90px; text-align:right;">' + esc(r.taskDate) + '</span>' +
               '<div style="width:' + w + 'px; height:' + (barHeight - 4) + 'px; background:' + color + '; border-radius:4px; transition:width 0.3s;"></div>' +
               '<span style="font-size:12px; font-weight:700;">' + r.completionRate + '%</span>' +
               '<span style="font-size:11px; color:var(--text-muted);">(' + r.checkedItems + '/' + r.totalItems + ')</span>' +
@@ -1165,21 +1257,25 @@
       var countEl = document.getElementById('myHandoutCount');
       if (countEl) countEl.textContent = '共 ' + mine.length + ' 条';
       if (mine.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">暂无分发记录</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">暂无分发记录</td></tr>';
         return;
       }
       tbody.innerHTML = '';
       mine.forEach(function (h) {
         var tr = document.createElement('tr');
+        var extraNames = h.extra_names || [];
         tr.innerHTML =
           '<td><b>' + esc(h.title) + '</b></td>'
           + '<td>' + esc(h.category || '未分类') + '</td>'
           + '<td>' + esc((h.level_scope || []).map(scopeName).join(' ')) + '</td>'
+          + '<td>' + (extraNames.length ? esc(extraNames.join('、')) : '<span style="color:var(--text-muted)">—</span>') + '</td>'
           + '<td>' + fmtTime(h.created_at) + '</td>'
           + '<td><div class="lc-row-actions">'
           + '<a class="lc-link-action" href="/uploads/handouts/' + encodeURIComponent(h.filename) + '" target="_blank" rel="noopener">预览</a>'
+          + '<button class="lc-link-action" data-act="distribute">追加分发</button>'
           + '<button class="lc-link-danger" data-act="del">删除</button>'
           + '</div></td>';
+        tr.querySelector('[data-act="distribute"]').addEventListener('click', function () { openDistributeHandout(h); });
         tr.querySelector('[data-act="del"]').addEventListener('click', function () {
           if (!confirm('确认删除讲义「' + h.title + '」？')) return;
           api('/handouts/' + h.id, { method: 'DELETE' })
@@ -1189,7 +1285,7 @@
         tbody.appendChild(tr);
       });
     } catch (e) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--error)">加载失败：' + esc(e.message) + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--error)">加载失败：' + esc(e.message) + '</td></tr>';
     }
   }
 

@@ -28,11 +28,13 @@ DailyRead 是一套帮助用户养成每日阅读习惯的工具，支持文章�
 #### 炎武班学习中心（PWA）
 
 - 🎓 **用户等级体系**：管理员、教师、博士生、研究生、本科生、师承生；管理员/教师为教职工角色（STAFF），其他为学生角色
-- 📄 **讲义分发**：教师/管理员上传 HTML 讲义并按学生等级分发；支持 12 个分类筛选（基础学｜诊断学｜针灸腧穴｜中药｜方剂｜内科｜外科｜妇科｜儿科｜推拿｜养生｜经典）；学员点击在线阅读
+- 📄 **讲义分发**：教师/管理员上传 HTML 讲义并按学生等级分发；支持 12 个分类筛选（基础学｜诊断学｜针灸腧穴｜中药｜方剂｜内科｜外科｜妇科｜儿科｜推拿｜养生｜经典）；学员点击在线阅读；已分发讲义可**追加分发**（追加等级或指定账号，自动向未收到通知的账号补发通知且去重不重复打扰）；讲义可见性按等级动态匹配，新建账号可查看其等级范围内的历史讲义
 - 📝 **作业布置**：富文本编辑器编辑作业，按学生等级分发；支持设置提交时间范围（开始时间/截止时间），超期学员不可再提交，仅可查看作业与评分评语
 - 📤 **学员作业提交**：学员在作业区对指定作业上传文件（Word 文档、Excel 表格、PDF 文档、图片），每人每作业一份，重复提交覆盖旧文件并重置成绩；文件大小上限 20MB
 - ✅ **教师批改**：作业布置者可查看提交列表，录入分数与评语，批改结果通过收件箱通知学员；支持重新批改
 - 📬 **消息通知**：讲义/作业分发、作业批改结果均自动推送到学员收件箱，支持已读/未读筛选与批量已读
+- 📊 **阅读完成率**：教师/管理员按等级筛选已绑定 DailyRead 的学员，查看自然周/自然月阅读完成率柱状图；周/月视图**独立选择时间范围**（周视图选任意一天显示该自然周，月视图直接选月份），数据实时来自学员绑定账号的打卡记录（只读查询，不改动 DailyRead 数据表，不影响 Win/鸿蒙端）
+- ⏱ **阅读打卡（PWA）**：学习中心内嵌 DailyRead PWA 阅读页新增打卡按钮，进入页面 10 秒后才允许打卡（倒计时提示、防重复打卡），打卡数据写入绑定账号
 - 📊 **分发记录**：教师/管理员可在"我的讲义"与"我的作业"面板查看自己的分发记录与学员提交情况
 - 📲 **PWA 支持**：通过 manifest.json + Service Worker 支持安装到桌面/离线访问；静态资源缓存优先 + 后台更新策略，API 与上传内容仅网络获取
 
@@ -257,7 +259,7 @@ Win 端录入            后端存储                鸿蒙端播放
 | 表名 | 说明 |
 |------|------|
 | lc_users | 学习中心用户（username/password_hash/nickname/role 等级；新增 `dr_user_id` + `dr_bound_at` 单向绑定 DailyRead 账号） |
-| lc_handouts | 讲义（uploader_id/level_scope 分发等级/category 分类 12 选 1/html_file 路径） |
+| lc_handouts | 讲义（uploader_id/level_scope 分发等级/extra_users 指定账号 JSON 数组/category 分类 12 选 1/html_file 路径） |
 | lc_assignments | 作业（uploader_id/levels 分发等级数组/start_at/due_at 时间窗/content 富文本） |
 | lc_inbox | 收件箱（receiver_id/sender_id/type 类型/title/body/read 已读） |
 | lc_submissions | 学员作业提交（assignment_id/student_id 唯一约束/filename/original_name/file_size/score/comment/graded_at/graded_by） |
@@ -284,7 +286,7 @@ Win 端录入            后端存储                鸿蒙端播放
 | 模块 | 路由前缀 | 说明 |
 |------|----------|------|
 | 认证 | `/api/learning/auth` | 学习中心注册/登录/JWT（与 DailyRead 隔离） |
-| 讲义 | `/api/learning/handouts` | 讲义分发/列表/详情/分类筛选/文件下载 |
+| 讲义 | `/api/learning/handouts` | 讲义分发/列表/详情/分类筛选/文件下载；`GET /handouts/recipients` 学生账号列表；`PATCH /handouts/:id/distribute` 追加分发（addLevels + addUserIds，合并去重写回 level_scope/extra_users，向未通知账号补发通知） |
 | 作业 | `/api/learning/assignments` | 作业布置/列表/详情/时间窗判断（字段名 `levels` 数组，非 `level_scope`） |
 | 作业查询 | `/api/learning/assignments-query` | 按用户/等级查询学员 × 作业提交情况（STAFF 权限；路径用 `-` 避 `/assignments/:id` 匹配冲突） |
 | 提交 | `/api/learning/assignments/:id/submit` | 学员作业上传（multipart：Word/Excel/PDF/图片 ≤20MB） |
@@ -294,7 +296,7 @@ Win 端录入            后端存储                鸿蒙端播放
 | DailyRead 绑定 | `/api/learning/dr/*` | 学习中心 DailyRead 代理鉴权：绑定/解绑/状态查询（lc token → DailyRead 鉴权 → 写入 `lc_users.dr_user_id`） |
 | DailyRead PWA 代理 | `/api/dr/*` | DailyRead PWA 主应用代理路由（经 `lcDrProxyAuth` 注入 `req.drUserId`，按绑定账号转发请求） |
 | 完成率 | `/api/learning/dr/completion-rates/students` | 按等级查已绑定学生列表（STAFF 权限） |
-| 完成率 | `/api/learning/dr/completion-rates/student` | 查指定学生周/月完成率柱状图（`?student=&range=week|month`） |
+| 完成率 | `/api/learning/dr/completion-rates/student` | 查指定学生周/月阅读完成率（`?userId=&view=week\|month&date=YYYY-MM-DD&month=YYYY-MM`，实时统计绑定账号 daily_tasks 打卡数据，自然周/自然月范围） |
 
 ---
 
@@ -330,6 +332,19 @@ Win 端录入            后端存储                鸿蒙端播放
 ---
 
 ## 📝 更新日志
+
+### 2026-08-30
+
+**新增功能：**
+- 📊 「完成率」升级为「阅读完成率」：周/月视图独立时间范围选择（周视图选任意一天显示该自然周，月视图直接选月份），数据改为实时统计学员绑定 DailyRead 账号的打卡记录（daily_tasks/daily_task_items 只读查询，不改表结构，不影响 Win/鸿蒙端）
+- 📄 讲义「追加分发」：教师/管理员可对已分发讲义追加分发等级或指定账号（lc_handouts 新增 extra_users 字段），自动向未收到过该讲义通知的账号补发通知（去重防打扰），解决分发后新建账号无讲义通知的问题；分发记录表新增「指定账号」列与「追加分发」按钮，弹窗支持等级多选与账号搜索
+- ⏱ DailyRead PWA 阅读页新增打卡按钮：进入阅读页 10 秒后才允许打卡（倒计时显示、按钮状态变化、防重复打卡），打卡数据写入所绑定的 DailyRead 账号（服务端零改动，走 /api/dr 代理）
+- 🌐 首页炎武班介绍文案按最新文档全量更新（创建背景、育人理念、人才培养、结语）
+
+**问题修复：**
+- 🔧 完成率周/月视图原「日期±3/±15 天」范围计算不准，改为自然周（周一~周日）/自然月（1 日~月末），跨月跨年安全
+- 🔧 鸿蒙端文章同步分批传输：/api/articles 支持 batch=1 按体积分批返回（约 3MB/批）+ 复合游标 last_modified|id（同秒多篇靠 id 推进防丢数据），鸿蒙端 readTimeout 30s→60s、响应上限 5MB→16MB，避免大数据量拉取超时
+- 🔧 Service Worker 缓存版本 v4→v5
 
 ### 2026-08-28
 

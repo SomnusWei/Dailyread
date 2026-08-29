@@ -186,7 +186,7 @@
     var html = '<div class="dr-home-head"><span class="dr-server-light ' + (state.serverOk ? 'ok' : 'err') + '"><span class="dr-server-dot"></span>' + (state.serverOk ? '服务器正常' : '服务器异常') + '</span><h2 class="dr-home-title">今日阅读</h2><p class="dr-home-sub">' + fmtDate(new Date()) + ' · 共 ' + items.length + ' 篇</p></div>';
     html += '<div class="dr-progress"><div class="dr-progress-head"><span>今日进度</span><span>' + doneCount + '/' + items.length + '（' + progress + '%）</span></div><div class="dr-progress-bar"><div class="dr-progress-fill" style="width:' + progress + '%"></div></div></div>';
     items.forEach(function (item) {
-      html += '<div class="dr-task-card' + (item.isCheckedIn ? ' done' : '') + '" data-client-id="' + esc(item.articleId) + '">'
+      html += '<div class="dr-task-card' + (item.isCheckedIn ? ' done' : '') + '" data-client-id="' + esc(item.articleId) + '" data-checked="' + (item.isCheckedIn ? '1' : '0') + '">'
         + '<div class="dr-task-card-head">'
         + '<span class="dr-task-card-title">' + esc(item.articleTitle) + '</span>'
         + (item.isCheckedIn ? '<span class="dr-task-badge dr-badge-done">✓ 已打卡</span>' : '<span class="dr-task-badge dr-badge-pending">待打卡</span>')
@@ -202,29 +202,34 @@
     el.querySelectorAll('.dr-task-card').forEach(function (card) {
       card.addEventListener('click', function () {
         var clientId = card.getAttribute('data-client-id');
-        openReader(clientId, 'home');
+        var checked = card.getAttribute('data-checked') === '1';
+        openReader(clientId, 'home', checked);
       });
     });
   }
 
   // ---------- 阅读页（阶段 4 填充完整逻辑） ----------
-  function openReader(clientId, from) {
+  function openReader(clientId, from, alreadyCheckedIn) {
     var mask = document.getElementById('readerMask');
     var content = document.getElementById('readerContent');
     var title = document.getElementById('readerTitle');
-    var audioBar = document.getElementById('audioBar');
+    var checkinBtn = document.getElementById('readerCheckinBtn');
     mask.style.display = 'flex';
+    // 记录打开时间：10 秒后才允许打卡
+    state.readerOpenedAt = Date.now();
+    checkinBtn.disabled = true;
+    checkinBtn.textContent = '打卡';
     content.innerHTML = '<div class="dr-loading"><div class="dr-spinner"></div><p>加载文章…</p></div>';
     title.textContent = '加载中…';
     // 拉取单篇详情（含音频/图片）
     drApi('GET', '/articles/' + encodeURIComponent(clientId)).then(function (article) {
-      renderReader(article, clientId, from);
+      renderReader(article, clientId, from, alreadyCheckedIn);
     }).catch(function (e) {
       content.innerHTML = '<div class="dr-empty"><div class="dr-empty-icon">⚠️</div><div class="dr-empty-text">加载失败：' + esc(e.message) + '</div></div>';
     });
   }
 
-  function renderReader(article, clientId, from) {
+  function renderReader(article, clientId, from, alreadyCheckedIn) {
     document.getElementById('readerTitle').textContent = article.title || '—';
     var content = document.getElementById('readerContent');
     // 应用字号
@@ -244,8 +249,8 @@
       audioBar.style.display = 'none';
       stopAudio();
     }
-    // 双击打卡
-    setupCheckinGesture(clientId, from);
+    // 打卡（按钮 + 双击，统一 10 秒门控）
+    setupCheckin(clientId, from, alreadyCheckedIn);
   }
 
   // ---------- 音频播放（base64 → Blob → <audio>） ----------
@@ -294,17 +299,55 @@
     }
   }
 
-  // ---------- 双击打卡 ----------
-  function setupCheckinGesture(clientId, from) {
-    var scroll = document.getElementById('readerScroll');
+  // ---------- 打卡（按钮 + 双击，统一 10 秒门控） ----------
+  var CHECKIN_WAIT_MS = 10000;
+  var checkinTimer = null;
+
+  function setupCheckin(clientId, from, alreadyCheckedIn) {
+    var btn = document.getElementById('readerCheckinBtn');
     var hint = document.getElementById('checkinHint');
-    // 双击触发打卡
-    scroll.ondblclick = function () {
+    var scroll = document.getElementById('readerScroll');
+    state.readerCheckedIn = !!alreadyCheckedIn;
+    if (checkinTimer) { clearInterval(checkinTimer); checkinTimer = null; }
+
+    // 刷新按钮状态：已打卡禁用；未满 10 秒显示倒计时；满 10 秒可打卡
+    function refreshBtn() {
+      if (state.readerCheckedIn) {
+        btn.textContent = '✓ 已打卡';
+        btn.disabled = true;
+        return true;
+      }
+      var left = CHECKIN_WAIT_MS - (Date.now() - state.readerOpenedAt);
+      if (left > 0) {
+        btn.textContent = Math.ceil(left / 1000) + 's 后可打卡';
+        btn.disabled = true;
+        return false;
+      }
+      btn.textContent = '打卡';
+      btn.disabled = false;
+      return true;
+    }
+    refreshBtn();
+    checkinTimer = setInterval(function () {
+      if (refreshBtn() && checkinTimer) { clearInterval(checkinTimer); checkinTimer = null; }
+    }, 500);
+
+    function showHint(text) {
+      hint.textContent = text;
+      hint.classList.add('show');
+      setTimeout(function () { hint.classList.remove('show'); }, 1500);
+    }
+
+    function tryCheckin() {
+      if (state.readerCheckedIn) { showHint('本文今日已打卡'); return; }
+      if (Date.now() - state.readerOpenedAt < CHECKIN_WAIT_MS) { showHint('请阅读 ' + CHECKIN_WAIT_MS / 1000 + ' 秒后再打卡'); return; }
+      btn.disabled = true;
+      btn.textContent = '打卡中…';
       drApi('POST', '/daily-tasks/today/checkin-by-article', { articleId: clientId })
         .then(function (r) {
-          hint.textContent = '✓ 打卡成功 · 累计 ' + (r.checkInDays || 0) + ' 天';
-          hint.classList.add('show');
-          setTimeout(function () { hint.classList.remove('show'); }, 1500);
+          state.readerCheckedIn = true;
+          btn.textContent = '✓ 已打卡';
+          showHint('✓ 打卡成功 · 累计 ' + (r.checkInDays || 0) + ' 天');
           // 更新今日任务缓存
           if (state.todayTask && state.todayTask.items) {
             state.todayTask.items.forEach(function (it) {
@@ -313,16 +356,19 @@
           }
         })
         .catch(function (e) {
-          hint.textContent = '✗ ' + (e.message || '打卡失败');
-          hint.classList.add('show');
-          setTimeout(function () { hint.classList.remove('show'); }, 1500);
+          showHint('✗ ' + (e.message || '打卡失败'));
+          refreshBtn();
         });
-    };
+    }
+
+    btn.onclick = tryCheckin;
+    scroll.ondblclick = tryCheckin;
   }
 
   // ---------- 关闭阅读页 ----------
   document.getElementById('readerBack').addEventListener('click', function () {
     document.getElementById('readerMask').style.display = 'none';
+    if (checkinTimer) { clearInterval(checkinTimer); checkinTimer = null; }
     stopAudio();
     // 返回时刷新当前视图
     if (state.currentView === 'home') renderHome();

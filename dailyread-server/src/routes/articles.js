@@ -18,23 +18,63 @@ const ARTICLE_FIELDS = [
   'last_modified AS lastModified', 'client_id AS clientId', 'server_updated_at AS serverUpdatedAt'
 ];
 
-// GET /api/articles?since=  增量拉取
+// GET /api/articles?since=&batch=1  增量拉取
+// batch=1（鸿蒙端）：按累计体积(~3MB)分批返回，nextSince 用复合游标 'last_modified|id'
+//   （同秒多篇文章靠 id 推进，避免截断丢数据），客户端循环拉取直到空批次。
+// 不带 batch=1 的旧客户端（Win 端 / PWA）：行为不变，一次返回全量。
 router.get('/', authRequired, async (req, res) => {
   const since = req.query.since || '';
+  const batchMode = req.query.batch === '1';
   try {
+    // 解析复合游标 'last_modified|id'，兼容旧格式纯 last_modified（id 视为 0）
+    let sinceTs = since;
+    let sinceId = 0;
+    if (since && since.includes('|')) {
+      const parts = since.split('|');
+      sinceTs = parts[0];
+      sinceId = Number(parts[1]) || 0;
+    }
     let sql, params;
-    if (since) {
-      sql = `SELECT ${ARTICLE_FIELDS.join(', ')} FROM articles WHERE user_id = ? AND deleted = 0 AND last_modified > ? ORDER BY last_modified ASC`;
-      params = [req.userId, since];
+    if (sinceTs) {
+      sql = `SELECT ${ARTICLE_FIELDS.join(', ')}, LENGTH(audiobase64) AS _aLen, LENGTH(imagewebp) AS _iLen FROM articles WHERE user_id = ? AND deleted = 0 AND (last_modified > ? OR (last_modified = ? AND id > ?)) ORDER BY last_modified ASC, id ASC`;
+      params = [req.userId, sinceTs, sinceTs, sinceId];
     } else {
-      sql = `SELECT ${ARTICLE_FIELDS.join(', ')} FROM articles WHERE user_id = ? AND deleted = 0 ORDER BY last_modified ASC`;
+      sql = `SELECT ${ARTICLE_FIELDS.join(', ')}, LENGTH(audiobase64) AS _aLen, LENGTH(imagewebp) AS _iLen FROM articles WHERE user_id = ? AND deleted = 0 ORDER BY last_modified ASC, id ASC`;
       params = [req.userId];
     }
     const [rows] = await pool.query(sql, params);
-    // 获取当前服务端最新时间，作为下次 since
-    const [[maxRow]] = await pool.query('SELECT MAX(last_modified) AS maxTs FROM articles WHERE user_id = ? AND deleted = 0', [req.userId]);
-    const nextSince = (maxRow && maxRow.maxTs) || '';
-    return res.json(success({ articles: rows, nextSince }));
+
+    let outRows = rows;
+    let nextSince;
+    if (batchMode) {
+      const LIMIT_BYTES = 3 * 1024 * 1024;
+      let acc = 0;
+      let cut = rows.length;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        acc += (r._aLen || 0) + (r._iLen || 0) + (r.content ? String(r.content).length : 0);
+        // 至少返回 1 篇，保证游标推进（防单篇超限死循环）
+        if (acc >= LIMIT_BYTES && i > 0) { cut = i; break; }
+      }
+      outRows = rows.slice(0, cut);
+      const truncated = cut < rows.length;
+      if (outRows.length === 0) {
+        // 空批次：同步已完成，游标收敛到服务端最新时间
+        const [[maxRow]] = await pool.query('SELECT MAX(last_modified) AS maxTs FROM articles WHERE user_id = ? AND deleted = 0', [req.userId]);
+        nextSince = (maxRow && maxRow.maxTs) || '';
+      } else if (truncated) {
+        const lastRow = outRows[outRows.length - 1];
+        nextSince = lastRow.lastModified + '|' + lastRow.id;
+      } else {
+        nextSince = outRows[outRows.length - 1].lastModified;
+      }
+      outRows = outRows.map(r => { delete r._aLen; delete r._iLen; return r; });
+    } else {
+      // 获取当前服务端最新时间，作为下次 since
+      const [[maxRow]] = await pool.query('SELECT MAX(last_modified) AS maxTs FROM articles WHERE user_id = ? AND deleted = 0', [req.userId]);
+      nextSince = (maxRow && maxRow.maxTs) || '';
+    }
+    return res.json(success({ articles: outRows, nextSince }));
   } catch (e) {
     console.error('[articles/get]', e);
     return res.status(500).json(error('拉取失败: ' + e.message, 500));

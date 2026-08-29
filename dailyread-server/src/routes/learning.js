@@ -376,8 +376,11 @@ router.get('/dr/completion-rates/students', lcAuthRequired, async (req, res) => 
   }
 });
 
-// GET /api/learning/dr/completion-rates/student?userId=&view=week|month&date=YYYY-MM-DD
-// 教师和管理员查指定学生的周/月完成率
+// GET /api/learning/dr/completion-rates/student?userId=&view=week|month&date=YYYY-MM-DD&month=YYYY-MM
+// 教师和管理员查指定学生的周/月"阅读完成率"
+// 数据实时来自该学生绑定的 DailyRead 账号打卡数据（daily_tasks/daily_task_items，只读，不改表）
+//   week  ：date 为该周任意一天，返回该自然周一~周日
+//   month ：month=YYYY-MM，返回该月 1 日~月末
 router.get('/dr/completion-rates/student', lcAuthRequired, async (req, res) => {
   if (!STAFF_ROLES.includes(req.lcUser.role)) {
     return res.status(403).json(error('仅教师和管理员可查看', 403));
@@ -385,38 +388,56 @@ router.get('/dr/completion-rates/student', lcAuthRequired, async (req, res) => {
   const lcUserId = parseInt(req.query.userId);
   if (!lcUserId) return res.status(400).json(error('缺少 userId', 400));
   const view = req.query.view === 'month' ? 'month' : 'week';
-  const dateStr = req.query.date || new Date().toISOString().slice(0, 10);
-
-  // 计算日期范围
-  const d = new Date(dateStr);
-  let startDate, endDate;
-  if (view === 'week') {
-    // 周视图：以 dateStr 为周的中间一天，向前3天向后3天，共7天
-    startDate = new Date(d.getTime() - 3 * 86400000);
-    endDate = new Date(d.getTime() + 3 * 86400000);
-  } else {
-    // 月视图：dateStr 所在月的前后各15天，共30天
-    startDate = new Date(d.getTime() - 15 * 86400000);
-    endDate = new Date(d.getTime() + 15 * 86400000);
-  }
   const fmt = function (dt) {
     return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
   };
+  let startDate, endDate;
+  if (view === 'week') {
+    const d = new Date((req.query.date || '') + 'T00:00:00');
+    if (isNaN(d.getTime())) return res.status(400).json(error('date 参数无效', 400));
+    const day = (d.getDay() + 6) % 7; // 周一=0
+    startDate = new Date(d.getTime() - day * 86400000);
+    endDate = new Date(startDate.getTime() + 6 * 86400000);
+  } else {
+    const m = (req.query.month || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return res.status(400).json(error('month 参数无效（YYYY-MM）', 400));
+    const y = parseInt(m[1]), mo = parseInt(m[2]);
+    startDate = new Date(y, mo - 1, 1);
+    endDate = new Date(y, mo, 0); // 月末
+  }
   try {
+    // 绑定关系：lc_users.dr_user_id → DailyRead 账号
+    const [[u]] = await pool.query('SELECT dr_user_id FROM lc_users WHERE id = ? LIMIT 1', [lcUserId]);
+    if (!u || !u.dr_user_id) return res.status(400).json(error('该学生未绑定 DailyRead 账号', 400));
     const [rows] = await pool.query(
-      `SELECT task_date AS taskDate, total_items AS totalItems, checked_items AS checkedItems,
-              completion_rate AS completionRate, settled_at AS settledAt
-       FROM lc_dr_completion_rates
-       WHERE lc_user_id = ? AND task_date BETWEEN ? AND ?
-       ORDER BY task_date ASC`,
-      [lcUserId, fmt(startDate), fmt(endDate)]
+      `SELECT t.task_date AS taskDate,
+              COUNT(i.id) AS totalItems,
+              COALESCE(SUM(i.is_checked_in = 1), 0) AS checkedItems
+       FROM daily_tasks t
+       JOIN daily_task_items i ON i.task_id = t.id
+       WHERE t.user_id = ? AND t.task_date BETWEEN ? AND ?
+       GROUP BY t.task_date
+       ORDER BY t.task_date ASC`,
+      [u.dr_user_id, fmt(startDate), fmt(endDate)]
     );
+    const list = rows.map(r => {
+      const d = r.taskDate instanceof Date ? r.taskDate : new Date(r.taskDate);
+      const total = Number(r.totalItems) || 0;
+      const checked = Number(r.checkedItems) || 0;
+      return {
+        taskDate: fmt(d),
+        totalItems: total,
+        checkedItems: checked,
+        completionRate: total > 0 ? Math.round(checked / total * 100) : 0
+      };
+    });
     return res.json(success({
       userId: lcUserId,
+      drUserId: u.dr_user_id,
       view: view,
       startDate: fmt(startDate),
       endDate: fmt(endDate),
-      list: rows
+      list: list
     }));
   } catch (e) {
     console.error('[learning/dr:student]', e);
@@ -565,6 +586,7 @@ router.post('/inbox/read', lcAuthRequired, async (req, res) => {
 // ============================================================
 
 // GET /api/learning/handouts
+// 可见性：等级匹配（level_scope 含 all 或本人角色） 或 指定账号（extra_users 含本人 id）
 router.get('/handouts', lcAuthRequired, async (req, res) => {
   try {
     const meRole = req.lcUser.role;
@@ -572,28 +594,130 @@ router.get('/handouts', lcAuthRequired, async (req, res) => {
     const cat = (req.query.category || '').toString();
     const [rows] = await pool.query(
       `SELECT h.id, h.uploader_id, h.title, h.category, h.filename, h.original_name, h.file_size, h.level_scope,
-              h.created_at, COALESCE(NULLIF(u.nickname, ''), u.username) AS uploader_name
+              h.extra_users, h.created_at, COALESCE(NULLIF(u.nickname, ''), u.username) AS uploader_name
        FROM lc_handouts h LEFT JOIN lc_users u ON u.id = h.uploader_id
        ORDER BY h.created_at DESC, h.id DESC`
     );
+    // 批量解析指定账号 id 并查昵称
+    const extraIdSet = new Set();
+    const parsed = rows.map(r => {
+      let scope = [], extra = [];
+      try { scope = JSON.parse(r.level_scope); } catch (e) { scope = []; }
+      try { extra = JSON.parse(r.extra_users || '[]'); } catch (e) { extra = []; }
+      if (!Array.isArray(extra)) extra = [];
+      extra.forEach(id => extraIdSet.add(Number(id)));
+      return { ...r, _scope: scope, _extra: extra.map(Number) };
+    });
+    let nameMap = {};
+    if (extraIdSet.size > 0) {
+      const ids = [...extraIdSet];
+      const [urows] = await pool.query(
+        `SELECT id, username, nickname FROM lc_users WHERE id IN (${ids.map(() => '?').join(',')})`, ids
+      );
+      urows.forEach(u => { nameMap[u.id] = (u.nickname && u.nickname.trim()) ? u.nickname : u.username; });
+    }
     let visible;
     if (isStaff) {
-      visible = rows;
+      visible = parsed;
     } else {
-      visible = rows.filter(r => {
-        let scope;
-        try { scope = JSON.parse(r.level_scope); } catch (e) { scope = []; }
-        return scope.includes('all') || scope.includes(meRole);
-      });
+      visible = parsed.filter(r =>
+        r._scope.includes('all') || r._scope.includes(meRole) || r._extra.includes(Number(req.lcUser.id))
+      );
     }
     if (cat) visible = visible.filter(r => (r.category || '') === cat);
     return res.json(success({
-      list: visible.map(r => ({ ...r, level_scope: JSON.parse(r.level_scope || '[]') })),
+      list: visible.map(r => ({
+        id: r.id, uploader_id: r.uploader_id, title: r.title, category: r.category,
+        filename: r.filename, original_name: r.original_name, file_size: r.file_size,
+        created_at: r.created_at, uploader_name: r.uploader_name,
+        level_scope: r._scope, extra_users: r._extra,
+        extra_names: r._extra.map(id => nameMap[id] || ('用户#' + id))
+      })),
       categories: HANDOUT_CATEGORIES
     }));
   } catch (e) {
     console.error('[learning/handouts:list]', e);
     return res.status(500).json(error('查询失败', 500));
+  }
+});
+
+// GET /api/learning/handouts/recipients?role=  （教师/管理员）学生账号列表，用于指定账号分发
+router.get('/handouts/recipients', lcAuthRequired, lcRequireStaff, async (req, res) => {
+  try {
+    const params = [];
+    let sql = `SELECT id, username, COALESCE(NULLIF(nickname, ''), username) AS displayName, role
+               FROM lc_users WHERE role IN (${STUDENT_ROLES.map(() => '?').join(',')})`;
+    params.push(...STUDENT_ROLES);
+    if (req.query.role) { sql += ' AND role = ?'; params.push(req.query.role); }
+    sql += ' ORDER BY role, username';
+    const [rows] = await pool.query(sql, params);
+    return res.json(success({ list: rows }));
+  } catch (e) {
+    console.error('[learning/handouts:recipients]', e);
+    return res.status(500).json(error('查询失败: ' + e.message, 500));
+  }
+});
+
+// PATCH /api/learning/handouts/:id/distribute  （教师/管理员）追加分发：addLevels + addUserIds
+// 合并去重写回 level_scope / extra_users，并向"未收到过该讲义通知"的用户新增 lc_inbox 通知
+router.patch('/handouts/:id/distribute', lcAuthRequired, lcRequireStaff, async (req, res) => {
+  const handoutId = parseInt(req.params.id);
+  const addLevels = Array.isArray(req.body.addLevels) ? req.body.addLevels.filter(l => ['all', ...ALL_ROLES].includes(l)) : [];
+  const addUserIds = Array.isArray(req.body.addUserIds) ? req.body.addUserIds.map(Number).filter(n => n > 0) : [];
+  if (addLevels.length === 0 && addUserIds.length === 0) {
+    return res.status(400).json(error('请至少选择一个追加等级或账号', 400));
+  }
+  try {
+    const [rows] = await pool.query('SELECT id, title, level_scope, extra_users FROM lc_handouts WHERE id = ? LIMIT 1', [handoutId]);
+    if (rows.length === 0) return res.status(404).json(error('讲义不存在', 404));
+    const h = rows[0];
+    let scope = [], extra = [];
+    try { scope = JSON.parse(h.level_scope); } catch (e) { scope = []; }
+    try { extra = JSON.parse(h.extra_users || '[]'); } catch (e) { extra = []; }
+    if (!Array.isArray(scope)) scope = [];
+    if (!Array.isArray(extra)) extra = [];
+    // 含 all 时等级无需再追加；否则合并去重
+    const newScope = scope.includes('all') ? scope : [...new Set([...scope, ...addLevels])];
+    const newExtra = [...new Set([...extra, ...addUserIds])];
+    await pool.query('UPDATE lc_handouts SET level_scope = ?, extra_users = ? WHERE id = ?',
+      [JSON.stringify(newScope), JSON.stringify(newExtra), handoutId]);
+    // 补发通知（去重：排除已收到过该讲义消息的用户）
+    let notified = 0;
+    let targetIds = [];
+    if (addLevels.length > 0) {
+      const roles = addLevels.includes('all') ? ALL_ROLES : addLevels;
+      const [u1] = await pool.query(
+        `SELECT id FROM lc_users WHERE role IN (${roles.map(() => '?').join(',')})`, roles);
+      targetIds.push(...u1.map(u => u.id));
+    }
+    targetIds.push(...addUserIds);
+    targetIds = [...new Set(targetIds)];
+    if (targetIds.length > 0) {
+      const [had] = await pool.query(
+        `SELECT DISTINCT user_id FROM lc_inbox WHERE category = 'handout' AND ref_id = ? AND user_id IN (${targetIds.map(() => '?').join(',')})`,
+        [handoutId, ...targetIds]);
+      const hadSet = new Set(had.map(r => r.user_id));
+      const fresh = targetIds.filter(id => !hadSet.has(id));
+      if (fresh.length > 0) {
+        const values = fresh.map(uid => [uid, 'handout', handoutId, '讲义补充分发：' + String(h.title).slice(0, 150), req.lcUser.username, null]);
+        await pool.query('INSERT INTO lc_inbox (user_id, category, ref_id, title, sender_name, content) VALUES ?', [values]);
+        notified = fresh.length;
+      }
+    }
+    // 指定账号名称返回
+    let extraNames = [];
+    if (newExtra.length > 0) {
+      const [u2] = await pool.query(
+        `SELECT id, username, nickname FROM lc_users WHERE id IN (${newExtra.map(() => '?').join(',')})`, newExtra);
+      const m = {}; u2.forEach(u => { m[u.id] = (u.nickname && u.nickname.trim()) ? u.nickname : u.username; });
+      extraNames = newExtra.map(id => m[id] || ('用户#' + id));
+    }
+    return res.json(success({
+      id: handoutId, level_scope: newScope, extra_users: newExtra, extra_names: extraNames, notified
+    }, '追加分发成功' + (notified ? '，已通知 ' + notified + ' 人' : '')));
+  } catch (e) {
+    console.error('[learning/handouts:distribute]', e);
+    return res.status(500).json(error('追加分发失败: ' + e.message, 500));
   }
 });
 
