@@ -730,7 +730,7 @@ router.post('/handouts', lcAuthRequired, lcRequireStaff, function (req, res, nex
     next();
   });
 }, [
-  body('title').isLength({ min: 1, max: 128 }).withMessage('标题长度 1-128')
+  body('title').optional({ checkFalsy: true }).isLength({ max: 128 }).withMessage('标题长度不超过 128')
 ], async (req, res) => {
   const errs = validationResult(req);
   if (!errs.isEmpty()) {
@@ -746,13 +746,19 @@ router.post('/handouts', lcAuthRequired, lcRequireStaff, function (req, res, nex
     return res.status(400).json(error('分发等级参数无效', 400));
   }
   const category = HANDOUT_CATEGORIES.includes(req.body.category) ? req.body.category : '';
+  // 标题为空时，以上传 HTML 文件名（去扩展名）作为标题
+  var handoutTitle = (req.body.title || '').trim();
+  if (!handoutTitle) {
+    handoutTitle = path.basename(req.file.originalname || req.file.filename, path.extname(req.file.originalname || req.file.filename)).trim();
+  }
+  if (!handoutTitle) handoutTitle = '未命名讲义';
   try {
     const [result] = await pool.query(
       `INSERT INTO lc_handouts (uploader_id, title, category, filename, original_name, file_size, level_scope)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.lcUser.id, req.body.title.trim(), category, req.file.filename, req.file.originalname || '', req.file.size, JSON.stringify(levels)]
+      [req.lcUser.id, handoutTitle, category, req.file.filename, req.file.originalname || '', req.file.size, JSON.stringify(levels)]
     );
-    const n = await fanoutToLevels(levels, 'handout', result.insertId, '新讲义：' + req.body.title.trim(), req.lcUser.username);
+    const n = await fanoutToLevels(levels, 'handout', result.insertId, '新讲义：' + handoutTitle, req.lcUser.username);
     return res.json(success({ id: result.insertId, notified: n }, '讲义已发布并分发消息'));
   } catch (e) {
     console.error('[learning/handouts:create]', e);

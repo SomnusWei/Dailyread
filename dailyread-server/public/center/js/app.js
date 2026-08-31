@@ -1279,7 +1279,11 @@
     var title = document.getElementById('hoTitle').value.trim();
     var category = document.getElementById('hoCategory').value;
     if (!fileInput.files[0]) return toast('请选择 HTML 文件', 'error');
-    if (!title) return toast('请填写标题', 'error');
+    if (!title) {
+      // 标题为空时，以上传 HTML 文件名（去扩展名）作为标题
+      title = fileInput.files[0].name.replace(/\.(html?|htm)$/i, '').trim();
+      if (!title) return toast('请填写标题', 'error');
+    }
     var levels = hoLevels.getSelected();
     if (levels.length === 0) return toast('请选择分发等级（可全选）', 'error');
     if (levels.indexOf('all') >= 0) levels = ['all'];
