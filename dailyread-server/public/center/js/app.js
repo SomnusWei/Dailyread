@@ -207,16 +207,19 @@
     });
   });
 
-  // 讲义库中的"分发讲义"按钮 → 展开/隐藏分发表单
-  var toggleHandoutBtn = document.getElementById('toggleHandoutForm');
-  if (toggleHandoutBtn) {
-    toggleHandoutBtn.addEventListener('click', function () {
-      var p = document.getElementById('panel-handout');
-      if (!p) return;
-      var isOpen = p.style.display !== 'none';
-      p.style.display = isOpen ? 'none' : '';
-      toggleHandoutBtn.textContent = isOpen ? '＋ 分发讲义' : '收起表单';
-      if (!isOpen) loadMyHandouts();
+  // 讲义库中的"分发讲义"按钮 → 打开分发弹窗
+  var openHandoutBtn = document.getElementById('openHandoutFormBtn');
+  var handoutModalMask = document.getElementById('handoutModalMask');
+  if (openHandoutBtn && handoutModalMask) {
+    openHandoutBtn.addEventListener('click', function () {
+      handoutModalMask.classList.add('show');
+      renderMyHandoutRecords();
+    });
+    document.getElementById('handoutModalClose').addEventListener('click', function () {
+      handoutModalMask.classList.remove('show');
+    });
+    handoutModalMask.addEventListener('click', function (e) {
+      if (e.target === handoutModalMask) handoutModalMask.classList.remove('show');
     });
   }
 

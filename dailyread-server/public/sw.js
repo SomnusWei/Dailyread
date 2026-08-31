@@ -4,7 +4,7 @@
 //   /uploads/*        -> 仅网络（讲义内容需实时）
 //   页面导航          -> 网络优先，失败回退缓存
 //   静态资源(css/js/图标) -> 缓存优先 + 后台更新 (stale-while-revalidate)
-var CACHE_NAME = 'lc-mission-v5';
+var CACHE_NAME = 'lc-mission-v6';
 
 var CORE_ASSETS = [
   '/',

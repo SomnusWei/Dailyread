@@ -51,44 +51,10 @@
             <h2 class="lc-view-title">讲义库</h2>
             <p class="lc-view-desc">教师与管理员分发的 HTML 讲义，点击即可在线阅读</p>
           </div>
-          <button class="btn btn-primary btn-sm lc-staff-only" id="toggleHandoutForm">＋ 分发讲义</button>
+          <button class="btn btn-primary btn-sm lc-staff-only" id="openHandoutFormBtn">＋ 分发讲义</button>
         </div>
         <div class="lc-cat-filter" id="handoutCatFilter"></div>
         <div class="lc-card-list" id="handoutList"></div>
-        <!-- 讲义分发表单（可展开/隐藏） -->
-        <div class="lc-manage-panel" id="panel-handout" style="display:none;">
-          <form class="lc-form-panel" id="handoutForm">
-            <h3>📤 分发 HTML 讲义</h3>
-            <div class="lc-field">
-              <label>讲义标题</label>
-              <input type="text" id="hoTitle" maxlength="128" placeholder="例如：第二讲 · 经络总论" required>
-            </div>
-            <div class="lc-field">
-              <label>讲义分类</label>
-              <select id="hoCategory"></select>
-            </div>
-            <div class="lc-field">
-              <label>HTML 文件（≤10MB）</label>
-              <input type="file" id="hoFile" accept=".html,.htm" required>
-              <p class="lc-editor-note">所选 HTML 文件将原样保存，可包含图片/样式/脚本。</p>
-            </div>
-            <div class="lc-field">
-              <label>分发等级</label>
-              <div class="lc-check-group" id="hoLevels"></div>
-            </div>
-            <button type="submit" class="btn btn-primary" id="hoSubmitBtn">发布并分发</button>
-          </form>
-          <!-- 我的分发记录 -->
-          <div class="lc-form-panel">
-            <h3>🗂️ 我的分发记录 <span class="lc-view-desc" id="myHandoutCount"></span></h3>
-            <div style="overflow-x:auto;">
-              <table class="lc-user-table" id="myHandoutTable">
-                <thead><tr><th>标题</th><th>分类</th><th>面向等级</th><th>指定账号</th><th>发布时间</th><th>操作</th></tr></thead>
-                <tbody id="myHandoutTbody"><tr><td colspan="6" style="color:var(--text-muted)">加载中…</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
       </section>
 
       <!-- 作业 -->
@@ -314,6 +280,49 @@
       <div class="lc-modal-meta" id="modalMeta"></div>
       <div class="lc-modal-body" id="modalBody"></div>
       <div class="lc-modal-foot" id="modalFoot"></div>
+    </div>
+  </div>
+
+  <!-- 分发讲义弹窗 -->
+  <div class="lc-modal-mask" id="handoutModalMask">
+    <div class="lc-modal" style="max-width:720px;">
+      <div class="lc-modal-head">
+        <span class="lc-cat-badge lc-cat-handout">讲义</span>
+        <span class="lc-modal-title">分发 HTML 讲义</span>
+        <button class="lc-modal-close" id="handoutModalClose">✕</button>
+      </div>
+      <div class="lc-modal-body" style="padding:20px;">
+        <form class="lc-form-panel" id="handoutForm">
+          <div class="lc-field">
+            <label>讲义标题</label>
+            <input type="text" id="hoTitle" maxlength="128" placeholder="例如：第二讲 · 经络总论" required>
+          </div>
+          <div class="lc-field">
+            <label>讲义分类</label>
+            <select id="hoCategory"></select>
+          </div>
+          <div class="lc-field">
+            <label>HTML 文件（≤10MB）</label>
+            <input type="file" id="hoFile" accept=".html,.htm" required>
+            <p class="lc-editor-note">所选 HTML 文件将原样保存，可包含图片/样式/脚本。</p>
+          </div>
+          <div class="lc-field">
+            <label>分发等级</label>
+            <div class="lc-check-group" id="hoLevels"></div>
+          </div>
+          <button type="submit" class="btn btn-primary" id="hoSubmitBtn">发布并分发</button>
+        </form>
+        <!-- 我的分发记录 -->
+        <div class="lc-form-panel">
+          <h3>🗂️ 我的分发记录 <span class="lc-view-desc" id="myHandoutCount"></span></h3>
+          <div style="overflow-x:auto;">
+            <table class="lc-user-table" id="myHandoutTable">
+              <thead><tr><th>标题</th><th>分类</th><th>面向等级</th><th>指定账号</th><th>发布时间</th><th>操作</th></tr></thead>
+              <tbody id="myHandoutTbody"><tr><td colspan="6" style="color:var(--text-muted)">加载中…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
