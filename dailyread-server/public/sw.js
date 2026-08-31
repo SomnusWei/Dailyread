@@ -4,7 +4,7 @@
 //   /uploads/*        -> 仅网络（讲义内容需实时）
 //   页面导航          -> 网络优先，失败回退缓存
 //   静态资源(css/js/图标) -> 缓存优先 + 后台更新 (stale-while-revalidate)
-var CACHE_NAME = 'lc-mission-v6';
+var CACHE_NAME = 'lc-mission-v7';
 
 var CORE_ASSETS = [
   '/',
@@ -48,6 +48,16 @@ self.addEventListener('activate', function (event) {
   );
 });
 
+// 与 app.html 强耦合的核心脚本/样式必须与 HTML 同步更新，
+// 否则会出现「新 HTML 引用旧 JS 里已改名的元素」→ 事件绑定失效。
+// 这些 shell 资源改走网络优先（同导航），失败再回退缓存，保证版本一致。
+var SHELL_ASSETS = [
+  '/center/app.html',
+  '/center/js/app.js',
+  '/center/css/center.css',
+  '/center/js/login.js'
+];
+
 self.addEventListener('fetch', function (event) {
   var req = event.request;
   if (req.method !== 'GET') return;
@@ -65,8 +75,9 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  // 导航请求：网络优先，回退缓存
-  if (req.mode === 'navigate') {
+  // 导航请求 + 核心 SPA shell：网络优先，回退缓存（HTML/JS/CSS 版本始终一致）
+  var isShell = (req.mode === 'navigate') || SHELL_ASSETS.indexOf(url.pathname) !== -1;
+  if (isShell) {
     event.respondWith(
       fetch(req).then(function (res) {
         var copy = res.clone();
@@ -83,7 +94,7 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  // 静态资源：缓存优先 + 后台刷新
+  // 其它静态资源（图标 / manifest 等）：缓存优先 + 后台刷新
   event.respondWith(
     caches.match(req).then(function (hit) {
       var fetchPromise = fetch(req).then(function (res) {

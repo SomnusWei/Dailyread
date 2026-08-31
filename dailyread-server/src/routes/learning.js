@@ -769,6 +769,13 @@ router.delete('/handouts/:id', lcAuthRequired, async (req, res) => {
     if (h.uploader_id !== req.lcUser.id && req.lcUser.role !== 'admin') {
       return res.status(403).json(error('无权限删除', 403));
     }
+    // 账号密码二次校验
+    const pwd = req.body && req.body.password;
+    if (!pwd) return res.status(403).json(error('账号或密码错误', 403));
+    const [uRows] = await pool.query('SELECT password FROM lc_users WHERE id = ? LIMIT 1', [req.lcUser.id]);
+    if (uRows.length === 0) return res.status(403).json(error('账号或密码错误', 403));
+    const pwdOk = await bcrypt.compare(pwd, uRows[0].password);
+    if (!pwdOk) return res.status(403).json(error('账号或密码错误', 403));
     await pool.query('DELETE FROM lc_handouts WHERE id = ?', [h.id]);
     fs.unlink(path.join(HANDOUTS_DIR, h.filename), () => {});
     return res.json(success({ ok: true }, '讲义已删除'));

@@ -223,6 +223,52 @@
     });
   }
 
+  // 讲义库视图切换（列表 / 网格）— 持久化到 localStorage
+  (function initHandoutViewSwitch() {
+    var sw = document.getElementById('handoutViewSwitch');
+    if (!sw) return;
+    // 初始化时 handoutViewMode 变量尚未赋值（其定义在下方讲义库逻辑区），
+    // 直接读 localStorage，保证按钮高亮与容器布局在首屏即正确。
+    var init = (function () { try { return localStorage.getItem('lc_handout_view') === 'grid' ? 'grid' : 'list'; } catch (e) { return 'list'; } })();
+    sw.querySelectorAll('.lc-view-btn').forEach(function (b) {
+      var on = b.getAttribute('data-view') === init;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    document.getElementById('handoutList').classList.toggle('grid-view', init === 'grid');
+    sw.addEventListener('click', function (e) {
+      var b = e.target.closest('.lc-view-btn');
+      if (!b) return;
+      setHandoutView(b.getAttribute('data-view'));
+    });
+  })();
+
+  // 删除讲义二次确认弹窗（账号密码校验）
+  var deleteConfirmHandoutId = null;
+  (function initDeleteConfirm() {
+    var mask = document.getElementById('deleteConfirmMask');
+    if (!mask) return;
+    var pwdEl = document.getElementById('deleteConfirmPwd');
+    var okBtn = document.getElementById('deleteConfirmOk');
+    var cancelBtn = document.getElementById('deleteConfirmCancel');
+    var closeBtn = document.getElementById('deleteConfirmClose');
+    function close() { mask.classList.remove('show'); }
+    if (cancelBtn) cancelBtn.addEventListener('click', close);
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    mask.addEventListener('click', function (e) { if (e.target === mask) close(); });
+    if (pwdEl) pwdEl.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); if (okBtn) okBtn.click(); }
+    });
+    if (okBtn) okBtn.addEventListener('click', function () {
+      var pwd = pwdEl ? pwdEl.value : '';
+      if (!pwd) { toast('请输入登录密码', 'error'); if (pwdEl) pwdEl.focus(); return; }
+      if (deleteConfirmHandoutId == null) { toast('未指定讲义', 'error'); return; }
+      api('/handouts/' + deleteConfirmHandoutId, { method: 'DELETE', body: JSON.stringify({ password: pwd }) })
+        .then(function () { close(); toast('讲义已删除', 'success'); renderHandouts(); renderMyHandoutRecords(); })
+        .catch(function (e) { toast(e.message, 'error'); });
+    });
+  })();
+
   // ================= 未读轮询 =================
   async function refreshUnread() {
     try {
@@ -357,6 +403,10 @@
   // ---------- 讲义库 ----------
   var handoutCache = [];
   var handoutCatFilter = '';
+  var handoutViewMode = (function () {
+    try { return localStorage.getItem('lc_handout_view') === 'grid' ? 'grid' : 'list'; }
+    catch (e) { return 'list'; }
+  })();
 
   function renderCatFilter() {
     var box = document.getElementById('handoutCatFilter');
@@ -413,6 +463,7 @@
   }
 
   function renderHandoutItem(h) {
+    if (handoutViewMode === 'grid') return renderHandoutGridItem(h);
     var canDelete = isAdmin || h.uploader_id === me.id;
     var canDistribute = isStaff;
     var cat = h.category || '未分类';
@@ -440,6 +491,31 @@
     );
   }
 
+  // 网格视图紧凑卡片：复用 .lc-card + .lc-cat-badge，仍用相同 data-act，
+  // bindHandoutEvents 无需改动。精简了「新窗口打开」（网格空间有限）。
+  function renderHandoutGridItem(h) {
+    var canDelete = isAdmin || h.uploader_id === me.id;
+    var canDistribute = isStaff;
+    var cat = h.category || '未分类';
+    return (
+      '<div class="lc-card lc-card-grid" data-handout-id="' + h.id + '">'
+      + '<div class="lc-card-grid-top">'
+      + '<span class="lc-cat-badge lc-cat-handout">' + esc(cat) + '</span>'
+      + (canDelete ? '<button type="button" class="lc-grid-del" data-act="del" title="删除" aria-label="删除">✕</button>' : '')
+      + '</div>'
+      + '<div class="lc-card-grid-title" title="' + esc(h.title) + '">' + esc(h.title) + '</div>'
+      + '<div class="lc-card-grid-meta">'
+      + '<span>' + esc(h.uploader_name || '-') + '</span>'
+      + '<span>· ' + fmtTime(h.created_at) + '</span>'
+      + '</div>'
+      + '<div class="lc-card-actions lc-card-grid-actions">'
+      + '<button class="btn btn-primary btn-sm" data-act="read">📖 阅读</button>'
+      + (canDistribute ? '<button class="btn btn-outline btn-sm" data-act="distribute" title="追加分发" aria-label="追加分发">＋</button>' : '')
+      + '</div>'
+      + '</div>'
+    );
+  }
+
   function bindHandoutEvents() {
     document.querySelectorAll('#handoutList .lc-card').forEach(function (card) {
       var id = Number(card.getAttribute('data-handout-id'));
@@ -451,12 +527,30 @@
       });
       var del = card.querySelector('[data-act="del"]');
       if (del) del.addEventListener('click', function () {
-        if (!confirm('确认删除该讲义？此操作不可恢复。')) return;
-        api('/handouts/' + id, { method: 'DELETE' })
-          .then(function () { toast('讲义已删除', 'success'); renderHandouts(); })
-          .catch(function (e) { toast(e.message, 'error'); });
+        deleteConfirmHandoutId = id;
+        var userEl = document.getElementById('deleteConfirmUser');
+        if (userEl) userEl.textContent = me.nickname ? (me.nickname + '（@' + me.username + '）') : ('@' + me.username);
+        var pwdEl = document.getElementById('deleteConfirmPwd');
+        if (pwdEl) pwdEl.value = '';
+        var mask = document.getElementById('deleteConfirmMask');
+        if (mask) mask.classList.add('show');
+        if (pwdEl) setTimeout(function () { pwdEl.focus(); }, 50);
       });
     });
+  }
+
+  function setHandoutView(mode) {
+    if (mode !== 'grid' && mode !== 'list') mode = 'list';
+    if (mode === handoutViewMode) return;
+    handoutViewMode = mode;
+    try { localStorage.setItem('lc_handout_view', mode); } catch (e) { /* 隐私模式忽略 */ }
+    document.querySelectorAll('#handoutViewSwitch .lc-view-btn').forEach(function (b) {
+      var on = b.getAttribute('data-view') === mode;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    document.getElementById('handoutList').classList.toggle('grid-view', mode === 'grid');
+    renderHandoutCards();
   }
 
   // ---------- 追加分发（等级 + 指定账号） ----------
@@ -1280,10 +1374,15 @@
           + '</div></td>';
         tr.querySelector('[data-act="distribute"]').addEventListener('click', function () { openDistributeHandout(h); });
         tr.querySelector('[data-act="del"]').addEventListener('click', function () {
-          if (!confirm('确认删除讲义「' + h.title + '」？')) return;
-          api('/handouts/' + h.id, { method: 'DELETE' })
-            .then(function () { toast('已删除', 'success'); renderMyHandoutRecords(); renderHandouts(); })
-            .catch(function (e) { toast(e.message, 'error'); });
+          // 复用密码二次确认弹窗（与讲义库列表删除一致）
+          deleteConfirmHandoutId = h.id;
+          var userEl = document.getElementById('deleteConfirmUser');
+          if (userEl) userEl.textContent = me.nickname ? (me.nickname + '（@' + me.username + '）') : ('@' + me.username);
+          var pwdElD = document.getElementById('deleteConfirmPwd');
+          if (pwdElD) pwdElD.value = '';
+          var maskD = document.getElementById('deleteConfirmMask');
+          if (maskD) maskD.classList.add('show');
+          if (pwdElD) setTimeout(function () { pwdElD.focus(); }, 50);
         });
         tbody.appendChild(tr);
       });
@@ -1467,8 +1566,15 @@
 
   // ================= PWA / SW =================
   if ('serviceWorker' in navigator) {
+    // 脚本执行时即读取 controller 状态并注册 controllerchange，避免新 SW 在 load 前接管导致漏刷新
+    var hadSwController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (hadSwController) location.reload();
+    });
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('/sw.js').catch(function () {});
+      navigator.serviceWorker
+        .register('/sw.js', { updateViaCache: 'none' })
+        .catch(function () {});
     });
   }
 

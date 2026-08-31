@@ -51,7 +51,23 @@
             <h2 class="lc-view-title">讲义库</h2>
             <p class="lc-view-desc">教师与管理员分发的 HTML 讲义，点击即可在线阅读</p>
           </div>
-          <button class="btn btn-primary btn-sm lc-staff-only" id="openHandoutFormBtn">＋ 分发讲义</button>
+          <div class="lc-view-head-right">
+            <div class="lc-view-switch" id="handoutViewSwitch" role="group" aria-label="视图方式切换">
+              <button type="button" class="lc-view-btn active" data-view="list" title="列表视图" aria-label="列表视图" aria-pressed="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/>
+                  <line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/>
+                </svg>
+              </button>
+              <button type="button" class="lc-view-btn" data-view="grid" title="网格视图" aria-label="网格视图" aria-pressed="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                  <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                </svg>
+              </button>
+            </div>
+            <button class="btn btn-primary btn-sm lc-staff-only" id="openHandoutFormBtn">＋ 分发讲义</button>
+          </div>
         </div>
         <div class="lc-cat-filter" id="handoutCatFilter"></div>
         <div class="lc-card-list" id="handoutList"></div>
@@ -321,6 +337,31 @@
               <tbody id="myHandoutTbody"><tr><td colspan="6" style="color:var(--text-muted)">加载中…</td></tr></tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除讲义二次确认弹窗 -->
+  <div class="lc-modal-mask" id="deleteConfirmMask">
+    <div class="lc-modal" style="max-width:440px;">
+      <div class="lc-modal-head">
+        <span class="lc-modal-title">删除讲义确认</span>
+        <button class="lc-modal-close" id="deleteConfirmClose">✕</button>
+      </div>
+      <div class="lc-modal-body" style="padding:20px;">
+        <p style="margin:0 0 14px; color:var(--error); font-size:13px; font-weight:600;">⚠ 此操作不可恢复，将永久删除该讲义文件及分发记录</p>
+        <div class="lc-field" style="margin-bottom:12px;">
+          <label style="margin:0 0 4px;">当前账号</label>
+          <span id="deleteConfirmUser" style="display:inline-block; padding:4px 0; font-weight:600; color:var(--text);"></span>
+        </div>
+        <div class="lc-field" style="margin-bottom:16px;">
+          <label for="deleteConfirmPwd" style="margin:0 0 4px;">请输入登录密码确认</label>
+          <input type="password" id="deleteConfirmPwd" placeholder="请输入登录密码确认" autocomplete="current-password" style="width:100%;">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn btn-outline" id="deleteConfirmCancel">取消</button>
+          <button type="button" class="btn" id="deleteConfirmOk" style="background:var(--error); color:white;">确认删除</button>
         </div>
       </div>
     </div>

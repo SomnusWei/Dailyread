@@ -324,6 +324,72 @@ body.lc-body {
 .lc-cat-chip.on { background: var(--lc-grad); border-color: transparent; color: white; box-shadow: 0 3px 10px rgba(102,126,234,0.35); }
 .lc-cat-chip.on i { color: rgba(255,255,255,0.85); }
 
+/* ---------- 讲义库视图切换 ---------- */
+.lc-view-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.lc-view-switch {
+  display: inline-flex;
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  box-shadow: var(--shadow-sm);
+}
+.lc-view-btn {
+  width: 34px; height: 30px;
+  border: none; background: transparent;
+  border-radius: 6px;
+  cursor: pointer; font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+.lc-view-btn:hover { color: var(--primary); background: rgba(25,118,210,0.06); }
+.lc-view-btn.active {
+  background: var(--lc-grad);
+  color: white;
+  box-shadow: 0 2px 6px rgba(102,126,234,0.35);
+}
+.lc-view-btn svg { width: 18px; height: 18px; display: block; }
+
+/* 网格视图布局（id+class 选择器特异性高于 .lc-card-list，可覆盖 flex） */
+#handoutList.grid-view {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+#handoutList.grid-view .lc-empty { grid-column: 1 / -1; }
+
+/* 网格单元紧凑卡片 */
+#handoutList.grid-view .lc-card-grid {
+  padding: 14px;
+  display: flex; flex-direction: column;
+  gap: 8px;
+}
+.lc-card-grid-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lc-card-grid-title {
+  font-size: 14px; font-weight: 700; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; min-height: 38px; word-break: break-word;
+}
+.lc-card-grid-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 6px; flex-wrap: wrap; }
+.lc-card-grid-actions { margin-top: auto; padding-top: 4px; }
+.lc-grid-del {
+  border: none; background: transparent; cursor: pointer; font-family: inherit;
+  color: var(--text-muted); font-size: 13px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all var(--transition);
+}
+.lc-grid-del:hover { background: rgba(244,67,54,0.1); color: var(--error); }
+
+@media (max-width: 1024px) {
+  #handoutList.grid-view { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  #handoutList.grid-view { grid-template-columns: 1fr; }
+}
+
 /* ---------- 作业窗口/提交状态徽章 ---------- */
 .lc-win-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 100px; white-space: nowrap; flex-shrink: 0; }
 .lc-win-open { background: rgba(76,175,80,0.12); color: #2E7D32; }
