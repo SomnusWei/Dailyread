@@ -113,6 +113,8 @@ struct SplashPage {
         const configSynced = await syncService.pullConfig();
         if (configSynced) {
           console.info('SplashPage: 配置同步成功');
+        } else {
+          console.warn('SplashPage: 配置拉取失败/无返回，本次跳过配置推送，避免本地默认值覆盖服务器设置');
         }
 
         // 6d. 拉取今日任务
@@ -122,7 +124,10 @@ struct SplashPage {
         }
 
         // 6e. 推送本地配置（确保多端一致，不推送任务以避免覆盖其他设备打卡）
-        await syncService.pushConfig();
+        // 修复：仅当本次成功从服务端拉取配置后才推送，防止"新装本地默认 dailyMinutes=20 覆盖服务器已设时长"
+        if (configSynced) {
+          await syncService.pushConfig();
+        }
 
         console.info('SplashPage: 全量同步完成');
       } catch (e) {

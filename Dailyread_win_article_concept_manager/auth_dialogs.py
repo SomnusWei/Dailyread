@@ -3,7 +3,7 @@
 import json
 import os
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QSettings, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QPushButton,
     QLabel, QHBoxLayout, QStackedWidget, QWidget, QMessageBox, QCheckBox
@@ -35,6 +35,10 @@ class _AuthWorker(QThread):
 class LoginDialog(QDialog):
     """登录对话框（未登录时弹出）"""
 
+    # 与主程序一致的 QSettings 组织/应用名（Windows 注册表本地存储）
+    _ORG = "DailyRead"
+    _APP = "ArticleConceptManager"
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("登录 - DailyRead")
@@ -42,6 +46,33 @@ class LoginDialog(QDialog):
         self.setMinimumWidth(380)
         self._worker = None
         self._setup_ui()
+        self._load_saved_credentials()
+
+    @staticmethod
+    def _settings():
+        return QSettings(LoginDialog._ORG, LoginDialog._APP)
+
+    def _load_saved_credentials(self):
+        """回填上次勾选"记住账号密码"保存的用户名/密码"""
+        s = self._settings()
+        user = s.value("login_username", "")
+        pwd = s.value("login_password", "")
+        if user:
+            self.username_edit.setText(user)
+        if user and pwd:
+            self.password_edit.setText(pwd)
+            self.remember_check.setChecked(True)
+
+    def _save_credentials(self):
+        """登录成功后按勾选状态保存或清除本地账号密码"""
+        s = self._settings()
+        if self.remember_check.isChecked():
+            s.setValue("login_username", self.username_edit.text().strip())
+            s.setValue("login_password", self.password_edit.text())
+        else:
+            s.remove("login_username")
+            s.remove("login_password")
+        s.sync()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -104,6 +135,7 @@ class LoginDialog(QDialog):
     def _on_done(self, result):
         self.login_btn.setEnabled(True)
         if result.get('code') == 0:
+            self._save_credentials()
             self.done(1)  # 登录成功
         else:
             self.status_label.setText(result.get('message', '登录失败'))

@@ -6,6 +6,7 @@ import { AppDatabase, TableNames } from '../database/AppDatabase';
 import { OfflineWriteQueue } from '../service/OfflineWriteQueue';
 import { CheckinEnqueuePayload, ArticlePatchPayload, ArticlePayload, DeletePayload } from '../model/ApiTypes';
 import { SyncService } from '../service/SyncService';
+import { AudioFileStore } from '../service/AudioFileStore';
 
 export class ArticleRepository {
   private static instance: ArticleRepository | null = null;
@@ -268,7 +269,7 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp,
-      audiobase64: article.audiobase64,
+      audiobase64: AudioFileStore.toStoredValue(article.clientId, String(article.audiobase64 || '')),
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified
     };
@@ -282,7 +283,8 @@ export class ArticleRepository {
     }
     // 云同步钩子：入离线写队列（异步，不阻塞）— 用 clientId 作为同步标识
     try {
-      OfflineWriteQueue.getInstance().enqueue('create', 'article', article.clientId, this.articleToPayload(article));
+      const createPayload = await this.articleToPayload(article);
+      OfflineWriteQueue.getInstance().enqueue('create', 'article', article.clientId, createPayload);
     } catch (e) {
       console.error('enqueue create: ' + JSON.stringify(e));
     }
@@ -311,7 +313,7 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp,
-      audiobase64: article.audiobase64,
+      audiobase64: AudioFileStore.toStoredValue(article.clientId, String(article.audiobase64 || '')),
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified
     };
@@ -320,7 +322,8 @@ export class ArticleRepository {
     const affected = await db.update(valueBucket, predicates);
     // 云同步钩子：入离线写队列（异步，不阻塞）— 用 clientId 作为同步标识
     try {
-      OfflineWriteQueue.getInstance().enqueue('update', 'article', article.clientId, this.articleToPayload(article));
+      const updatePayload = await this.articleToPayload(article);
+      OfflineWriteQueue.getInstance().enqueue('update', 'article', article.clientId, updatePayload);
     } catch (e) {
       console.error('enqueue update: ' + JSON.stringify(e));
     }
@@ -329,8 +332,12 @@ export class ArticleRepository {
 
   /**
    * 将文章转为服务端 payload（用于离线队列）— clientId 为全局唯一标识
+   * 若 audiobase64 是 file:// 引用（大音频已落文件），上行前先读文件还原为 base64
    */
-  private articleToPayload(article: Article): ArticlePayload {
+  private async articleToPayload(article: Article): Promise<ArticlePayload> {
+    const audioForPayload: string = AudioFileStore.isFileRef(article.audiobase64)
+      ? await AudioFileStore.toBase64(article.audiobase64)
+      : (article.audiobase64 || '');
     const p: ArticlePayload = {
       clientId: article.clientId,
       title: article.title,
@@ -351,7 +358,7 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp || '',
-      audiobase64: article.audiobase64 || '',
+      audiobase64: audioForPayload,
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified || new Date().toISOString()
     };
@@ -389,19 +396,81 @@ export class ArticleRepository {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp,
-      audiobase64: article.audiobase64,
+      audiobase64: AudioFileStore.toStoredValue(article.clientId, String(article.audiobase64 || '')),
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified
     };
     if (exists) {
       // 更新（不入队列，避免循环同步）
-      await db.update(valueBucket, predicates);
+      try {
+        const rows = await db.update(valueBucket, predicates);
+        if (rows <= 0) {
+          console.warn('[DIAG][upsert] UPDATE 0 行 clientId=' + article.clientId + ' title=' + article.title);
+        }
+      } catch (e) {
+        console.error('[DIAG][upsert] UPDATE 异常 clientId=' + article.clientId + ': ' + JSON.stringify(e));
+        return false;
+      }
     } else {
-      // 插入（新文章来自其他设备，clientId 已由服务端提供）
+      // 插入（新文章来自其他设备，clientId 已由服务端提供；
+      //   audiobase64 已在 valueBucket 构造时经 AudioFileStore 处理：大音频落文件仅存 file:// 引用）
       valueBucket.clientId = article.clientId;
-      await db.insert(TableNames.ARTICLES, valueBucket);
+      try {
+        const rowId = await db.insert(TableNames.ARTICLES, valueBucket);
+        console.info('[DIAG][upsert] INSERT 成功 clientId=' + article.clientId + ' rowId=' + rowId
+          + ' title=' + String(article.title).substring(0, 20)
+          + ' titleLen=' + String(article.title).length
+          + ' contentLen=' + String(article.content).length
+          + ' audioLen=' + String(article.audiobase64 || '').length);
+        // 诊断：insert 后立即同连接回查，写入应立即可见
+        try {
+          const bp = new relationalStore.RdbPredicates(TableNames.ARTICLES);
+          bp.equalTo('clientId', article.clientId);
+          const bres: relationalStore.ResultSet = await db.query(bp);
+          let bcnt = 0;
+          while (bres.goToNextRow()) { bcnt++; }
+          bres.close();
+          if (bcnt === 0) {
+            console.warn('[DIAG][upsert] insert后即时回查 可见行数=0（写入未生效！）clientId=' + article.clientId + ' rowId=' + rowId);
+          }
+        } catch (be) {
+          console.error('[DIAG][upsert] insert后即时回查异常: ' + JSON.stringify(be));
+        }
+      } catch (e) {
+        console.error('[DIAG][upsert] INSERT 异常 clientId=' + article.clientId + ' title=' + article.title + ' : ' + JSON.stringify(e));
+        return false;
+      }
     }
     return true;
+  }
+
+  /**
+   * 诊断用：按 clientId 直查本地文章是否存在（绕过 getAllArticles 的整表遍历）
+   */
+  async findArticleByClientId(clientId: string): Promise<Article | null> {
+    const db = AppDatabase.getInstance().getDb();
+    const predicates = new relationalStore.RdbPredicates(TableNames.ARTICLES);
+    predicates.equalTo('clientId', clientId);
+    const result: relationalStore.ResultSet = await db.query(predicates);
+    let article: Article | null = null;
+    if (result.goToNextRow()) {
+      article = new Article();
+      try {
+        article.id = result.getLong(result.getColumnIndex('id'));
+        article.clientId = clientId;
+        article.title = result.getString(result.getColumnIndex('title'));
+        article.lastModified = result.getString(result.getColumnIndex('lastModified'));
+        const ci = result.getColumnIndex('content');
+        const cc = result.getColumnIndex('contentHtml');
+        console.info('[DIAG][findByClientId] 行存在 id=' + article.id + ' title=' + article.title
+          + ' contentLen=' + (ci >= 0 && !result.isColumnNull(ci) ? String(result.getString(ci)).length : -1)
+          + ' contentHtmlNull=' + (cc >= 0 && result.isColumnNull(cc)));
+      } catch (e) {
+        console.error('[DIAG][findByClientId] 读取该行某字段异常: ' + JSON.stringify(e));
+      }
+    }
+    result.close();
+    return article;
   }
 
   /**
@@ -543,6 +612,8 @@ export class ArticleRepository {
       if (articleClientId) {
         const delPayload: DeletePayload = { clientId: articleClientId };
         OfflineWriteQueue.getInstance().enqueue('delete', 'article', articleClientId, delPayload);
+        // 清理落盘的音频文件
+        AudioFileStore.removeByClientId(articleClientId);
       }
     } catch (e) {
       console.error('enqueue delete: ' + JSON.stringify(e));

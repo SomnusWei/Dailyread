@@ -284,10 +284,8 @@
     audio.addEventListener('ended', function () { playBtn.textContent = '▶'; });
     loopChk.checked = state.loopAudio;
     loopChk.onchange = function () { state.loopAudio = loopChk.checked; audio.loop = loopChk.checked; };
-    // 自动播放
-    if (state.config && state.config.keepScreenOn !== false) {
-      // 不自动播放，等用户点击（移动端限制）
-    }
+    // 自动播放：不自动播放，等用户点击（移动端限制）。
+    // keepScreenOn / loopAudio / 字号等均为各端浏览器本地设置，不从服务端读取、不上传。
   }
 
   function stopAudio() {
@@ -462,32 +460,21 @@
   }
 
   // ---------- 设置（阶段 6 填充） ----------
+  // 阅读时长/目标完成率由 Windows 端唯一维护，这里只读展示服务器值；字号仅保存在本机浏览器。
   function renderSettings() {
     var el = document.getElementById('view-settings');
     var c = state.config || { dailyMinutes: 20, targetCheckRate: 30 };
     el.innerHTML = '<div class="dr-home-head"><h2 class="dr-home-title">设置</h2></div>'
       + '<div class="dr-settings-section">'
-      + '<div class="dr-settings-row"><div><div class="dr-settings-label">每日阅读时长</div><div class="dr-settings-desc">影响每日任务字数生成</div></div><input class="dr-settings-input" type="number" id="cfgMinutes" value="' + (c.dailyMinutes || 20) + '" min="1" max="300"> 分钟</div>'
-      + '<div class="dr-settings-row"><div><div class="dr-settings-label">目标完成率</div><div class="dr-settings-desc">影响任务筛选</div></div><input class="dr-settings-input" type="number" id="cfgRate" value="' + (c.targetCheckRate || 30) + '" min="0" max="100"> %</div>'
-      + '<div class="dr-settings-row"><div><div class="dr-settings-label">阅读字号</div><div class="dr-settings-desc">阅读页当前字号：' + state.fontSize + 'px</div></div><button class="dr-btn dr-btn-ghost" id="cfgFontBtn">调节字号</button></div>'
+      + '<div class="dr-settings-row"><div><div class="dr-settings-label">每日阅读时长</div><div class="dr-settings-desc">由 Windows 端「每日阅读时长」维护（影响每日任务字数）</div></div><b style="color:#1976D2;">' + (c.dailyMinutes || 20) + ' 分钟</b></div>'
+      + '<div class="dr-settings-row"><div><div class="dr-settings-label">目标完成率</div><div class="dr-settings-desc">由 Windows 端「目标完成率」维护（影响任务筛选）</div></div><b style="color:#1976D2;">' + (c.targetCheckRate || 30) + ' %</b></div>'
+      + '<div class="dr-settings-row"><div><div class="dr-settings-label">阅读字号</div><div class="dr-settings-desc">仅保存在本机浏览器（当前 ' + state.fontSize + 'px）</div></div><button class="dr-btn dr-btn-ghost" id="cfgFontBtn">调节字号</button></div>'
       + '</div>'
       + '<div class="dr-settings-section">'
       + '<div class="dr-settings-row"><div><div class="dr-settings-label">绑定的 DailyRead 账号</div><div class="dr-settings-desc">' + esc(state.drUser ? (state.drUser.nickname || state.drUser.username) : '—') + '（' + esc(state.drUser ? state.drUser.username : '') + '）</div></div><button class="dr-btn dr-btn-ghost" id="cfgUnbind">管理绑定</button></div>'
       + '</div>'
-      + '<button class="dr-btn dr-btn-primary" id="cfgSave" style="width:100%;margin-top:12px;">保存配置</button>'
       + '<a class="dr-btn dr-btn-ghost" href="/center/app.html" style="margin-top:10px;">返回学习中心</a>';
 
-    document.getElementById('cfgSave').addEventListener('click', function () {
-      var minutes = parseInt(document.getElementById('cfgMinutes').value, 10) || 20;
-      var rate = parseInt(document.getElementById('cfgRate').value, 10) || 30;
-      drApi('PUT', '/config', { dailyMinutes: minutes, targetCheckRate: rate, readerFontSize: state.fontSize })
-        .then(function () {
-          state.config.dailyMinutes = minutes;
-          state.config.targetCheckRate = rate;
-          alert('配置已保存');
-        })
-        .catch(function (e) { alert('保存失败：' + e.message); });
-    });
     document.getElementById('cfgFontBtn').addEventListener('click', function () {
       var sizes = [16, 18, 20, 22, 24, 26, 28, 30];
       var idx = sizes.indexOf(state.fontSize);

@@ -9,6 +9,8 @@ const { lcDrProxyAuth } = require('../middleware/lcDrProxyAuth');
 const { success, error } = require('../utils/response');
 // 复用服务端任务生成逻辑（与鸿蒙/Win 端一致）
 const { generateDailyTask } = require('./dailyTasks');
+// 复用配置保存逻辑（字段显式才更新；不触发任务重算）
+const configRoutes = require('./config');
 
 const router = express.Router();
 
@@ -386,31 +388,17 @@ router.get('/config', async (req, res) => {
 });
 
 // PUT /api/dr/config
+// 学习中心内嵌阅读（网页代理路径）：仅接受元数据字段 lastResetMonth/lastSyncTime。
+// dailyMinutes / targetCheckRate 由 Win 端唯一维护、readerFontSize 等为各端本地——
+// 均不允许在本代理路径更新（保持该绑定账号的服务端值与 Win 端一致）。
 router.put('/config', async (req, res) => {
-  const c = req.body;
   try {
-    const dailyMinutes = c.dailyMinutes ?? c.daily_minutes ?? 20;
-    const targetCheckRate = c.targetCheckRate ?? c.target_check_rate ?? 30;
-    const readerFontSize = c.readerFontSize ?? c.reader_font_size ?? 26;
-    const lastResetMonth = c.lastResetMonth ?? c.last_reset_month ?? '';
-    const lastSyncTime = c.lastSyncTime ?? c.last_sync_time ?? '';
-    // keepScreenOn 不从 PWA 覆盖（各端本地设置）
-    const [existing] = await pool.query('SELECT keep_screen_on FROM user_configs WHERE user_id = ?', [req.drUserId]);
-    const keepScreenOn = existing.length > 0 ? existing[0].keep_screen_on : 0;
-
-    await pool.query(
-      `INSERT INTO user_configs (user_id, daily_minutes, target_check_rate, keep_screen_on,
-                                  last_reset_month, reader_font_size, last_sync_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         daily_minutes = VALUES(daily_minutes),
-         target_check_rate = VALUES(target_check_rate),
-         last_reset_month = VALUES(last_reset_month),
-         reader_font_size = VALUES(reader_font_size),
-         last_sync_time = VALUES(last_sync_time)`,
-      [req.drUserId, dailyMinutes, targetCheckRate, keepScreenOn, lastResetMonth, readerFontSize, lastSyncTime]
-    );
-    return res.json(success({ ok: true }));
+    const body = req.body || {};
+    const sanitized = {};
+    if ('lastResetMonth' in body) sanitized.lastResetMonth = body.lastResetMonth;
+    if ('lastSyncTime' in body) sanitized.lastSyncTime = body.lastSyncTime;
+    const data = await configRoutes.updateConfig(req.drUserId, sanitized);
+    return res.json(success(data));
   } catch (e) {
     return res.status(500).json(error('保存失败: ' + e.message, 500));
   }

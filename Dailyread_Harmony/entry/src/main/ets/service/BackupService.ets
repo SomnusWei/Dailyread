@@ -1,5 +1,6 @@
 import { Article } from '../model/Article';
 import { ArticleRepository } from '../repository/ArticleRepository';
+import { AudioFileStore } from './AudioFileStore';
 
 export class BackupData {
   version: number = 7;
@@ -223,7 +224,8 @@ export class BackupService {
       bd.checkInDays = a.checkInDays;
       bd.completionRate = a.completionRate;
       bd.imagewebp = a.imagewebp;
-      bd.audiobase64 = a.audiobase64;
+      // file:// 大音频引用导出前还原为 base64（备份格式不含文件引用）
+      bd.audiobase64 = AudioFileStore.isFileRef(a.audiobase64) ? AudioFileStore.toBase64Sync(a.audiobase64) : (a.audiobase64 || '');
       bd.createTime = a.createTime;
       bd.lastModified = a.lastModified || a.createTime;
       backup.articles.push(bd);

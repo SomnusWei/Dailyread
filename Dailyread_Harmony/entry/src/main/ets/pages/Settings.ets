@@ -28,8 +28,24 @@ struct SettingsPage {
   
   private context: common.Context = getContext(this) as common.Context;
 
-  aboutToAppear(): void {
-    this.loadConfig();
+  async aboutToAppear(): Promise<void> {
+    await this.loadConfig();
+    // 已登录时先拉一次服务端配置再刷新显示，确保「每日阅读时间」显示服务器设定而非本地默认 20
+    try {
+      if (ApiClient.getInstance().isLoggedIn()) {
+        const synced = await SyncService.getInstance().pullConfig();
+        if (synced) {
+          const fresh = await ConfigRepository.getInstance().getConfig();
+          this.config = fresh;
+          this.webdavUrlInput = fresh.webdavUrl;
+          this.webdavUsernameInput = fresh.webdavUsername;
+          this.webdavPasswordInput = fresh.webdavPassword;
+          this.webdavRemotePathInput = fresh.webdavRemotePath;
+        }
+      }
+    } catch (e) {
+      console.error('同步服务器配置失败: ' + JSON.stringify(e));
+    }
   }
 
   async loadConfig(): Promise<void> {

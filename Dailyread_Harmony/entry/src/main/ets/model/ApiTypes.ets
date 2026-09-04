@@ -113,9 +113,10 @@ export interface ArticlePatchPayload {
 }
 
 // ---------- 配置同步载荷 ----------
+// dailyMinutes / targetCheckRate 仅 Win 端上传（鸿蒙端只拉取），故设为可选
 export interface ConfigPayload {
-  dailyMinutes: number;
-  targetCheckRate: number;
+  dailyMinutes?: number;
+  targetCheckRate?: number;
   readerFontSize?: number;
   lastResetMonth: string;
   lastSyncTime: string;

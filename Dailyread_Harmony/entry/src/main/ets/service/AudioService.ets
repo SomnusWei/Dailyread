@@ -3,6 +3,7 @@ import fs from '@ohos.file.fs';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { ImageCompressionService } from './ImageCompressionService';
+import { AUDIO_FILE_PREFIX } from './AudioFileStore';
 
 /**
  * 音频播放服务
@@ -68,54 +69,63 @@ export class AudioService {
   }
 
   /**
-   * 从 base64 准备音频：解码 → 临时文件 → AVPlayer.prepare
-   * 成功后状态为 prepared，调用方再调用 play() 自动播放
+   * 准备音频播放。
+   * 入参支持两种形态：
+   *  - file:// 引用（大音频已落沙箱文件，AudioFileStore 落盘产物）：直接 open 文件拿 fd 播放，不写临时、不删除
+   *  - base64 字符串（内嵌小音频/历史数据）：清洗 → 解码 → 写临时文件 → fd 播放（原逻辑）
    */
-  async prepare(base64: string, ctx: common.Context): Promise<void> {
+  async prepare(input: string, ctx: common.Context): Promise<void> {
     // 先释放旧实例（含 fd 与临时文件）
     await this.releaseInternal();
 
-    // 1. base64 字符串清洗（去除 Data URL 前缀、换行符、空格，避免解码失败或音频损坏）
-    //    服务端返回的 base64 可能含换行符，手写查表解码会失败，必须先清洗
-    const cleanBase64: string = base64
-      .replace(/^data:audio\/[a-z0-9]+;base64,/, '')
-      .replace(/[\r\n\s]/g, '');
-    console.info('AudioService: base64 原始长度=' + base64.length + ' 清洗后长度=' + cleanBase64.length);
-    // 二进制安全解码：用系统 API util.Base64Helper.decodeSync（严禁用文本编码参与二进制音频解码）
-    let bytes: Uint8Array;
-    try {
-      const base64Helper: util.Base64Helper = new util.Base64Helper();
-      bytes = base64Helper.decodeSync(cleanBase64);
-      console.info('AudioService: base64 解码 OK, 字节数=' + bytes.length);
-    } catch (decodeErr) {
-      console.error('AudioService: base64 解码失败: ' + JSON.stringify(decodeErr));
-      this.setState('error');
-      throw new Error('base64 decode failed: ' + JSON.stringify(decodeErr));
-    }
-    if (bytes.length === 0) {
-      console.error('AudioService: base64 解码为空');
-      this.setState('error');
-      throw new Error('audio base64 decode empty');
+    let playPath: string = '';
+    if (input !== null && input !== undefined && input.indexOf(AUDIO_FILE_PREFIX) === 0) {
+      // 模式 A：持久文件引用
+      playPath = input.substring(AUDIO_FILE_PREFIX.length);
+      this.tempFilePath = ''; // 持久文件：releaseInternal 不删除
+      console.info('AudioService: file:// 模式，直接播放 path=' + playPath);
+    } else {
+      // 模式 B：base64（原逻辑：清洗 → 解码 → 写沙箱临时文件）
+      const base64: string = input;
+      const cleanBase64: string = base64
+        .replace(/^data:audio\/[a-z0-9]+;base64,/, '')
+        .replace(/[\r\n\s]/g, '');
+      console.info('AudioService: base64 原始长度=' + base64.length + ' 清洗后长度=' + cleanBase64.length);
+      let bytes: Uint8Array;
+      try {
+        const base64Helper: util.Base64Helper = new util.Base64Helper();
+        bytes = base64Helper.decodeSync(cleanBase64);
+        console.info('AudioService: base64 解码 OK, 字节数=' + bytes.length);
+      } catch (decodeErr) {
+        console.error('AudioService: base64 解码失败: ' + JSON.stringify(decodeErr));
+        this.setState('error');
+        throw new Error('base64 decode failed: ' + JSON.stringify(decodeErr));
+      }
+      if (bytes.length === 0) {
+        console.error('AudioService: base64 解码为空');
+        this.setState('error');
+        throw new Error('audio base64 decode empty');
+      }
+
+      const tempName: string = 'tmp_audio_' + Date.now() + '.m4a';
+      const tempPath: string = ImageCompressionService.getSandboxPath(ctx, tempName);
+      this.tempFilePath = tempPath;
+      try {
+        const f: fs.File = fs.openSync(tempPath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY);
+        fs.writeSync(f.fd, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
+        fs.closeSync(f);
+        console.info('AudioService: 音频临时文件写入 OK path=' + tempPath + ', size=' + bytes.length + 'B');
+      } catch (writeErr) {
+        console.error('AudioService: 音频文件写入失败: ' + JSON.stringify(writeErr));
+        this.setState('error');
+        throw new Error('audio file write failed: ' + JSON.stringify(writeErr));
+      }
+      playPath = tempPath;
     }
 
-    // 2. 写入沙箱临时文件（.m4a 与 Win 端转码格式一致，鸿蒙 AVPlayer 原生支持）
-    const tempName: string = 'tmp_audio_' + Date.now() + '.m4a';
-    const tempPath: string = ImageCompressionService.getSandboxPath(ctx, tempName);
-    this.tempFilePath = tempPath;
-    try {
-      const f: fs.File = fs.openSync(tempPath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY);
-      fs.writeSync(f.fd, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
-      fs.closeSync(f);
-      console.info('AudioService: 音频临时文件写入 OK path=' + tempPath + ', size=' + bytes.length + 'B');
-    } catch (writeErr) {
-      console.error('AudioService: 音频文件写入失败: ' + JSON.stringify(writeErr));
-      this.setState('error');
-      throw new Error('audio file write failed: ' + JSON.stringify(writeErr));
-    }
-
-    // 3. 打开文件拿 fd，保存 fdFile 对象避免被 GC 后 fd 失效
+    // 打开文件拿 fd，保存 fdFile 对象避免被 GC 后 fd 失效
     //    AVPlayer 本地文件用 fd:// 协议（file:// 会报 401 权限错误）
-    this.fdFile = fs.openSync(tempPath, fs.OpenMode.READ_ONLY);
+    this.fdFile = fs.openSync(playPath, fs.OpenMode.READ_ONLY);
     this.audioFd = this.fdFile.fd;
     console.info('AudioService: fd=' + this.audioFd);
 

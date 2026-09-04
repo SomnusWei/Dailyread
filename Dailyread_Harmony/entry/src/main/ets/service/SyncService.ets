@@ -17,6 +17,7 @@ import { Config } from '../model/Config';
 import { DailyTaskRepository, DailyTaskItem, DailyTaskRecord } from '../repository/DailyTaskRepository';
 import { CheckInRepository } from '../repository/CheckInRepository';
 import { CheckInRecord } from '../model/CheckInRecord';
+import { AudioFileStore } from './AudioFileStore';
 
 const CONSUME_INTERVAL: number = 3000; // 3秒轮询
 
@@ -26,6 +27,7 @@ export class SyncService {
   private queue: OfflineWriteQueue = OfflineWriteQueue.getInstance();
   private timerHandle: number = -1;
   private running: boolean = false;
+  private pullBusy: boolean = false;
   private statusCallback: ((msg: string) => void) | null = null;
 
   private constructor() {}
@@ -123,6 +125,10 @@ export class SyncService {
   }
 
   private articleToPayload(article: Article): ArticlePayload {
+    // 大音频 file:// 引用上行前还原为 base64（保证推送协议不变）
+    const audioForPayload: string = AudioFileStore.isFileRef(article.audiobase64)
+      ? AudioFileStore.toBase64Sync(article.audiobase64)
+      : (article.audiobase64 || '');
     const p: ArticlePayload = {
       clientId: article.clientId,
       title: article.title,
@@ -143,7 +149,7 @@ export class SyncService {
       checkInDays: article.checkInDays,
       completionRate: article.completionRate,
       imagewebp: article.imagewebp || '',
-      audiobase64: article.audiobase64 || '',
+      audiobase64: audioForPayload,
       iscontent: article.iscontent ? 1 : 0,
       lastModified: article.lastModified || new Date().toISOString()
     };
@@ -273,16 +279,40 @@ export class SyncService {
     if (!this.api.isLoggedIn()) {
       return 0;
     }
+    if (this.pullBusy) {
+      console.warn('[DIAG][pullArticles] 已有文章同步进行中，本次跳过（防多套并发交错）');
+      return 0;
+    }
+    this.pullBusy = true;
+    try {
+      return await this.pullArticlesInner();
+    } finally {
+      this.pullBusy = false;
+    }
+  }
+
+  private async pullArticlesInner(): Promise<number> {
     let since: string = this.api.getArticleSince();
+    const initialSince: string = since;
     let merged: number = 0;
+    console.info('[DIAG][pullArticles] 开始拉取 since=' + (since === '' ? '<空=全量>' : since));
     // 分批循环拉取（batch=1 单批约 3MB）：直到空批次或游标不再推进
     for (let round = 0; round < 500; round++) {
       const data = await this.api.fetchArticles(since);
       if (!data) {
+        // 诊断：网络/请求失败静默中断点（保留 since 不动）
+        console.error('[DIAG][pullArticles] round=' + round + ' fetchArticles 返回 null，中断！since=' + since);
         break; // 请求失败：保留 since 不动，下次重试
       }
       const articles = (data['articles'] as Object[]) || [];
       const nextSince = (data['nextSince'] as string) || '';
+      // 诊断：本批是否含刺疟论
+      let hitNote = '无';
+      for (let k = 0; k < articles.length; k++) {
+        const t = String(((articles[k] as Record<string, Object>)['title']) || '');
+        if (t.indexOf('刺疟') >= 0) { hitNote = '含[' + t + '] clientId=' + String(((articles[k] as Record<string, Object>)['clientId']) || ''); break; }
+      }
+      console.info('[DIAG][pullArticles] round=' + round + ' 返回=' + articles.length + ' 刺疟=' + hitNote + ' nextSince=' + (nextSince === '' ? '<空>' : nextSince));
       if (articles.length > 0) {
         merged += await this.mergeArticles(articles);
       }
@@ -291,9 +321,23 @@ export class SyncService {
       }
       // 空批次（已拉完）或游标未推进 → 结束
       if (articles.length === 0 || !nextSince || nextSince === since) {
+        console.info('[DIAG][pullArticles] 循环结束 round=' + round + ' 原因=len0:' + (articles.length === 0) + ' noNext:' + (!nextSince) + ' 游标停住:' + (nextSince === since) + ' 累计合并=' + merged);
         break;
       }
       since = nextSince;
+    }
+    // 诊断：仅在全量拉取或本次拉到内容时核对本地文章总数（避免日常增量每次全库扫描）
+    if (merged > 0 || initialSince === '') {
+      const localAll = await ArticleRepository.getInstance().getAllArticles();
+      let localHit = -1;
+      for (let j = 0; j < localAll.length; j++) {
+        if (String(localAll[j].title).indexOf('刺疟') >= 0) { localHit = j; break; }
+      }
+      console.info('[DIAG][pullArticles] 结束 合并=' + merged + ' getAllArticles总数=' + localAll.length
+        + ' 列表内刺疟存在=' + (localHit >= 0) + ' 末次游标=' + since);
+      // 按 clientId 直查（绕过 getAllArticles）：区分「没写进表」还是「写进表但读丢」
+      const direct = await ArticleRepository.getInstance().findArticleByClientId('w4027f6cc4fb248b8');
+      console.info('[DIAG][pullArticles] 直查刺疟论 clientId=w4027f6cc4fb248b8 -> ' + (direct ? '存在(id=' + direct.id + ', title=' + direct.title + ')' : '不存在'));
     }
     this.notify('拉取 ' + merged + ' 篇增量文章');
     return merged;
@@ -409,13 +453,20 @@ export class SyncService {
         return false;
       }
       const localConfig = await ConfigRepository.getInstance().getConfig();
-      const remoteDailyMinutes = (remoteData['dailyMinutes'] as number) || 20;
-      const remoteTargetCheckRate = (remoteData['targetCheckRate'] as number) || 30;
+      // 仅当服务端返回有效数值时才覆盖本地，避免字段缺失被 ||20/||30 误写成本地默认
+      const rawMinutes = remoteData['dailyMinutes'];
+      const rawTarget = remoteData['targetCheckRate'];
+      const remoteDailyMinutes = (typeof rawMinutes === 'number') ? rawMinutes : null;
+      const remoteTargetCheckRate = (typeof rawTarget === 'number') ? rawTarget : null;
+      if (remoteDailyMinutes !== null && remoteDailyMinutes > 0) {
+        localConfig.dailyMinutes = remoteDailyMinutes;
+      }
+      if (remoteTargetCheckRate !== null) {
+        localConfig.targetCheckRate = remoteTargetCheckRate;
+      }
       const remoteLastResetMonth = (remoteData['lastResetMonth'] as string) || '';
 
       // 合并：以服务端为准（除了 keepScreenOn 和 readerFontSize 保持本地）
-      localConfig.dailyMinutes = remoteDailyMinutes;
-      localConfig.targetCheckRate = remoteTargetCheckRate;
       // readerFontSize 不从服务端拉取，保持本地设置
       if (remoteLastResetMonth) {
         localConfig.lastResetMonth = remoteLastResetMonth;
@@ -440,9 +491,8 @@ export class SyncService {
     try {
       const config = await ConfigRepository.getInstance().getConfig();
       const payload: ConfigPayload = {
-        dailyMinutes: config.dailyMinutes,
-        targetCheckRate: config.targetCheckRate,
-        // readerFontSize 不上传服务端，保持各端本地设置
+        // 鸿蒙端只拉取：dailyMinutes / targetCheckRate 均不上传（均由 Win 端唯一维护，服务端字段显式才更新）
+        // readerFontSize / keepScreenOn / autoPlayAudio / loopAudio 均为各端本地，不上传
         lastResetMonth: config.lastResetMonth,
         lastSyncTime: new Date().toISOString()
       };
@@ -538,8 +588,10 @@ export class SyncService {
       const article = articles.find(a => a.clientId === clientId);
       const localArticleId = article ? article.id : 0;
       if (!article && clientId.length > 0) {
-        console.warn('SyncService.mergeRemoteTasksToLocal: 未找到 clientId=' + clientId
-          + ' 的本地文章（共 ' + articles.length + ' 篇），localArticleId=0，后续 Reader 将无法定位');
+        const missTitle = (ri['articleTitle'] as string) || '';
+        console.warn('[DIAG][mergeTasks] 任务引用本地缺失文章 clientId=' + clientId
+          + ' title=' + missTitle + '（本地共 ' + articles.length + ' 篇）localArticleId=0 → Reader 无法定位'
+          + (missTitle.indexOf('刺疟') >= 0 ? ' <<< 目标文章[刺疟论]' : ''));
       }
       newItems.push({
         taskId: 0,

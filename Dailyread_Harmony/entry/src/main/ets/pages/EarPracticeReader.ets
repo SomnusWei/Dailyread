@@ -354,73 +354,6 @@ struct EarPracticeReaderPage {
                     .margin({ bottom: 16 })
                     .width('100%');
 
-                  // ====== 音频播放控制条（始终显示，当有音频时）======
-                  if (this.hasAudio) {
-                    Column() {
-                      Row() {
-                        Text('🔊').fontSize(16).margin({ right: 8 });
-                        Text(this.audioLoadFailed ? '音频加载失败' : '朗读音频')
-                          .fontSize(14)
-                          .fontColor(this.audioLoadFailed ? '#F44336' : '#666666')
-                          .fontWeight(FontWeight.Medium)
-                          .layoutWeight(1);
-                        Text(this.formatAudioTime(this.audioDurationMs))
-                          .fontSize(12)
-                          .fontColor('#999999');
-                      }
-                      .width('100%')
-                      .alignItems(VerticalAlign.Center)
-                      .margin({ bottom: 8 });
-
-                      if (!this.audioLoadFailed) {
-                        Row() {
-                          Text(this.isAudioPlaying ? '⏸' : '▶')
-                            .fontSize(20)
-                            .fontColor('#1976D2')
-                            .width(40)
-                            .height(40)
-                            .textAlign(TextAlign.Center)
-                            .borderRadius(20)
-                            .backgroundColor('#E3F2FD')
-                            .onClick(() => {
-                              this.onAudioToggle();
-                            });
-
-                          Text(this.formatAudioTime(this.audioCurrentMs))
-                            .fontSize(12)
-                            .fontColor('#666666')
-                            .margin({ left: 12, right: 8 });
-
-                          Slider({
-                            value: this.getAudioProgressPercent(),
-                            min: 0,
-                            max: 100,
-                            style: SliderStyle.OutSet
-                          })
-                            .layoutWeight(1)
-                            .blockColor('#1976D2')
-                            .selectedColor('#1976D2')
-                            .trackColor('#E0E0E0')
-                            .onChange((value: number, mode: SliderChangeMode) => {
-                              this.onAudioSeek(value);
-                            });
-
-                          Text(this.formatAudioTime(this.audioDurationMs))
-                            .fontSize(12)
-                            .fontColor('#999999')
-                            .margin({ left: 8 });
-                        }
-                        .width('100%')
-                        .alignItems(VerticalAlign.Center);
-                      }
-                    }
-                    .width('100%')
-                    .margin({ bottom: 16 })
-                    .padding(12)
-                    .backgroundColor('#F5F5F5')
-                    .borderRadius(8);
-                  }
-
                   // ====== 文章文字内容（仅当 shouldShowContent=true 时显示）======
                   if (this.shouldShowContent) {
                     Text() {
@@ -519,10 +452,58 @@ struct EarPracticeReaderPage {
             });
           }
           .width('100%')
-          .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+          .padding({ left: 16, right: 16, top: 12, bottom: 6 })
           .backgroundColor('#FFFFFF');
+
+          // ====== 音频控制（并入顶栏，随顶栏一起隐藏/显示）======
+          if (this.hasAudio) {
+            Divider()
+              .strokeWidth(1)
+              .color('#EEEEEE');
+            Row() {
+              if (this.audioLoadFailed) {
+                Text('⚠ 音频加载失败')
+                  .fontSize(13)
+                  .fontColor('#F44336')
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.Start);
+              } else {
+                Text(this.isAudioPlaying ? '⏸' : '▶')
+                  .fontSize(18)
+                  .fontColor('#1976D2')
+                  .width(34)
+                  .height(34)
+                  .textAlign(TextAlign.Center)
+                  .borderRadius(17)
+                  .backgroundColor('#E3F2FD')
+                  .onClick(() => {
+                    this.onAudioToggle();
+                  });
+                Text(this.formatAudioTime(this.audioCurrentMs))
+                  .fontSize(11)
+                  .fontColor('#666666')
+                  .margin({ left: 10, right: 6 });
+                Slider({ value: this.getAudioProgressPercent(), min: 0, max: 100, style: SliderStyle.OutSet })
+                  .layoutWeight(1)
+                  .blockColor('#1976D2')
+                  .selectedColor('#1976D2')
+                  .trackColor('#E0E0E0')
+                  .onChange((value: number, mode: SliderChangeMode) => {
+                    this.onAudioSeek(value);
+                  });
+                Text(this.formatAudioTime(this.audioDurationMs))
+                  .fontSize(11)
+                  .fontColor('#999999')
+                  .margin({ left: 8 });
+              }
+            }
+            .width('100%')
+            .alignItems(VerticalAlign.Center)
+            .padding({ left: 12, right: 16, top: 6, bottom: 8 });
+          }
         }
         .width('100%')
+        .backgroundColor('#FFFFFF')
         .position({ x: 0, y: 0 });
       }
 

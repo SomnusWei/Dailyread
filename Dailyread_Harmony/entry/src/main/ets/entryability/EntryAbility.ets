@@ -3,6 +3,7 @@ import window from '@ohos.window';
 import { AppDatabase } from '../database/AppDatabase';
 import { ApiClient } from '../service/ApiClient';
 import { OfflineWriteQueue } from '../service/OfflineWriteQueue';
+import { AudioFileStore } from '../service/AudioFileStore';
 import { ConfigRepository } from '../repository/ConfigRepository';
 import { AbilityConstant, Want } from '@kit.AbilityKit';
 
@@ -45,6 +46,8 @@ export default class EntryAbility extends UIAbility {
     this.mainWindowStage = windowStage;
 
     const initDatabase = async (): Promise<void> => {
+      // 先初始化音频文件目录（早于任何文章同步），再建库
+      AudioFileStore.init(this.context);
       await AppDatabase.getInstance().init(this.context);
       // 初始化 API 客户端和离线写队列
       await ApiClient.getInstance().init(this.context);
