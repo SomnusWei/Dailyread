@@ -1397,7 +1397,12 @@ router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) 
     }
     let title = titleRaw;
     if (!title) {
-      const rawName = (paper.originalname || paper.filename || '').trim();
+      // 浏览器上传的中文文件名经 multer/busboy 按 latin1 解码成乱码（如 中药学·… → ä¸­…），还原为 UTF-8
+      let rawName = (paper.originalname || paper.filename || '').trim();
+      try {
+        const dec = Buffer.from(rawName, 'latin1').toString('utf8');
+        if (dec.indexOf('\uFFFD') < 0) rawName = dec;
+      } catch (e) { /* 保持原值 */ }
       title = path.basename(rawName, path.extname(rawName)).trim();
       if (!title) title = '未命名考试';
     }
