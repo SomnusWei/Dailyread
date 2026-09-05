@@ -169,7 +169,9 @@ def human_size(size):
 
 def main():
     parser = argparse.ArgumentParser(description="中医知识库索引生成")
-    parser.add_argument("--textbook-dir", default=r"F:\work\中医学skill\教材", help="教材目录")
+    parser.add_argument("--textbook-dir", default=os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "教材")),
+        help="教材目录（默认取与本 skill 同级的「教材」文件夹）")
     parser.add_argument("--output", default="references/textbook-index.md", help="输出索引文件")
     args = parser.parse_args()
 

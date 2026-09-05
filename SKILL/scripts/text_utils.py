@@ -69,7 +69,8 @@ if __name__ == "__main__":
     # 自检：对目录下所有 txt 做编码探测
     import sys
     import collections
-    directory = sys.argv[1] if len(sys.argv) > 1 else r"F:\work\中医学skill\教材"
+    directory = sys.argv[1] if len(sys.argv) > 1 else os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "教材"))
     stats = collections.Counter()
     for fname in sorted(os.listdir(directory)):
         if not fname.lower().endswith(".txt"):

@@ -66,9 +66,16 @@ python scripts/search_textbooks.py --keyword "{穴名/病名}" --category 针灸
      "answers": ["可接受的答案1", "别名"],
      "explanation": "…", "source": "…"},
 
-    {"type": "short", "score": 10, "stem": "简答/名词解释/论述题干",
-     "reference": "参考答案全文",
-     "key_points": ["评分要点1（X分）", "评分要点2（X分）"],
+    // 医案分析简答题 + 关键词自动批改示例（命中词 = 参考答案的实质内容/术语，而非题干要求词“辨病/代表方”本身）
+    {"type": "short", "score": 5, "stem": "医案分析：…（要求答出辨病、辨证、核心病机、治法、代表方）",
+     "reference": "辨病：感冒（太阳伤寒表实证）；辨证：风寒束表证；核心病机：风寒外束、肺气失宣；治法：发汗解表、宣肺平喘；代表方：麻黄汤。",
+     "key_points": ["辨病准确", "辨证准确", "病机准确", "治法一致", "方药正确"],
+     "keywords": [
+       {"words": ["感冒", "太阳伤寒"], "score": 1},        // 辨病：答出其一即命中
+       {"words": ["风寒束表", "表实证"], "score": 1},      // 辨证
+       {"words": ["风寒外束", "肺气失宣"], "score": 1},    // 核心病机
+       {"words": ["发汗解表", "宣肺平喘"], "score": 1},    // 治法
+       {"word": "麻黄汤", "score": 1}],                     // 代表方
      "explanation": "…", "source": "…"}
   ]
 }
@@ -79,6 +86,8 @@ python scripts/search_textbooks.py --keyword "{穴名/病名}" --category 针灸
 - `single.answer` 为正确项索引（0 起）；`multiple.answers` 为索引数组
 - `fill.answers` 列出所有可接受写法（判分时自动去空格与标点、任一匹配即得分）
 - `short` 必须给 `reference`（参考答案）和 `key_points`（评分要点，标注分值，合计=该题分值）
+- `short` 可选 **`keywords` 关键词自动批改**：数组内每项为 `{"word": "…", "score": 1}` 或 `{"words": ["…", "…"], "score": 1}`（同义词，任一命中即得该项分）；多条命中可累加、总分封顶为本题目题分值，且**各项 score 合计必须=该题分值**（脚本校验）。**命中词务必取自参考答案的实质结论/术语**（病名、证型、治法要点、方名等），写错或漏写答案词才不得分；不能把题干要求词（如“辨病”“代表方”字样）当命中词——那只是答题要求，写了不等于答对。配置了 keywords 后，提交即按命中自动给分（替代人工自评），未配置时维持人工自评。**卷面作答前不会显示命中词（防泄题），只提示按要点自动批改与满分**
+- **题干（stem）只放病案资料与作答要求**：病案出处（如“节选自某医案”）、答题依据/辨治提示（如“按《中医内科学》肺胀辨治”）等会暴露线索的内容一律放 `reference`/`explanation`，作答前对考生不可见
 - 每题都要有 `source`（知识库出处）和 `explanation`
 
 ### 第 4 步：生成交付物
@@ -107,8 +116,8 @@ python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name "{�
 - 单选→单选框；多选→复选框；填空→输入框；简答/名词解释/论述→文本域
 - 底部「提交试卷·查看成绩」按钮 → **原地立即批改**：
   - 客观题自动判分，逐题显示 ✓/△/✗ 与得分；正确选项绿色高亮、错选红色
-  - 主观题展开参考答案+评分要点，学生按要点自评填分（未填按 0 分）
-  - 成绩卡：姓名、客观题得分、主观题自评、已答题数、正确率、总分+进度条
+  - 主观题：若配置了 `keywords` → **按关键词自动判分**（命中逐条标绿 ✓/标红 ✗ 并给分、展示参考答案）；未配置 → 展开参考答案+评分要点，学生按要点自评填分（未填按 0 分）
+  - 成绩卡：姓名、客观题得分、主观题（关键词自动批改/自评）、已答题数、正确率、总分+进度条
 - **成绩自动上报服务器**（PWA 学习中心场景）：
   - 提交批改的同时，向 `submit_url`（默认 `/api/exam/submit`，可用 `--submit-url` 修改）发起 **POST，Content-Type: application/json，body 为成绩 JSON**
   - 发送顺序：`navigator.sendBeacon`（页面关闭也能送达）→ 失败则 `fetch keepalive POST` → 均失败则 localStorage 留档（key 前缀 `exam_result:`）
@@ -130,6 +139,7 @@ python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name "{�
   "final_score": 15,              // 总得分 = objective_score + subjective_self
   "objective_score": 10, "objective_max": 12,
   "subjective_self": 5,  "subjective_max": 10,
+  "subjective_auto": 3,           // 主观题中按 keywords 自动批改的得分（0-可选项，无则略/为 0）
   "answered_count": 6, "question_count": 7,
   "correct_count": 3,  "objective_count": 6,
   "accuracy": 50,                 // 客观题正确率（百分数）
@@ -205,6 +215,7 @@ A. 银翘散  B. 桑菊饮  C. 荆防败毒散  D. 参苏饮  E. 加减葳蕤汤
 - [ ] 无重复考点（同份试卷内）
 - [ ] 各题分值合计 = 用户确认的总分
 - [ ] 简答题 key_points 分值合计 = 该题分值
+- [ ] 配置 keywords 的简答题：各项 score 合计 = 该题分值，且命中词与题干要求一致（如“辨病/辨证/核心病机/治法/代表方”）
 - [ ] 交互试卷已在本地打开验证：提交、批改、成绩卡均正常
 
 ---

@@ -31,7 +31,10 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from text_utils import read_text_lines, clean_ancient_markup  # noqa: E402
 
-DEFAULT_TEXTBOOK_DIR = r"F:\work\中医学skill\教材"
+# 默认教材目录 = 与本 skill 同级的「教材」资料夹（安装时把教材放到 skill 根目录下，
+# 即与 SKILL.md 同一文件夹；不同位置可用 --textbook-dir 覆盖）
+DEFAULT_TEXTBOOK_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "教材"))
 KEYWORD_MAPPING_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "references", "keyword-mapping.md")
 

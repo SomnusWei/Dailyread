@@ -24,7 +24,19 @@ JSON 题目 schema（exam.json）：
     {"type": "fill",     "score": 2, "stem": "阳浮者，____",
      "answers": ["热自发"], …},                              // 任一匹配即得分
     {"type": "short",    "score": 10, "stem": "试述…",
-     "reference": "参考答案全文", "key_points": ["要点1", "要点2"], …}
+     "reference": "参考答案全文", "key_points": ["要点1", "要点2"], …},
+    // short 题可选 keywords：按“作答中是否命中参考答案的实质内容”自动批改给分——
+    // 注意：命中词请取参考答案里的关键结论/术语（病名、证型、治法要点、方名等）或同义词；
+    //       不要把题干要求词（如“辨病”“代表方”本身）当命中词——那只是答题要求，不是答案。
+    {"type": "short", "score": 5, "stem": "医案分析：…（要求答出辨病、辨证、核心病机、治法、代表方）",
+     "reference": "辨病：感冒（太阳伤寒表实证）；辨证：风寒束表证；核心病机：风寒外束、肺气失宣；治法：发汗解表、宣肺平喘；代表方：麻黄汤。",
+     "key_points": ["辨病准确", "辨证准确", "病机准确", "治法一致", "方药正确"],
+     "keywords": [
+       {"words": ["感冒", "太阳伤寒"], "score": 1},        // 辨病（答出其一即命中）
+       {"words": ["风寒束表", "表实证"], "score": 1},      // 辨证
+       {"words": ["风寒外束", "肺气失宣"], "score": 1},    // 核心病机
+       {"words": ["发汗解表", "宣肺平喘"], "score": 1},    // 治法
+       {"word": "麻黄汤", "score": 1}]}                     // 代表方 —— 全命中得满 5 分
   ]
 }
 
@@ -42,6 +54,7 @@ JSON 题目 schema（exam.json）：
 
 注意：选择题选项会被随机打乱并重贴 A/B/C… 前缀；解析（explanation）文字内请勿引用选项字母，
 应引用选项文字内容；确需按字母解析的题目可加 --no-shuffle 保留原序。
+short 主观题可配置 keywords 关键词自动批改（每条命中给分，详见上方 schema 示例）。
 """
 
 import os
@@ -141,6 +154,27 @@ def validate_exam(data):
             errors.append(f"第{i+1}题缺少答案 answers")
         if t == "short" and not q.get("reference"):
             errors.append(f"第{i+1}题缺少参考答案 reference")
+        if t == "short" and q.get("keywords") is not None:
+            kws = q["keywords"]
+            if not isinstance(kws, list) or not kws:
+                errors.append(f"第{i+1}题 keywords 需为非空数组")
+            else:
+                ksum = 0
+                for j, k in enumerate(kws):
+                    if not isinstance(k, dict):
+                        errors.append(f"第{i+1}题 keywords[{j}] 需为对象 {{word 或 words, score}}")
+                        continue
+                    ws = k.get("words") or ([k["word"]] if k.get("word") is not None else [])
+                    if not (isinstance(ws, list) and ws and all(isinstance(w, str) and w.strip() for w in ws)):
+                        errors.append(f"第{i+1}题 keywords[{j}] 缺少关键词 word/words")
+                        continue
+                    s = k.get("score", 1)
+                    if isinstance(s, bool) or not isinstance(s, (int, float)) or s <= 0:
+                        errors.append(f"第{i+1}题 keywords[{j}] score 需为正数")
+                        continue
+                    ksum += s
+                if ksum != q.get("score", 0):
+                    errors.append(f"第{i+1}题 keywords 分值合计 {ksum} ≠ 本题分值 {q.get('score', 0)}（需一致）")
     return errors
 
 
@@ -175,8 +209,18 @@ def render_question_html(q, idx):
         parts.append(
             f'<textarea class="short-input" id="short-{idx}" rows="4" '
             f'placeholder="在此作答"></textarea>')
+        kw = q.get("keywords")
+        if kw:
+            ksum = int(sum(int(k.get("score", 1) or 0) for k in kw))
+            parts.append(
+                '<div style="font-size:12.5px;color:#1d6f42;background:#eafaf1;'
+                'border:1px dashed #5cb885;border-radius:6px;padding:5px 10px;margin:6px 0 2px;">'
+                f'⚙️ 本题按参考答案实质内容自动批改（共 {len(kw)} 项要点 / 满分 {ksum} 分），'
+                "作答时请把各项分析写全写清。</div>")
         parts.append(
-            f'<div class="self-grade hidden" id="sg-{idx}">自评分：'
+            f'<div class="self-grade hidden" id="sg-{idx}"'
+            + (' style="display:none" data-kw="1"' if kw else '')
+            + '>自评分：'
             f'<input type="number" class="sg-input" id="sgv-{idx}" min="0" '
             f'max="{q["score"]}" value="{q["score"]}"> / {q["score"]} 分'
             f'（对照参考答案与要点自评，未填按 0 分计）</div>')
@@ -222,8 +266,15 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// 文本归一化：全角字母数字→半角→转小写→去掉所有空白与常见中英文标点。
+// 作答与关键词同时归一后做包含匹配，可忽略全/半角、顿逗号、引号括号、间隔符等书写差异；
+// 也支持关键词条自身含连接标点（如“涤痰祛瘀，宣肺平喘”），两端归一后一致即可命中。
 function normText(s) {
-  return (s || "").replace(/\s+/g, "").replace(/[，,。;；:：!！?？]/g, "").trim();
+  return String(s || "")
+    .replace(/[\uFF01-\uFF5E]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)) // 全角→半角
+    .toLowerCase()
+    .replace(/[\s\u3000，,。．.、；;：:！!？?·・/／\\()（）[\]【】《》〈〉“”‘’"'‘’…—–-]/g, "")
+    .trim();
 }
 
 function gradeExam() {
@@ -232,6 +283,7 @@ function gradeExam() {
   if (!name) { alert("请先在卷首填写学生姓名！"); document.getElementById("student-name").focus(); return; }
 
   let objectiveScore = 0, objectiveMax = 0, subjectiveMax = 0, subjectiveSelf = 0;
+  let anyAuto = false, autoOnly = 0;
   let answered = 0, correctCount = 0, objectiveCount = 0;
   const qResults = [];
 
@@ -296,18 +348,51 @@ function gradeExam() {
       const sg = document.getElementById("sg-" + idx);
       const sgv = document.getElementById("sgv-" + idx);
       ta.disabled = true;
-      const selfVal = Math.min(Math.max(Number(sgv.value) || 0, 0), full);
-      subjectiveSelf += selfVal;
-      gained = selfVal;
-      if (ta.value.trim()) { answered++; rec.answer = ta.value; }
-      rec.correct = null; rec.self_score = selfVal;
-      if (ta.value.trim()) { answered++; }
-      sg.classList.remove("hidden");
-      fb.innerHTML = '<div class="ref-answer"><p><b>📝 参考答案：</b></p>' +
-        '<p class="ref-text">' + esc(q.reference).replace(/\n/g, "<br>") + "</p>" +
-        (q.key_points ? '<p><b>🎯 评分要点：</b></p><ul>' +
-          q.key_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "") +
-        answerTail(q) + "</div>";
+      const taText = ta.value || "";
+      const answeredThis = !!taText.trim();
+      if (answeredThis) { answered++; rec.answer = taText; }
+      rec.correct = null;
+      const kwList = Array.isArray(q.keywords) && q.keywords.length ? q.keywords : null;
+      if (kwList) {
+        // —— 关键词自动批改：命中一条得对应分（可多条累加、封顶本题分值）——
+        anyAuto = true;
+        const nv = normText(taText);
+        const kwHits = kwList.map(k => {
+          const ws = (Array.isArray(k.words) && k.words.length) ? k.words
+            : (k.word != null ? [k.word] : []);
+          const s = Math.max(Number(k.score) || 1, 0);
+          const hit = !!nv && ws.some(w => { const nw = normText(w); return !!nw && nv.indexOf(nw) >= 0; });
+          return { label: ws.length ? ws.join("／") : (k.word || ""), s: s, hit: hit };
+        });
+        let autoSum = 0;
+        kwHits.forEach(h => { if (h.hit) autoSum = Math.min(autoSum + h.s, full); });
+        gained = autoSum; subjectiveSelf += autoSum; autoOnly += autoSum;
+        rec.self_score = autoSum;
+        fb.innerHTML =
+          "<p><b>你的作答：</b>" + esc(taText || "（未作答）") + "</p>" +
+          '<p style="color:#1d6f42;font-weight:700;margin:4px 0 2px;">⚙️ 关键词自动批改：' + autoSum + " / " + full + " 分</p>" +
+          '<ul style="margin:0;padding-left:20px;font-size:13.5px;">' +
+          kwHits.map(h => "<li style='color:" + (h.hit ? "#16a34a" : "#c62828") + "'>" +
+            esc(h.label) + "：" + (h.hit ? "✓ 命中 +" + h.s : "✗ 未命中 0") + " 分</li>").join("") +
+          "</ul>" +
+          '<div class="ref-answer"><p><b>📝 参考答案：</b></p>' +
+          '<p class="ref-text">' + esc(q.reference).replace(/\n/g, "<br>") + "</p>" +
+          (q.key_points ? '<p><b>🎯 评分要点：</b></p><ul>' +
+            q.key_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "") +
+          answerTail(q) + "</div>";
+      } else {
+        // —— 原自评模式（无 keywords 配置时）——
+        const selfVal = Math.min(Math.max(Number(sgv.value) || 0, 0), full);
+        subjectiveSelf += selfVal;
+        gained = selfVal;
+        rec.self_score = selfVal;
+        sg.classList.remove("hidden");
+        fb.innerHTML = '<div class="ref-answer"><p><b>📝 参考答案：</b></p>' +
+          '<p class="ref-text">' + esc(q.reference).replace(/\n/g, "<br>") + "</p>" +
+          (q.key_points ? '<p><b>🎯 评分要点：</b></p><ul>' +
+            q.key_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "") +
+          answerTail(q) + "</div>";
+      }
     }
     rec.score = gained;
     if (isObjective) objectiveScore += gained;
@@ -315,11 +400,18 @@ function gradeExam() {
     qDiv.classList.add(gained >= full ? "q-full" : (gained > 0 ? "q-partial" : "q-zero"));
     verdict.textContent = gained >= full ? "✓ " + gained + " 分" : (gained > 0 ? "△ " + gained + " 分" : "✗ 0 分");
     verdict.className = "verdict " + (gained >= full ? "v-right" : (gained > 0 ? "v-partial" : "v-wrong"));
-    if (q.type === "short") verdict.textContent = "自评 " + gained + "/" + full + " 分";
+    if (q.type === "short") {
+      const kw = Array.isArray(q.keywords) && q.keywords.length;
+      verdict.textContent = (kw ? "自动 " : "自评 ") + gained + "/" + full + " 分";
+    }
   });
 
   const total = objectiveScore + subjectiveSelf;
   const rate = EXAM.total_score ? Math.round(total / EXAM.total_score * 100) : 0;
+  const subjLabel = anyAuto ? "主观题（关键词自动批改/自评）" : "主观题（自评）";
+  const subjNote = anyAuto
+    ? "关键词自动批改得分已自动计入；未配置关键词的简答题以自评分为准"
+    : "主观题得分以自评为准，可对照上方参考答案与评分要点";
   const card = document.getElementById("score-card");
   card.classList.remove("hidden");
   card.innerHTML =
@@ -327,13 +419,13 @@ function gradeExam() {
     '<div class="score-grid">' +
     '<div class="s-item"><div class="s-label">学生姓名</div><div class="s-value" id="recorded-name">' + esc(name) + "</div></div>" +
     '<div class="s-item"><div class="s-label">客观题（自动批改）</div><div class="s-value">' + objectiveScore + " / " + objectiveMax + ' 分</div></div>' +
-    '<div class="s-item"><div class="s-label">主观题（自评）</div><div class="s-value">' + subjectiveSelf + " / " + subjectiveMax + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">' + subjLabel + "</div><div class='s-value'>" + subjectiveSelf + " / " + subjectiveMax + ' 分</div></div>' +
     '<div class="s-item"><div class="s-label">答题情况</div><div class="s-value">' + answered + " / " + EXAM.questions.length + ' 题已答</div></div>' +
     '<div class="s-item"><div class="s-label">客观题正确率</div><div class="s-value">' + (objectiveCount ? Math.round(correctCount / objectiveCount * 100) : 0) + '%</div></div>' +
     '<div class="s-item s-total"><div class="s-label">总分</div><div class="s-value">' + total + " / " + EXAM.total_score + ' 分</div></div>' +
     "</div>" +
     '<div class="score-bar"><div class="score-bar-fill" style="width:' + rate + '%"></div></div>' +
-    '<p class="score-note">提交时间已记录 · 主观题得分以自评为准，可对照上方参考答案与评分要点</p>' +
+    '<p class="score-note">提交时间已记录 · ' + subjNote + "</p>" +
     '<p class="score-note" id="upload-note"></p>';
   if (card.scrollIntoView) card.scrollIntoView({ behavior: "smooth" });
   document.getElementById("submit-btn").disabled = true;
@@ -348,10 +440,11 @@ function gradeExam() {
     student_name: name,
     submitted_at: new Date().toISOString(),
     total_score: EXAM.total_score,  // 满分
-    final_score: total,             // 总得分（客观自动 + 主观自评）
+    final_score: total,             // 总得分（客观自动 + 主观[关键词自动批改/自评]）
     objective_score: objectiveScore,
     objective_max: objectiveMax,
-    subjective_self: subjectiveSelf,
+    subjective_self: subjectiveSelf,   // 主观合计分 = 关键词自动批改得分 + 自评得分
+    subjective_auto: autoOnly,         // 其中关键词自动批改得分
     subjective_max: subjectiveMax,
     answered_count: answered,
     question_count: EXAM.questions.length,
@@ -493,18 +586,36 @@ function reviewMark(q, idx, ans) {
   const correct = !!(ans && ans.correct);
 
   if (q.type === "short") {
+    const kw = Array.isArray(q.keywords) && q.keywords.length;
+    const modeLabel = kw ? "自动" : "自评";
     const selfVal = ans && typeof ans.self_score === "number"
       ? Math.min(Math.max(ans.self_score, 0), full)
       : (ans && typeof ans.score === "number" ? Math.min(Math.max(ans.score, 0), full) : 0);
+    let kwHtml = "";
+    if (kw) {
+      const nv = normText(String(ans && ans.answer != null ? ans.answer : ""));
+      kwHtml = '<p style="color:#1d6f42;font-weight:700;margin:4px 0 2px;">⚙️ 关键词自动批改：' +
+        selfVal + " / " + full + " 分</p><ul style='margin:0;padding-left:20px;font-size:13.5px;'>" +
+        q.keywords.map(k => {
+          const ws = (Array.isArray(k.words) && k.words.length) ? k.words
+            : (k.word != null ? [k.word] : []);
+          const s = Math.max(Number(k.score) || 1, 0);
+          const hit = !!nv && ws.some(w => { const nw = normText(w); return !!nw && nv.indexOf(nw) >= 0; });
+          const lab = ws.length ? ws.join("／") : (k.word || "");
+          return "<li style='color:" + (hit ? "#16a34a" : "#c62828") + "'>" + esc(lab) +
+            "：" + (hit ? "✓ 命中 +" + s : "✗ 未命中 0") + " 分</li>";
+        }).join("") + "</ul>";
+    }
     fb.innerHTML = "<p><b>你的作答：</b>" + (answered ? esc(String(ans.answer)).replace(/\n/g, "<br>") : "（未作答）") + "</p>" +
+      kwHtml +
       "<div class='ref-answer'><p><b>📝 参考答案：</b></p>" +
       "<p class='ref-text'>" + esc(q.reference).replace(/\n/g, "<br>") + "</p>" +
       (q.key_points ? "<p><b>🎯 评分要点：</b></p><ul>" +
         q.key_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "") +
       answerTail(q) +
-      "<p><b>自评得分：</b>" + selfVal + " / " + full + " 分</p></div>";
+      "<p><b>" + modeLabel + "得分：</b>" + selfVal + " / " + full + " 分</p></div>";
     qDiv.classList.add(selfVal >= full ? "q-full" : (selfVal > 0 ? "q-partial" : "q-zero"));
-    verdict.textContent = "自评 " + selfVal + "/" + full + " 分";
+    verdict.textContent = modeLabel + " " + selfVal + "/" + full + " 分";
     verdict.className = "verdict " + (selfVal >= full ? "v-right" : (selfVal > 0 ? "v-partial" : "v-wrong"));
     return;
   }
@@ -562,6 +673,8 @@ function renderReviewSummary(rec, name) {
     "　总分：" + dash(finalScore) + " / " + EXAM.total_score + " 分　提交时间：" + esc(formatReviewTime(rec.submitted_at));
   head.insertBefore(banner, document.querySelector(".name-row"));
 
+  const subjLabel = EXAM.questions.some(q => q.type === "short" && Array.isArray(q.keywords) && q.keywords.length)
+    ? "主观题（关键词自动批改/自评）" : "主观题（自评）";
   const card = document.getElementById("score-card");
   card.classList.remove("hidden");
   card.innerHTML =
@@ -569,7 +682,7 @@ function renderReviewSummary(rec, name) {
     '<div class="score-grid">' +
     '<div class="s-item"><div class="s-label">学生姓名</div><div class="s-value">' + esc(name) + "</div></div>" +
     '<div class="s-item"><div class="s-label">客观题（自动批改）</div><div class="s-value">' + dash(objScore) + " / " + om + ' 分</div></div>' +
-    '<div class="s-item"><div class="s-label">主观题（自评）</div><div class="s-value">' + dash(selfScore) + " / " + subMax + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">' + subjLabel + "</div><div class='s-value'>" + dash(selfScore) + " / " + subMax + ' 分</div></div>' +
     '<div class="s-item"><div class="s-label">答题情况</div><div class="s-value">' + answeredCount + " / " + EXAM.questions.length + ' 题已答</div></div>' +
     '<div class="s-item"><div class="s-label">提交时间</div><div class="s-value" style="font-size:15px">' + esc(formatReviewTime(rec.submitted_at)) + "</div></div>" +
     '<div class="s-item s-total"><div class="s-label">总分</div><div class="s-value">' + dash(finalScore) + " / " + EXAM.total_score + ' 分</div></div>' +
@@ -789,6 +902,11 @@ def build_answer_html(data):
             if q.get("key_points"):
                 parts.append('<div class="ans"><b>评分要点：</b><ul>' +
                              "".join(f"<li>{esc(p)}</li>" for p in q["key_points"]) + "</ul></div>")
+            if q.get("keywords"):
+                kws = q["keywords"]
+                parts.append('<div class="ans"><b>关键词自动批改（命中即得分）：</b><ul>' + "".join(
+                    f"<li>{esc('/'.join(k['words'] if isinstance(k.get('words'), list) else ([k['word']] if k.get('word') else [])))}"
+                    f" —— {k.get('score', 1)} 分</li>" for k in kws) + "</ul></div>")
         if q.get("explanation"):
             parts.append(f'<div class="expl"><b>解析：</b>{esc(q["explanation"])}</div>')
         if q.get("source"):
