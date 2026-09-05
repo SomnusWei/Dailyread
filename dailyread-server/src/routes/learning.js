@@ -217,6 +217,8 @@ router.get('/me', lcAuthRequired, async (req, res) => {
     if (rows.length === 0) return res.status(404).json(error('用户不存在', 404));
     const u = rows[0];
     u.roleLabel = ROLE_LABELS[u.role];
+    // 续种会话 Cookie（老会话 / 新标签进入学习中心时保证 Cookie 存在）
+    if (req.lcToken) setLcSessionCookie(res, req.lcToken);
     return res.json(success(u));
   } catch (e) {
     return res.status(500).json(error('查询失败', 500));
@@ -1275,6 +1277,363 @@ router.delete('/users/:id', lcAuthRequired, lcRequireAdmin, async (req, res) => 
     return res.json(success({ ok: true }, '用户已删除'));
   } catch (e) {
     return res.status(500).json(error('删除失败: ' + e.message, 500));
+  }
+});
+
+// ============================================================
+// 考试管理（HTML 试卷发布 / 成绩状态 / 按学生查询）
+// exam_code 即试卷 HTML 内嵌的 exam_id（题库 skill 生成）；考试时间用 DATETIME 存
+// 'YYYY-MM-DD HH:mm:ss'（+08:00 墙上时间），SELECT 统一 DATE_FORMAT 读为字符串后按本地 Date 比较
+// ============================================================
+
+// 考试文件上传目录
+const EXAMS_DIR = path.join(__dirname, '..', '..', 'uploads', 'exams');
+if (!fs.existsSync(EXAMS_DIR)) {
+  fs.mkdirSync(EXAMS_DIR, { recursive: true });
+}
+const examStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, EXAMS_DIR),
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + '-' + crypto.randomBytes(6).toString('hex') + '.html');
+  }
+});
+const examUpload = multer({
+  storage: examStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/\.(html|htm)$/i.test(file.originalname || '')) return cb(null, true);
+    cb(new Error('仅支持 HTML 文件'));
+  }
+});
+
+// 从试卷 HTML 提取 exam_id（考卷/答案卷由题库 skill 生成，exam_id 出现在三处，见对接说明）：
+//   1) <head> 内 <meta name="exam-id" content="exam-xxx">（属性顺序可变）
+//   2) 文件头注释 <!-- exam_id: exam-xxx -->（值可带引号可不带）
+//   3) 页面内嵌 JS：exam_id: 'exam-xxx' / exam_id = "exam-xxx" 等任意赋值
+function extractExamCode(html) {
+  if (!html) return null;
+  const metas = html.match(/<meta\b[^>]*>/gi) || [];
+  for (let i = 0; i < metas.length; i++) {
+    const m = metas[i];
+    if (/\bname\s*=\s*["']exam[-_]?id["']/i.test(m)) {
+      const c = /\bcontent\s*=\s*["']([^"']+)["']/i.exec(m);
+      if (c && c[1]) return c[1].trim();
+    }
+  }
+  const cm = /<!--[\s\S]*?exam[\s_-]*id\s*[:=]\s*["']?([A-Za-z0-9_-]+)["']?/i.exec(html);
+  if (cm && cm[1]) return cm[1];
+  const jm = /exam[\s_-]*id\s*[:=]\s*["']?([A-Za-z0-9_-]+)["']?/i.exec(html);
+  return jm ? jm[1] : null;
+}
+
+// 'YYYY-MM-DD HH:mm:ss' / 'YYYY-MM-DDTHH:mm:ss'（无时区标注的墙上时间）→ 本地 Date
+function parseLocalDT(str) {
+  if (!str) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(String(str).trim());
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// datetime-local 'YYYY-MM-DDTHH:mm' → 入库字符串 'YYYY-MM-DD HH:mm:ss'；格式非法返回 null
+function toExamStoredTime(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+  if (!m) return null;
+  return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5] + ':' + (m[6] || '00');
+}
+
+// 考试状态机：有成绩→graded；未到开始→not_started；已过截止→expired；窗口内→pending
+function examStatusFor(exam, score) {
+  if (score) return 'graded';
+  const now = Date.now();
+  const start = parseLocalDT(exam.start_at);
+  const end = parseLocalDT(exam.end_at);
+  if (start && now < start.getTime()) return 'not_started';
+  if (end && now > end.getTime()) return 'expired';
+  return 'pending';
+}
+
+// 考试 SELECT 公共片段：start_at/end_at 以 'YYYY-MM-DD HH:mm:ss' 字符串形式读出
+const EXAM_LIST_SELECT = `
+  SELECT e.id, e.uploader_id, e.exam_code, e.title, e.paper_filename, e.answer_filename,
+         DATE_FORMAT(e.start_at, '%Y-%m-%d %H:%i:%s') AS start_at,
+         DATE_FORMAT(e.end_at, '%Y-%m-%d %H:%i:%s') AS end_at,
+         e.level_scope, e.extra_users, e.created_at,
+         COALESCE(NULLIF(u.nickname, ''), u.username) AS uploader_name
+  FROM lc_exams e LEFT JOIN lc_users u ON u.id = e.uploader_id
+`;
+
+// 解析 level_scope / extra_users 为数组（考试行对象）
+function parseExamRow(r) {
+  let scope = [], extra = [];
+  try { scope = JSON.parse(r.level_scope); } catch (e) { scope = []; }
+  try { extra = JSON.parse(r.extra_users || '[]'); } catch (e) { extra = []; }
+  if (!Array.isArray(scope)) scope = [];
+  if (!Array.isArray(extra)) extra = [];
+  return { ...r, level_scope: scope, extra_users: extra.map(Number) };
+}
+
+// POST /api/learning/exams 发布考试（multipart：paperFile + answerFile + title/levels/extraUsers/startAt/endAt）
+router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) {
+  examUpload.fields([{ name: 'paperFile', maxCount: 1 }, { name: 'answerFile', maxCount: 1 }])(req, res, function (err) {
+    if (err) return res.status(400).json(error('上传失败：' + err.message, 400));
+    next();
+  });
+}, async (req, res) => {
+  const uploadedFiles = [];
+  if (req.files) {
+    Object.keys(req.files).forEach(k => { uploadedFiles.push(...req.files[k]); });
+  }
+  const unlinkAll = () => uploadedFiles.forEach(f => { if (f && f.path) fs.unlink(f.path, () => {}); });
+  try {
+    const paper = req.files && req.files.paperFile && req.files.paperFile[0];
+    const answer = req.files && req.files.answerFile && req.files.answerFile[0];
+    const titleRaw = (req.body.title || '').trim();
+    if (!paper || !answer) {
+      unlinkAll(); return res.status(400).json(error('请同时上传考卷与答题卡 HTML 文件', 400));
+    }
+    let title = titleRaw;
+    if (!title) {
+      const rawName = (paper.originalname || paper.filename || '').trim();
+      title = path.basename(rawName, path.extname(rawName)).trim();
+      if (!title) title = '未命名考试';
+    }
+    if (title.length > 128) title = title.slice(0, 128);
+    const levels = parseLevels(req.body.levels || '["all"]');
+    if (!levels) {
+      unlinkAll(); return res.status(400).json(error('分发等级参数无效', 400));
+    }
+    let extraUsers = [];
+    const rawExtra = String(req.body.extraUsers || '').trim();
+    if (rawExtra) {
+      try { extraUsers = JSON.parse(rawExtra); } catch (e) { extraUsers = null; }
+      if (!Array.isArray(extraUsers)) {
+        unlinkAll(); return res.status(400).json(error('extraUsers 需为 JSON 数组或空', 400));
+      }
+      extraUsers = extraUsers.map(Number).filter(n => Number.isInteger(n) && n > 0);
+    }
+    const startAt = toExamStoredTime(req.body.startAt);
+    if (String(req.body.startAt || '').trim() !== '' && !startAt) {
+      unlinkAll(); return res.status(400).json(error('开始时间格式无效（YYYY-MM-DDTHH:mm）', 400));
+    }
+    const endAt = toExamStoredTime(req.body.endAt);
+    if (String(req.body.endAt || '').trim() !== '' && !endAt) {
+      unlinkAll(); return res.status(400).json(error('截止时间格式无效（YYYY-MM-DDTHH:mm）', 400));
+    }
+    if (startAt && endAt && parseLocalDT(startAt).getTime() >= parseLocalDT(endAt).getTime()) {
+      unlinkAll(); return res.status(400).json(error('开始时间必须早于截止时间', 400));
+    }
+    // 提取考卷内嵌 exam_id（题库 skill 生成，见对接说明：meta/注释/内嵌JS）
+    const paperCode = extractExamCode(fs.readFileSync(paper.path, 'utf8'));
+    if (!paperCode) {
+      unlinkAll();
+      return res.status(400).json(error('考卷HTML未包含exam_id，请用题库 skill 生成', 400));
+    }
+    const examCode = paperCode.trim();
+    // 答题卡可携带同一 exam_id（校验与考卷一致），也可不携带
+    const answerCode = extractExamCode(fs.readFileSync(answer.path, 'utf8'));
+    if (answerCode && answerCode.trim() !== examCode) {
+      unlinkAll();
+      return res.status(400).json(error('答题卡与考卷的 exam_id 不一致', 400));
+    }
+    const [exist] = await pool.query('SELECT id FROM lc_exams WHERE exam_code = ? LIMIT 1', [examCode]);
+    if (exist.length > 0) {
+      unlinkAll();
+      return res.status(400).json(error('该考卷 exam_id 已发布过，请勿重复上传', 400));
+    }
+    const [result] = await pool.query(
+      `INSERT INTO lc_exams (uploader_id, exam_code, title, paper_filename, answer_filename, start_at, end_at, level_scope, extra_users)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.lcUser.id, examCode, title, paper.filename, answer.filename,
+       startAt, endAt, JSON.stringify(levels), extraUsers.length > 0 ? JSON.stringify(extraUsers) : null]
+    );
+    return res.json(success({ id: result.insertId }, '考试已发布'));
+  } catch (e) {
+    console.error('[learning/exams:create]', e);
+    unlinkAll();
+    return res.status(500).json(error('发布失败: ' + e.message, 500));
+  }
+});
+
+// GET /api/learning/exams 列表：staff 全部（倒序附上传者昵称）；学生仅"分发给自己的考试"并计算状态
+router.get('/exams', lcAuthRequired, async (req, res) => {
+  try {
+    const meRole = req.lcUser.role;
+    const isStaff = STAFF_ROLES.includes(meRole);
+    const [rows] = await pool.query(EXAM_LIST_SELECT + ' ORDER BY e.created_at DESC, e.id DESC');
+    const parsed = rows.map(parseExamRow);
+    if (isStaff) {
+      return res.json(success({ list: parsed }));
+    }
+    // 学生可见性：等级含 all 或本人角色，或指定账号含本人（与讲义 623-625 行同一写法）
+    const visible = parsed.filter(r =>
+      r.level_scope.includes('all') || r.level_scope.includes(meRole) || r.extra_users.includes(Number(req.lcUser.id))
+    );
+    // 我的成绩（首次成绩锁定，仅用于展示状态）
+    const mineMap = {};
+    if (visible.length > 0) {
+      const ph = visible.map(() => '?').join(',');
+      const [scRows] = await pool.query(
+        `SELECT exam_id, final_score, submitted_at FROM lc_exam_scores
+         WHERE exam_id IN (${ph}) AND student_username = ?`,
+        [...visible.map(r => r.id), req.lcUser.username]
+      );
+      scRows.forEach(sc => { mineMap[sc.exam_id] = sc; });
+    }
+    const list = visible.map(r => {
+      const sc = mineMap[r.id] || null;
+      return {
+        ...r,
+        status: examStatusFor(r, sc),
+        finalScore: sc ? sc.final_score : null,
+        submittedAt: sc ? sc.submitted_at : null
+      };
+    });
+    return res.json(success({ list }));
+  } catch (e) {
+    console.error('[learning/exams:list]', e);
+    return res.status(500).json(error('查询失败', 500));
+  }
+});
+
+// DELETE /api/learning/exams/:id （上传者本人或管理员，账号密码二次校验）
+router.delete('/exams/:id', lcAuthRequired, async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      'SELECT id, uploader_id, paper_filename, answer_filename FROM lc_exams WHERE id = ? LIMIT 1', [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json(error('考试不存在', 404));
+    const ex = rows[0];
+    if (ex.uploader_id !== req.lcUser.id && req.lcUser.role !== 'admin') {
+      return res.status(403).json(error('无权限删除', 403));
+    }
+    const pwd = req.body && req.body.password;
+    if (!pwd) return res.status(403).json(error('账号或密码错误', 403));
+    const [uRows] = await pool.query('SELECT password FROM lc_users WHERE id = ? LIMIT 1', [req.lcUser.id]);
+    if (uRows.length === 0) return res.status(403).json(error('账号或密码错误', 403));
+    const pwdOk = await bcrypt.compare(pwd, uRows[0].password);
+    if (!pwdOk) return res.status(403).json(error('账号或密码错误', 403));
+    await pool.query('DELETE FROM lc_exam_scores WHERE exam_id = ?', [ex.id]);
+    await pool.query('DELETE FROM lc_exams WHERE id = ?', [ex.id]);
+    [ex.paper_filename, ex.answer_filename].forEach(fn => {
+      if (fn) fs.unlink(path.join(EXAMS_DIR, fn), () => {});
+    });
+    return res.json(success({ ok: true }, '考试已删除'));
+  } catch (e) {
+    console.error('[learning/exams:delete]', e);
+    return res.status(500).json(error('删除失败: ' + e.message, 500));
+  }
+});
+
+// GET /api/learning/exams-query?user=&level= 教师/管理员按学生维度查询考试作答情况（扁平数组 rows）
+// 单份成绩回显详情：按 exam(id 或 code) + 学生 username 返回该生作答明细（供前端回显已批改试卷）
+router.get('/exams-detail', lcAuthRequired, async (req, res) => {
+  try {
+    const examRef = String(req.query.exam || '').trim();
+    const user = String(req.query.user || '').trim();
+    if (!examRef || !user) return res.status(400).json(error('缺少 exam 或 user', 400));
+    const isStaff = req.lcUser.role === 'admin' || req.lcUser.role === 'teacher';
+    if (!isStaff && user !== req.lcUser.username) return res.status(403).json(error('无权查看他人成绩明细', 403));
+    const [exams] = await pool.query(
+      'SELECT id, exam_code, title FROM lc_exams WHERE exam_code = ? OR id = ? LIMIT 1',
+      [examRef, Number(examRef) || -1]
+    );
+    if (exams.length === 0) return res.status(404).json(error('考试不存在', 404));
+    const ex = exams[0];
+    const [sc] = await pool.query(
+      "SELECT student_username, student_display, final_score, total_score, objective_score, objective_max, subjective_self, subjective_max, accuracy, submitted_at, detail_json FROM lc_exam_scores WHERE exam_id = ? AND student_username = ? LIMIT 1",
+      [ex.id, user]
+    );
+    if (sc.length === 0) return res.status(404).json(error('该生暂无成绩', 404));
+    const s = sc[0];
+    let detail = {};
+    try { detail = JSON.parse(s.detail_json || '{}'); } catch (e) { detail = {}; }
+    const record = {
+      exam_code: ex.exam_code,
+      exam_title: ex.title,
+      student_name: s.student_display || detail.student_name || s.student_username,
+      final_score: Number(s.final_score),
+      total_score: Number(s.total_score),
+      objective_score: Number(s.objective_score),
+      objective_max: Number(s.objective_max),
+      subjective_self: Number(s.subjective_self),
+      subjective_max: Number(s.subjective_max),
+      accuracy: Number(s.accuracy),
+      submitted_at: s.submitted_at,
+      answers: Array.isArray(detail.answers) ? detail.answers : []
+    };
+    return res.json(success({ record, exam_code: ex.exam_code }));
+  } catch (e) {
+    console.error('[learning/exams-detail]', e);
+    return res.status(500).json(error('查询失败: ' + e.message, 500));
+  }
+});
+
+router.get('/exams-query', lcAuthRequired, lcRequireStaff, async (req, res) => {
+  try {
+    const userQuery = (req.query.user || '').trim();
+    const level = req.query.level || '';
+    let studentSql = 'SELECT id, username, nickname, role FROM lc_users WHERE 1=1';
+    const studentParams = [];
+    if (userQuery) {
+      studentSql += ' AND (username LIKE ? OR nickname LIKE ?)';
+      const kw = '%' + userQuery + '%';
+      studentParams.push(kw, kw);
+    }
+    if (level) {
+      studentSql += ' AND role = ?';
+      studentParams.push(level);
+    } else {
+      // 默认只查学生角色，避免管理员/教师混入成绩名单
+      studentSql += ' AND role IN (' + STUDENT_ROLES.map(() => '?').join(',') + ')';
+      STUDENT_ROLES.forEach(r => studentParams.push(r));
+    }
+    studentSql += ' ORDER BY role, nickname';
+    const [students] = await pool.query(studentSql, studentParams);
+    if (students.length === 0) {
+      return res.json(success({ rows: [] }));
+    }
+    const [examRows] = await pool.query(EXAM_LIST_SELECT + ' ORDER BY e.created_at DESC, e.id DESC');
+    const exams = examRows.map(parseExamRow);
+    // 这些学生的全部成绩，按 student_username + exam_id 索引
+    const names = students.map(s => s.username);
+    const [scoreRows] = await pool.query(
+      `SELECT exam_id, student_username, final_score, submitted_at FROM lc_exam_scores
+       WHERE student_username IN (${names.map(() => '?').join(',')})`,
+      names
+    );
+    const scoreMap = {};
+    scoreRows.forEach(sc => { scoreMap[sc.student_username + '_' + sc.exam_id] = sc; });
+    const rows = [];
+    students.forEach(s => {
+      exams.forEach(ex => {
+        // 该考试是否面向该学生：等级含 all/本人角色，或指定账号含本人
+        if (!(ex.level_scope.includes('all') || ex.level_scope.includes(s.role) || ex.extra_users.includes(Number(s.id)))) return;
+        const sc = scoreMap[s.username + '_' + ex.id] || null;
+        const status = examStatusFor(ex, sc);
+        rows.push({
+          exam_id: ex.id,
+          exam_title: ex.title,
+          student_id: s.id,
+          student_username: s.username,
+          student_nickname: s.nickname || s.username,
+          student_role: s.role,
+          status: status,
+          finalScore: sc ? sc.final_score : null,
+          submittedAt: sc ? sc.submitted_at : null,
+          paper: ex.paper_filename,
+          answer: ex.answer_filename,
+          canAnswer: status === 'pending'
+        });
+      });
+    });
+    return res.json(success({ rows }));
+  } catch (e) {
+    console.error('[learning/exams:query]', e);
+    return res.status(500).json(error('查询失败: ' + e.message, 500));
   }
 });
 

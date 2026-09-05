@@ -146,6 +146,7 @@
     { key: 'messages', icon: '🔔', label: '消息', show: true },
     { key: 'handouts', icon: '📨', label: '讲义库', show: true },
     { key: 'assignments', icon: '📝', label: '作业管理', show: true },
+    { key: 'exams', icon: '📝', label: '考试', show: true },
     { key: 'dailyread', icon: '📚', label: '每日阅读', show: true, external: '/center/dr/bind.html' },
     { key: 'manage', icon: '🛠️', label: '管理', show: isStaff },
     { key: 'profile', icon: '👤', label: '我的', show: true }
@@ -243,8 +244,20 @@
     });
   })();
 
-  // 删除讲义二次确认弹窗（账号密码校验）
+  // 删除二次确认弹窗（讲义 / 考试共用，账号密码校验）
   var deleteConfirmHandoutId = null;
+  var examDeleteId = null;   // 考试删除目标；非 null 时确认删除走 /exams/:id
+  var DELETE_CONFIRM_COPY = {
+    handout: { title: '删除讲义确认', tip: '⚠ 此操作不可恢复，将永久删除该讲义文件及分发记录' },
+    exam: { title: '删除考试确认', tip: '⚠ 此操作不可恢复，将永久删除该考试及其分发记录、学生作答' }
+  };
+  function setDeleteConfirmMode(mode) {
+    var c = DELETE_CONFIRM_COPY[mode] || DELETE_CONFIRM_COPY.handout;
+    var t = document.getElementById('deleteConfirmTitle');
+    var p = document.getElementById('deleteConfirmTip');
+    if (t) t.textContent = c.title;
+    if (p) p.innerHTML = c.tip;
+  }
   (function initDeleteConfirm() {
     var mask = document.getElementById('deleteConfirmMask');
     if (!mask) return;
@@ -252,7 +265,11 @@
     var okBtn = document.getElementById('deleteConfirmOk');
     var cancelBtn = document.getElementById('deleteConfirmCancel');
     var closeBtn = document.getElementById('deleteConfirmClose');
-    function close() { mask.classList.remove('show'); }
+    function close() {
+      mask.classList.remove('show');
+      examDeleteId = null;
+      setDeleteConfirmMode('handout');   // 关闭后文案恢复为讲义默认
+    }
     if (cancelBtn) cancelBtn.addEventListener('click', close);
     if (closeBtn) closeBtn.addEventListener('click', close);
     mask.addEventListener('click', function (e) { if (e.target === mask) close(); });
@@ -262,6 +279,13 @@
     if (okBtn) okBtn.addEventListener('click', function () {
       var pwd = pwdEl ? pwdEl.value : '';
       if (!pwd) { toast('请输入登录密码', 'error'); if (pwdEl) pwdEl.focus(); return; }
+      if (examDeleteId != null) {
+        var eid = examDeleteId;
+        api('/exams/' + eid, { method: 'DELETE', body: JSON.stringify({ password: pwd }) })
+          .then(function () { close(); toast('考试已删除', 'success'); renderExams(); })
+          .catch(function (e) { toast(e.message, 'error'); });
+        return;
+      }
       if (deleteConfirmHandoutId == null) { toast('未指定讲义', 'error'); return; }
       api('/handouts/' + deleteConfirmHandoutId, { method: 'DELETE', body: JSON.stringify({ password: pwd }) })
         .then(function () { close(); toast('讲义已删除', 'success'); renderHandouts(); renderMyHandoutRecords(); })
@@ -290,6 +314,7 @@
     if (view === 'messages') { renderInbox(); return; }
     if (view === 'handouts') { renderHandouts(force); return; }
     if (view === 'assignments') { renderAssignments(force); return; }
+    if (view === 'exams') { renderExams(force); return; }
     if (view === 'manage') { /* 面板常驻 */ }
     if (view === 'profile') { /* 静态 */ }
   }
@@ -1204,6 +1229,10 @@
   hoLevels.querySelector('.lc-check-all').classList.add('on');   // 默认全等级
   var asLevels = buildLevelGroup(document.getElementById('asLevels'), { roles: STUDENT_ROLES });
   var mLevels = buildLevelGroup(document.getElementById('mLevels'), { roles: ALL_ROLES });
+  var examLevels = buildLevelGroup(document.getElementById('examLevels'), { roles: STUDENT_ROLES, allowAll: true });
+  examLevels.querySelector('.lc-check-all').classList.add('on'); // 考试默认全等级
+  var examUserListBox = document.getElementById('examUserList');
+  var examUserSearchInput = document.getElementById('examUserSearch');
 
   // 角色下拉（新建账号）
   (function fillRoleSelect() {
@@ -1567,6 +1596,357 @@
       btn.disabled = false; btn.textContent = '创建账号';
     }
   });
+
+  // ================= 考试中心 =================
+  var examCache = [];
+  var examRecips = [];
+  var examTab = 'list';
+
+  function examIdOf(e) { return e.exam_id || e.id; }
+  function examStartOf(e) { return e.start_at || e.start || ''; }
+  function examEndOf(e) { return e.end_at || e.end || ''; }
+  function examWinText(e) {
+    var s = examStartOf(e), t = examEndOf(e);
+    if (!s && !t) return '不限时';
+    return (s ? fmtTime(s) : '—') + ' ~ ' + (t ? fmtTime(t) : '不限');
+  }
+  function examScopeText(e) {
+    var lv = e.level_scope || [];
+    return lv.length ? lv.map(scopeName).join(' ') : '';
+  }
+  // extra_users 可能是「昵称/用户名」对象数组，也可能是 lc 用户 id 数组
+  function examExtraText(e) {
+    var arr = e.extra_users;
+    if (!arr || !arr.length) return '';
+    var names = arr.map(function (u) {
+      if (u && typeof u === 'object') return u.displayName || u.nickname || u.username || ('#' + u.id);
+      return String(u);
+    });
+    return names.join('、');
+  }
+  function examFileCount(e) {
+    return (e.paper_filename ? 1 : 0) + (e.answer_filename ? 1 : 0);
+  }
+  function examOpenLink(label, filename, cls, ctx) {
+    if (!filename) return '';
+    var href = '/uploads/exams/' + encodeURIComponent(filename);
+    if (!ctx) return '<a class="' + cls + '" href="' + href + '" target="_blank" rel="noopener">' + label + '</a>';
+    var attrs = ' data-lc-review-open="1"';
+    if (ctx.ref != null && ctx.ref !== '') attrs += ' data-exam-ref="' + esc(String(ctx.ref)) + '"';
+    if (ctx.user) attrs += ' data-exam-user="' + esc(ctx.user) + '"';
+    if (ctx.status) attrs += ' data-exam-status="' + esc(ctx.status) + '"';
+    return '<a class="' + cls + '" href="' + href + '"' + attrs + ' target="_blank" rel="noopener">' + label + '</a>';
+  }
+  // 打开已提交考卷（graded）：先取回显明细写入同源 localStorage（试卷页 ?r=1 时还原作答与批改），再打开
+  async function lcOpenReviewPaper(ev, a) {
+    ev.preventDefault();
+    var href = a.getAttribute('href') || '';
+    var status = a.getAttribute('data-exam-status');
+    var ref = a.getAttribute('data-exam-ref');
+    var user = a.getAttribute('data-exam-user');
+    var finalUrl = href;
+    try {
+      if (status === 'graded' && ref && user) {
+        var d = await api('/exams-detail?exam=' + encodeURIComponent(ref) + '&user=' + encodeURIComponent(user));
+        if (d && d.record && d.record.exam_code) {
+          try { localStorage.setItem('lc_exam_review:' + d.record.exam_code, JSON.stringify(d.record)); } catch (e2) { }
+          finalUrl = href + (href.indexOf('?') >= 0 ? '&' : '?') + 'r=1';
+        }
+      }
+    } catch (e) { /* 取回显失败时仍按普通考卷打开 */ }
+    window.open(finalUrl, '_blank');
+  }
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    while (t && t !== document && !(t.getAttribute && t.getAttribute('data-lc-review-open'))) t = t.parentNode;
+    if (t && t !== document) lcOpenReviewPaper(ev, t);
+  });
+  function examPaperHref(e, withStudent) {
+    if (!e.paper_filename) return '';
+    var url = '/uploads/exams/' + encodeURIComponent(e.paper_filename);
+    if (withStudent && me && me.username) url += '?student=' + encodeURIComponent(me.username);
+    return url;
+  }
+  // 学生/查询共用：status → 徽章文案
+  function examStatusBadge(status, score) {
+    if (status === 'graded') return '<span class="lc-sub-badge lc-sub-graded">成绩 ' + (score != null ? esc(String(score)) : '—') + ' 分</span>';
+    if (status === 'pending') return '<span class="lc-sub-badge lc-sub-pending">未完成</span>';
+    if (status === 'expired') return '<span class="lc-sub-badge lc-sub-expired">超时作废</span>';
+    if (status === 'not_started') return '<span class="lc-sub-badge lc-sub-none">未开始</span>';
+    return '<span class="lc-sub-badge lc-sub-none">' + esc(String(status || '—')) + '</span>';
+  }
+
+  async function renderExams() {
+    var box = document.getElementById('examList');
+    if (!box) return;
+    box.innerHTML = loadingCard('正在加载考试…');
+    try {
+      var d = await api('/exams');
+      var list = d && d.list ? d.list : (Array.isArray(d) ? d : []);
+      examCache = list;
+      if (list.length === 0) {
+        box.innerHTML = '<div class="lc-empty"><div class="lc-empty-icon">📝</div><p>'
+          + (isStaff ? '还没有发起过考试<br><small>切换到「发起考试」上传考卷与答案卷 HTML</small>'
+                     : '暂无分发给你的考试<br><small>老师发布考试后会在这里出现</small>')
+          + '</p></div>';
+        return;
+      }
+      box.innerHTML = isStaff
+        ? list.map(renderExamStaffCard).join('')
+        : list.map(renderExamStudentCard).join('');
+      bindExamEvents();
+    } catch (e) {
+      box.innerHTML = '<div class="lc-empty"><p>加载失败：' + esc(e.message) + '</p></div>';
+    }
+  }
+
+  function renderExamStaffCard(e) {
+    var id = examIdOf(e);
+    var canDelete = isAdmin || e.uploader_id == null || Number(e.uploader_id) === me.id;
+    var scope = examScopeText(e);
+    var extra = examExtraText(e);
+    return (
+      '<div class="lc-card" data-exam-id="' + esc(String(id == null ? '' : id)) + '">'
+      + '<div class="lc-card-head">'
+      + '<span class="lc-cat-badge lc-cat-exam">📝 考试</span>'
+      + '<span class="lc-card-title">' + esc(e.title) + '</span>'
+      + '</div>'
+      + '<div class="lc-card-meta">'
+      + '<span>发布者：' + esc(e.uploader_name || '-') + '</span>'
+      + '<span>时间：' + esc(examWinText(e)) + '</span>'
+      + (scope ? '<span class="lc-scope-tag">面向：' + esc(scope) + '</span>' : '')
+      + (extra ? '<span class="lc-scope-tag">指定账号：' + esc(extra) + '</span>' : '')
+      + '<span>文件：' + examFileCount(e) + ' 个</span>'
+      + '</div>'
+      + '<div class="lc-card-actions">'
+      + examOpenLink('打开考卷', e.paper_filename, 'btn btn-primary btn-sm')
+      + examOpenLink('打开答案卷', e.answer_filename, 'btn btn-outline btn-sm')
+      + (canDelete ? '<button class="lc-link-danger" data-act="del">删除</button>' : '')
+      + '</div>'
+      + '</div>'
+    );
+  }
+
+  function renderExamStudentCard(e) {
+    var paper = e.paper_filename || '';
+    var answer = e.answer_filename || '';
+    var meta = '<span>时间：' + esc(examWinText(e)) + '</span>';
+    if (e.status === 'graded' && e.submittedAt) meta += '<span>提交于 ' + fmtTime(e.submittedAt) + '</span>';
+    var act = '';
+    var note = '';
+    if (e.status === 'graded') {
+      act += examOpenLink('查看考卷', paper, 'btn btn-primary btn-sm',
+        { ref: examIdOf(e), user: me && me.username ? me.username : '', status: 'graded' });
+      note = '<p class="lc-editor-note">✅ 考试已完成阅卷，成绩已记录。可查看带作答批改的考卷回显，重做不计分。</p>';
+    } else if (e.status === 'pending') {
+      var href = examPaperHref(e, true);
+      act += href ? '<a class="btn btn-primary btn-sm" href="' + href + '" target="_blank" rel="noopener">开始考试</a>' : '';
+      if (!href) note = '<p class="lc-editor-note">考卷文件未就绪，请稍后刷新查看。</p>';
+    } else if (e.status === 'expired') {
+      act += examOpenLink('查看考卷', paper, 'btn btn-primary btn-sm',
+        { ref: examIdOf(e), user: me && me.username ? me.username : '', status: 'expired' });
+      note = '<p class="lc-editor-note">考试已超时作废：可查看考卷作答，不计成绩；答案卷不开放。</p>';
+    } else { // not_started
+      note = '<p class="lc-editor-note">考试尚未开始，请在开放时间内进入作答。</p>';
+    }
+    return (
+      '<div class="lc-card" data-exam-id="' + esc(String(examIdOf(e) == null ? '' : examIdOf(e))) + '">'
+      + '<div class="lc-card-head">'
+      + '<span class="lc-cat-badge lc-cat-exam">📝 考试</span>'
+      + '<span class="lc-card-title">' + esc(e.title) + '</span>'
+      + examStatusBadge(e.status, e.finalScore)
+      + '</div>'
+      + '<div class="lc-card-meta">' + meta + '</div>'
+      + (act ? '<div class="lc-card-actions">' + act + '</div>' : '')
+      + note
+      + '</div>'
+    );
+  }
+
+  function bindExamEvents() {
+    document.querySelectorAll('#examList .lc-card').forEach(function (card) {
+      var del = card.querySelector('[data-act="del"]');
+      if (!del) return;
+      del.addEventListener('click', function () {
+        openExamDelete(card.getAttribute('data-exam-id'));
+      });
+    });
+  }
+
+  // 删除：复用 #deleteConfirmMask（输入密码 → DELETE /exams/:id）
+  function openExamDelete(id) {
+    examDeleteId = id;
+    var userEl = document.getElementById('deleteConfirmUser');
+    if (userEl) userEl.textContent = me.nickname ? (me.nickname + '（@' + me.username + '）') : ('@' + me.username);
+    var pwdEl = document.getElementById('deleteConfirmPwd');
+    if (pwdEl) pwdEl.value = '';
+    setDeleteConfirmMode('exam');
+    var mask = document.getElementById('deleteConfirmMask');
+    if (mask) mask.classList.add('show');
+    if (pwdEl) setTimeout(function () { pwdEl.focus(); }, 50);
+  }
+
+  // ---------- 子 Tab ----------
+  function switchExamTab(tab) {
+    examTab = tab;
+    document.querySelectorAll('#examMgmtTabs .lc-sub-tab').forEach(function (t) {
+      t.classList.toggle('active', t.getAttribute('data-etab') === tab && t.style.display !== 'none');
+    });
+    ['list', 'publish', 'query'].forEach(function (k) {
+      var p = document.getElementById('epanel-' + k);
+      if (p) p.style.display = (k === tab) ? '' : 'none';
+    });
+    if (tab === 'publish') loadExamRecipients();
+    if (tab === 'query') initExamQueryLevel();
+  }
+  document.querySelectorAll('#examMgmtTabs .lc-sub-tab').forEach(function (tab) {
+    tab.addEventListener('click', function () { switchExamTab(tab.getAttribute('data-etab')); });
+  });
+
+  // ---------- 发起考试 ----------
+  function renderExamUserList(kw) {
+    if (!examUserListBox) return;
+    var k = (kw || '').toLowerCase();
+    var filtered = examRecips.filter(function (u) {
+      return !k || (u.username || '').toLowerCase().indexOf(k) >= 0 || (u.displayName || '').toLowerCase().indexOf(k) >= 0;
+    });
+    if (filtered.length === 0) {
+      examUserListBox.innerHTML = '<p style="color:var(--text-muted); font-size:13px; margin:4px;">无匹配账号</p>';
+      return;
+    }
+    examUserListBox.innerHTML = filtered.map(function (u) {
+      return '<label style="display:flex; gap:8px; align-items:center; padding:4px 2px; cursor:pointer; font-size:13px;">'
+        + '<input type="checkbox" data-uid="' + u.id + '">'
+        + '<span>' + esc(u.displayName || u.nickname || u.username) + ' <small style="color:var(--text-muted)">@' + esc(u.username) + ' · ' + esc(ROLE_LABELS[u.role] || u.role) + '</small></span>'
+        + '</label>';
+    }).join('');
+  }
+
+  async function loadExamRecipients() {
+    var wrap = document.getElementById('examUserWrap');
+    if (!wrap) return;
+    try {
+      var d = await api('/handouts/recipients');
+      examRecips = d && d.list ? d.list : (Array.isArray(d) ? d : []);
+      wrap.style.display = examRecips.length ? '' : 'none';
+      renderExamUserList(examUserSearchInput ? examUserSearchInput.value : '');
+    } catch (e) {
+      // 该接口不可用（404 等）→ 静默隐藏「指定账号」区，不阻断发起考试
+      wrap.style.display = 'none';
+    }
+  }
+
+  document.getElementById('examForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var paperInput = document.getElementById('examPaperFile');
+    var answerInput = document.getElementById('examAnswerFile');
+    var paper = paperInput.files[0];
+    var answer = answerInput.files[0];
+    if (!paper) return toast('请选择考卷文件（HTML）', 'error');
+    if (!answer) return toast('请选择答案卷文件（HTML）', 'error');
+    if (!/\.(html?|htm)$/i.test(paper.name)) return toast('考卷文件需为 .html/.htm', 'error');
+    if (!/\.(html?|htm)$/i.test(answer.name)) return toast('答案卷文件需为 .html/.htm', 'error');
+    var levels = examLevels.getSelected();
+    if (levels.length === 0) return toast('请选择面向等级（可全选）', 'error');
+    if (levels.indexOf('all') >= 0) levels = ['all'];
+    var startRaw = document.getElementById('examStartAt').value;
+    var endRaw = document.getElementById('examEndAt').value;
+    if (startRaw && endRaw && new Date(startRaw).getTime() >= new Date(endRaw).getTime()) {
+      return toast('开始时间必须早于截止时间', 'error');
+    }
+    var extraIds = Array.prototype.slice.call(document.querySelectorAll('#examUserList input:checked')).map(function (i) {
+      return parseInt(i.getAttribute('data-uid'), 10);
+    });
+    var fd = new FormData();
+    fd.append('levels', JSON.stringify(levels));
+    fd.append('extraUsers', JSON.stringify(extraIds));
+    if (startRaw) fd.append('startAt', startRaw);
+    if (endRaw) fd.append('endAt', endRaw);
+    fd.append('paperFile', paper);
+    fd.append('answerFile', answer);
+    var btn = document.getElementById('examSubmitBtn');
+    btn.disabled = true; btn.textContent = '发布中…';
+    try {
+      var d = await api('/exams', { method: 'POST', body: fd });
+      toast(d.notified != null ? '考试已发布，已通知 ' + d.notified + ' 位成员' : '考试发布成功', 'success');
+      this.reset();
+      switchExamTab('list');
+      renderExams();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '发布考试';
+    }
+  });
+
+  // ---------- 成绩查询 ----------
+  function initExamQueryLevel() {
+    var sel = document.getElementById('eqLevel');
+    if (!sel || sel.children.length > 1) return;
+    Object.keys(ROLE_LABELS).forEach(function (r) {
+      if (r === 'admin' || r === 'teacher') return;
+      var o = document.createElement('option');
+      o.value = r; o.textContent = ROLE_LABELS[r];
+      sel.appendChild(o);
+    });
+  }
+
+  // 查询行可能带 filename（paper/answer），也可能只带 examId → 回退到已缓存的考试列表
+  function examRowFiles(r) {
+    var paper = r.paper_filename || r.paper || '';
+    var answer = r.answer_filename || r.answer || '';
+    if (!paper && !answer && examCache.length) {
+      var ex = examCache.find(function (x) { return String(examIdOf(x)) === String(r.examId); });
+      if (ex) { paper = ex.paper_filename || ''; answer = ex.answer_filename || ''; }
+    }
+    return { paper: paper, answer: answer };
+  }
+
+  async function loadExamQuery() {
+    initExamQueryLevel();
+    var user = document.getElementById('eqUser') ? document.getElementById('eqUser').value.trim() : '';
+    var level = document.getElementById('eqLevel') ? document.getElementById('eqLevel').value : '';
+    var result = document.getElementById('eqResult');
+    var tbody = document.getElementById('eqTbody');
+    var countEl = document.getElementById('eqCount');
+    if (!user && !level) { alert('请输入用户名或选择等级'); return; }
+    if (result) result.style.display = '';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">查询中…</td></tr>';
+    try {
+      var params = [];
+      if (user) params.push('user=' + encodeURIComponent(user));
+      if (level) params.push('level=' + encodeURIComponent(level));
+      var data = await api('/exams-query?' + params.join('&'));
+      var rows = data && Array.isArray(data.rows) ? data.rows : (Array.isArray(data) ? data : []);
+      if (countEl) countEl.textContent = '共 ' + rows.length + ' 条记录';
+      if (rows.length === 0) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">无匹配记录</td></tr>';
+        return;
+      }
+      if (tbody) {
+        tbody.innerHTML = rows.map(function (r) {
+          var files = examRowFiles(r);
+          var actHtml = examOpenLink('查看考卷', files.paper, 'lc-link-action',
+            { ref: r.exam_id, user: r.student_username, status: r.status })
+            + examOpenLink('查看答案卷', files.answer, 'lc-link-action');
+          if (!actHtml) actHtml = '<span style="color:var(--text-muted)">—</span>';
+          return '<tr>'
+            + '<td>' + esc(r.student_nickname || r.nickname || r.student_username || r.username || '—') + '</td>'
+            + '<td>' + esc(ROLE_LABELS[r.student_role || r.role] || r.student_role || r.role || '—') + '</td>'
+            + '<td>' + esc(r.exam_title || r.examTitle || '—') + '</td>'
+            + '<td>' + examStatusBadge(r.status, r.finalScore) + '</td>'
+            + '<td style="font-size:12px;">' + (r.submittedAt ? fmtTime(r.submittedAt) : '—') + '</td>'
+            + '<td><div class="lc-row-actions">' + actHtml + '</div></td>'
+            + '</tr>';
+        }).join('');
+      }
+    } catch (e) {
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color:var(--error)">查询失败：' + esc(e.message) + '</td></tr>';
+    }
+  }
+
+  var eqQueryBtnEl = document.getElementById('eqQueryBtn');
+  if (eqQueryBtnEl) eqQueryBtnEl.addEventListener('click', loadExamQuery);
 
   // ================= PWA / SW =================
   if ('serviceWorker' in navigator) {

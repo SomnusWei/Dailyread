@@ -77,3 +77,6 @@ dailyread-server/public/downloads/
 *.exe
 dist/
 build/
+
+__pycache__/
+*.pyc

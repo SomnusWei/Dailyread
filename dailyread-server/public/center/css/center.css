@@ -118,6 +118,7 @@ body.lc-body {
 .lc-cat-handout { background: rgba(79,172,254,0.15); color: #1976D2; }
 .lc-cat-assignment { background: rgba(240,147,251,0.15); color: #d63a7c; }
 .lc-cat-message { background: rgba(76,175,80,0.15); color: #388E3C; }
+.lc-cat-exam { background: rgba(102,126,234,0.14); color: #4a56c7; }
 .lc-card-title { font-size: 15px; font-weight: 700; flex: 1; min-width: 150px; }
 .lc-dot-unread { width: 8px; height: 8px; border-radius: 50%; background: #f5576c; flex-shrink: 0; }
 .lc-card-meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 14px; flex-wrap: wrap; }
@@ -400,6 +401,7 @@ body.lc-body {
 .lc-sub-graded { background: rgba(76,175,80,0.14); color: #2E7D32; }
 .lc-sub-none { background: rgba(0,0,0,0.06); color: var(--text-muted); }
 .lc-sub-pending { background: rgba(255,167,38,0.16); color: #B8720A; }
+.lc-sub-expired { background: rgba(229,57,53,0.14); color: #C62828; }
 
 /* ---------- 作业详情附加区（学员提交） ---------- */
 .lc-assign-extra { padding: 0 20px 20px; }

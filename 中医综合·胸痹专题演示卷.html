@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="6vlTb3uK8F0WeABeLbcPoT">
+<head data-page-node-id="cZvmqNnQVp33wtOGXZBhjH">
+<meta charset="UTF-8" data-page-node-id="bM0LuncWSB4NrlBmZv8dXU">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="RFXhEy3JCsyQqfFp3H40g4">
+<title>中医综合·胸痹专题演示卷</title>
+<style>
+:root {
+  --c-primary: #8b1e1e; --c-primary-light: #fdf2f2;
+  --c-ink: #2d2a26; --c-muted: #7a736b;
+  --c-right: #2e7d32; --c-right-bg: #e8f5e9;
+  --c-wrong: #c62828; --c-wrong-bg: #ffebee;
+  --c-border: #e2ddd6; --c-card: #ffffff; --c-page: #f7f5f2;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: var(--c-page);
+       color: var(--c-ink); line-height: 1.75; padding: 24px 12px 60px; }
+.paper { max-width: 860px; margin: 0 auto; }
+.paper-head { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 12px;
+               padding: 28px 32px; margin-bottom: 20px; border-top: 4px solid var(--c-primary); }
+.paper-head h1 { font-size: 22px; color: var(--c-primary); margin-bottom: 8px; }
+.paper-meta { color: var(--c-muted); font-size: 14px; }
+.paper-outline { margin-top: 10px; font-size: 14px; background: var(--c-primary-light);
+                  border-radius: 8px; padding: 10px 14px; }
+.name-row { margin-top: 16px; display: flex; align-items: center; gap: 10px; }
+.name-row label { font-weight: bold; white-space: nowrap; }
+#student-name { flex: 1; max-width: 280px; padding: 9px 12px; font-size: 15px;
+                 border: 1.5px solid var(--c-border); border-radius: 8px; }
+#student-name:focus { outline: none; border-color: var(--c-primary); }
+.question { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 12px;
+             padding: 20px 24px; margin-bottom: 16px; }
+.q-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.q-no { font-weight: bold; color: var(--c-primary); }
+.q-type { font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #eef2f5; color: #456; }
+.t-short { background: #f3ecf7; color: #6a4c93; }
+.q-score { color: var(--c-muted); font-size: 13px; }
+.verdict { margin-left: auto; font-weight: bold; }
+.v-right { color: var(--c-right); } .v-partial { color: #e65100; } .v-wrong { color: var(--c-wrong); }
+.q-stem { font-size: 15px; margin-bottom: 12px; }
+.opt { display: block; padding: 9px 12px; margin: 6px 0; border-radius: 8px; cursor: pointer;
+        border: 1px solid transparent; }
+.opt:hover { background: var(--c-page); }
+.opt-right { background: var(--c-right-bg) !important; border-color: var(--c-right); }
+.opt-wrong { background: var(--c-wrong-bg) !important; border-color: var(--c-wrong); }
+.fill-input, .short-input { width: 100%; padding: 10px 12px; font-size: 15px;
+                             border: 1.5px solid var(--c-border); border-radius: 8px;
+                             font-family: inherit; }
+.fill-input:focus, .short-input:focus { outline: none; border-color: var(--c-primary); }
+.fill-right { background: var(--c-right-bg); border-color: var(--c-right) !important; }
+.fill-wrong { background: var(--c-wrong-bg); border-color: var(--c-wrong) !important; }
+.self-grade { margin-top: 10px; font-size: 14px; color: #6a4c93; background: #f3ecf7;
+               border-radius: 8px; padding: 8px 12px; }
+.sg-input { width: 64px; padding: 4px 8px; border: 1.5px solid #d5c6e3; border-radius: 6px; }
+.feedback { margin-top: 12px; font-size: 14px; background: var(--c-page);
+             border-radius: 8px; padding: 12px 16px; }
+.feedback p { margin: 4px 0; }
+.miss, .wrong-pick { color: var(--c-wrong); }
+.ref-answer { background: #fffde7; border-left: 3px solid #f9a825; border-radius: 0 8px 8px 0;
+               padding: 12px 16px; }
+.ref-text { white-space: pre-wrap; }
+.src { color: var(--c-muted); font-size: 12.5px; }
+.q-full { border-color: var(--c-right); }
+.q-zero { border-color: #f3c3c3; }
+.hidden { display: none; }
+.submit-bar { text-align: center; margin: 28px 0; }
+#submit-btn { background: var(--c-primary); color: #fff; border: none; font-size: 16px;
+               padding: 13px 52px; border-radius: 999px; cursor: pointer; font-weight: bold;
+               box-shadow: 0 4px 14px rgba(139,30,30,.3); }
+#submit-btn:hover { filter: brightness(1.1); }
+#submit-btn:disabled { background: #9e9e9e; box-shadow: none; cursor: default; }
+#score-card { background: var(--c-card); border: 2px solid var(--c-primary); border-radius: 14px;
+               padding: 26px 32px; margin-top: 20px; }
+#score-card h2 { color: var(--c-primary); margin-bottom: 16px; }
+.score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+               gap: 12px; }
+.s-item { background: var(--c-page); border-radius: 10px; padding: 12px 16px; }
+.s-label { font-size: 12.5px; color: var(--c-muted); }
+.s-value { font-size: 19px; font-weight: bold; margin-top: 3px; }
+.s-total { background: var(--c-primary); color: #fff; }
+.s-total .s-label { color: rgba(255,255,255,.8); }
+.score-bar { height: 10px; background: #eee; border-radius: 5px; margin-top: 16px; overflow: hidden; }
+.score-bar-fill { height: 100%; background: linear-gradient(90deg, #d84343, #8b1e1e);
+                   border-radius: 5px; transition: width .8s ease; }
+.score-note { font-size: 12.5px; color: var(--c-muted); margin-top: 10px; }
+.paper-foot { text-align: center; color: var(--c-muted); font-size: 12.5px; margin-top: 24px; }
+</style>
+</head>
+<body data-page-node-id="k9nIs356cQZ1Dnme2qPMQ1">
+<div class="paper" data-page-node-id="b2kHXpuMj4guvdbgf7bXMB">
+  <div class="paper-head" data-page-node-id="dwoTCJmxBFgZ5ktwxB7dv6">
+    <h1 data-page-node-id="GmAFiTKqj6t4l7638HNHE1">中医综合·胸痹专题演示卷</h1>
+    <div class="paper-meta" data-page-node-id="vEKIP4R3mgltccC4GVLKLO">共 7 题 · 时长 15分钟 · 满分 22 分 · 客观题 6 题（自动批改） · 主观题 1 题（对照参考答案自评）</div>
+    <div class="paper-outline" data-page-node-id="yF8qoRHoFwAjvBaGBKr9pR"><b data-page-node-id="zd6XCs8JKR3OzC5PUZ1Gkq">出题大纲：</b>胸痹的病机（阳微阴弦）、分型论治、代表方剂（栝蒌薤白剂类）、经典条文</div>
+    <div class="name-row" data-page-node-id="nW6Ynp7kMlNq3fheHD9YCZ">
+      <label for="student-name" data-page-node-id="CRuCNsLKKlhDOx5e8t0Wa4">👤 学生姓名：</label>
+      <input type="text" id="student-name" placeholder="请输入姓名后开始作答" data-page-node-id="FnBaaSDYEeaw38GKY3HRf3">
+    </div>
+  </div>
+
+<div class="question" data-qid="1" data-type="single" data-score="2" data-page-node-id="0AZATrcDDnDeZ3RGgo5Y6A">
+<div class="q-head" data-page-node-id="hD2FlXueuQqFSPxHTOhZtV"><span class="q-no" data-page-node-id="5m9uqYkciuOVsFt0g1DMCk">第 1 题</span><span class="q-type t-single" data-page-node-id="3n7TfR8dPoLW5KbSp4d0k3">单选题</span><span class="q-score" data-page-node-id="hDS7tejTrnsVxtEnCEsgUk">（2 分）</span><span class="verdict" id="verdict-1" data-page-node-id="cEGcfelwB86qzIOwDNaKNh"></span></div>
+<div class="q-stem" data-page-node-id="08t8qJqMsbdSXRhuOG0rcD">胸痹的基本病机是：</div>
+<label class="opt opt-1-0" data-page-node-id="iAYw3OOKMQgoxM9VvbcCWE"><input type="radio" name="q1" value="0" data-page-node-id="J8dlU7lqA1meY5FcszuxSe"> <span data-page-node-id="qoA18L1bi5utzgQdpC2nJH">A. 心肾不交</span></label>
+<label class="opt opt-1-1" data-page-node-id="NPmN1hH0V8EmCGx8uIX49V"><input type="radio" name="q1" value="1" data-page-node-id="ea4xUsEPAzoQcLh48WAWwG"> <span data-page-node-id="ClAv9SgdWR7pc2rD6uFPRg">B. 阳微阴弦</span></label>
+<label class="opt opt-1-2" data-page-node-id="NpJJjRhSgQ9mTuOkaSKEa5"><input type="radio" name="q1" value="2" data-page-node-id="XZbZcUk4SLBoSiJqz5xQ6C"> <span data-page-node-id="F9vKi3WoeFlFPfzRnwnbCx">C. 肝郁气滞</span></label>
+<label class="opt opt-1-3" data-page-node-id="gLrGcyFwkqBL8Cy0VA9gWl"><input type="radio" name="q1" value="3" data-page-node-id="sCn8OxfXPS82xu5eKUGi3m"> <span data-page-node-id="6O8YVGPDoloAq1ilIjrE8j">D. 痰热扰心</span></label>
+<label class="opt opt-1-4" data-page-node-id="2ilv5eSe6Bpumnt3Epr1Z6"><input type="radio" name="q1" value="4" data-page-node-id="HoSYQ9wXlyGejOh8r91F2l"> <span data-page-node-id="Leux76odnj4RAD7AgaClrQ">E. 脾胃虚寒</span></label>
+<div class="feedback hidden" id="fb-1" data-page-node-id="oce6GaF3FUilHrQbDPryxX"></div>
+</div>
+<div class="question" data-qid="2" data-type="single" data-score="2" data-page-node-id="MNQJ0MEELdFKVzsS2JPDF4">
+<div class="q-head" data-page-node-id="SM2egt3wjTGMDUNJRb3HSd"><span class="q-no" data-page-node-id="ADEqitd4evaJjYBIvFKhyv">第 2 题</span><span class="q-type t-single" data-page-node-id="HwceBxJS8vfARWzUxBkeuq">单选题</span><span class="q-score" data-page-node-id="RMH1zusU0nqiWSzuwlHnE3">（2 分）</span><span class="verdict" id="verdict-2" data-page-node-id="0N4rnRhgS7pWT8U2WKhsfw"></span></div>
+<div class="q-stem" data-page-node-id="ePFhEKkfpCN5aUpZFKC1qr">胸痹之病，喘息咳唾，胸背痛，短气，寸口脉沉而迟，关上小紧数者，治疗宜选：</div>
+<label class="opt opt-2-0" data-page-node-id="QlmU7tIq0oPBqYESjsoHbj"><input type="radio" name="q2" value="0" data-page-node-id="8hAbAUGjFBaaBQLQ6ACGCp"> <span data-page-node-id="41TerOyDKSciGoGOOxV9Im">A. 瓜蒌薤白半夏汤</span></label>
+<label class="opt opt-2-1" data-page-node-id="MCvNBjWL4IZL3jmcKnpfqH"><input type="radio" name="q2" value="1" data-page-node-id="bGvcm1523We5XcocgQmHCd"> <span data-page-node-id="qGDBTDHzneZqLXVjCqVVvB">B. 枳实薤白桂枝汤</span></label>
+<label class="opt opt-2-2" data-page-node-id="AwNAGj9zvVYdG42B6ICUmm"><input type="radio" name="q2" value="2" data-page-node-id="r91Dm0obXVYKmHHEeD25jR"> <span data-page-node-id="7mW7TVhvtRqx3YyspLeKAe">C. 瓜蒌薤白白酒汤</span></label>
+<label class="opt opt-2-3" data-page-node-id="k4yjR1SOXe4u5T8BXIcVHq"><input type="radio" name="q2" value="3" data-page-node-id="0Z7aQlDwYcfB6WUrujZA89"> <span data-page-node-id="Y5QAcr7qCOaiqg3gDswBpH">D. 人参汤</span></label>
+<label class="opt opt-2-4" data-page-node-id="MUaM4QH1BwRZ3BL0XGuSBW"><input type="radio" name="q2" value="4" data-page-node-id="Vm65m0ZluFh3jPNTGyL9rq"> <span data-page-node-id="BZ3fIgiIz0ItJwW7x36QGB">E. 茯苓杏仁甘草汤</span></label>
+<div class="feedback hidden" id="fb-2" data-page-node-id="wXCCVidDVFC9qrWRx9uW0u"></div>
+</div>
+<div class="question" data-qid="3" data-type="multiple" data-score="3" data-page-node-id="DwMRNlheUQI8sHe6PDFJPV">
+<div class="q-head" data-page-node-id="VuG0FnrxsmtQcq9S4vTtvt"><span class="q-no" data-page-node-id="aTAiI6UTh74DvFxDfHYTuc">第 3 题</span><span class="q-type t-multiple" data-page-node-id="HH3vXaiwHP24cfFS75xutd">多选题</span><span class="q-score" data-page-node-id="nwCK9N8O9Lk5fkTDD9I1Uw">（3 分）</span><span class="verdict" id="verdict-3" data-page-node-id="9uaOeCNiDNkE5F6p5Ze0wt"></span></div>
+<div class="q-stem" data-page-node-id="xjqtcgMMR2wVqZmBvvSZqB">下列属于瓜蒌薤白半夏汤组成药物的有：</div>
+<label class="opt opt-3-0" data-page-node-id="7ArXio70pR8v1QHGtEXA0X"><input type="checkbox" name="q3" value="0" data-page-node-id="Ck1wswjsrVPPFoBPpLOHPd"> <span data-page-node-id="FKXttmXj6LlubnMSHvFFDS">A. 栝蒌实</span></label>
+<label class="opt opt-3-1" data-page-node-id="ukGzI8tnU2CFIC3bfGMygS"><input type="checkbox" name="q3" value="1" data-page-node-id="Q0qYFDAI9murHFoDn3zLx1"> <span data-page-node-id="CHY8gbJtXrYYSvYJVws8GY">B. 薤白</span></label>
+<label class="opt opt-3-2" data-page-node-id="UCLoE90HWnXnEkmdaPtQzC"><input type="checkbox" name="q3" value="2" data-page-node-id="XWvP9nTIiy5BG1kCpgbECI"> <span data-page-node-id="2JLtI4Fnr9Ky7uKemT7c5X">C. 半夏</span></label>
+<label class="opt opt-3-3" data-page-node-id="P27WB2LP9Fjcl0nazxwZWM"><input type="checkbox" name="q3" value="3" data-page-node-id="jhFToTTOAw1rsSlkLGbxYl"> <span data-page-node-id="32EncjeZwaskm45cnrIB7q">D. 白酒</span></label>
+<label class="opt opt-3-4" data-page-node-id="o8s38C1ZUEXzNlflhaIV44"><input type="checkbox" name="q3" value="4" data-page-node-id="JHhil31VIH7ojsYO9pc0yO"> <span data-page-node-id="zLQ8jGT91FLzR2ytb6jcDU">E. 桂枝</span></label>
+<div class="feedback hidden" id="fb-3" data-page-node-id="FOwQzXnqZ8Jdxo6KB5jqy9"></div>
+</div>
+<div class="question" data-qid="4" data-type="multiple" data-score="3" data-page-node-id="0SuG1jkn9ADUF6Lb5C6aX8">
+<div class="q-head" data-page-node-id="ONvzjy7fCMQYn7LBd1dTjG"><span class="q-no" data-page-node-id="8v7jEoMgh1IGDDvYTBwJ8y">第 4 题</span><span class="q-type t-multiple" data-page-node-id="VdMqjD9GYgnWgxmdQl078S">多选题</span><span class="q-score" data-page-node-id="UeV0FAkVNk8OOHRYPExEds">（3 分）</span><span class="verdict" id="verdict-4" data-page-node-id="FyzewZoXfOmxyJ0BbYPMr9"></span></div>
+<div class="q-stem" data-page-node-id="4nX8yRm7OMIZmjCvDMEQkY">胸痹「心痛彻背」可见于下列哪些方证？</div>
+<label class="opt opt-4-0" data-page-node-id="XElaHMu6QJwz6rhgCguzbC"><input type="checkbox" name="q4" value="0" data-page-node-id="hya17yAzOrRwFLb34wK5UY"> <span data-page-node-id="0kzQgCcmWGjudDMMSuaX9a">A. 瓜蒌薤白半夏汤证</span></label>
+<label class="opt opt-4-1" data-page-node-id="Qqi2CEtt8xWVkyeg4QBbte"><input type="checkbox" name="q4" value="1" data-page-node-id="kMmGV6dplEtqK3k4gSe4fz"> <span data-page-node-id="GY3HS7abDpyXGyAdfnM8J3">B. 乌头赤石脂丸证</span></label>
+<label class="opt opt-4-2" data-page-node-id="OAg4PJNE5rNs9VxGHltWBW"><input type="checkbox" name="q4" value="2" data-page-node-id="V86hSv2iZSE46nxFwOUJy3"> <span data-page-node-id="pYvBz3fE7SJ0F3CkHnJugZ">C. 桂枝生姜枳实汤证</span></label>
+<label class="opt opt-4-3" data-page-node-id="8hSscPknhU6BTpmmumfM2j"><input type="checkbox" name="q4" value="3" data-page-node-id="S4ALbfqjcJzeaghr8Rmcte"> <span data-page-node-id="F6yptdiNLsC82v1ulwcHVj">D. 人参汤证</span></label>
+<div class="feedback hidden" id="fb-4" data-page-node-id="hMUQAyVaAcS00fY2OXdjm2"></div>
+</div>
+<div class="question" data-qid="5" data-type="fill" data-score="2" data-page-node-id="papP8Nsli0ycA0p8XPIWrd">
+<div class="q-head" data-page-node-id="2rDUvIAk8mc4tc7mNbiaCc"><span class="q-no" data-page-node-id="SLvJOXVcUFSmdwGrgLQxLX">第 5 题</span><span class="q-type t-fill" data-page-node-id="N8QIQq6THAFAkhOO13sz4I">填空题</span><span class="q-score" data-page-node-id="ycDxdFEncfGb7YX6qPnyaQ">（2 分）</span><span class="verdict" id="verdict-5" data-page-node-id="ETFXSBxAxNYGYceCGCDNPK"></span></div>
+<div class="q-stem" data-page-node-id="xau2OZpvKXdPbTEbUuCyEg">师曰：夫脉当取太过不及，阳微阴弦，即胸痹而痛，所以然者，责其____也。</div>
+<input type="text" class="fill-input" id="fill-5" placeholder="在此填写答案" autocomplete="off" data-page-node-id="MNpAhsa7ifPpcdY1L5POvb">
+<div class="feedback hidden" id="fb-5" data-page-node-id="rc6ckPnNAgqP5kRGGYDIfw"></div>
+</div>
+<div class="question" data-qid="6" data-type="fill" data-score="2" data-page-node-id="ffcybjKtdN7t7tcFormmB3">
+<div class="q-head" data-page-node-id="EiTwzI5DtnLWrhoCVikhik"><span class="q-no" data-page-node-id="1w3pG11KjSBQxdXfc48IWJ">第 6 题</span><span class="q-type t-fill" data-page-node-id="ym8Rg6RxrgfGA5glyr5DHM">填空题</span><span class="q-score" data-page-node-id="dP6GfOWwLDqHG49fpkU4lp">（2 分）</span><span class="verdict" id="verdict-6" data-page-node-id="VWgEQsujGEeHjBfhKNVRtv"></span></div>
+<div class="q-stem" data-page-node-id="vOsvtVmCVdP6sSawM0wWmS">胸痹心中痞，留气结在胸，胸满，胁下逆抢心，偏于气滞者用枳实薤白桂枝汤，偏于虚寒者用____汤。</div>
+<input type="text" class="fill-input" id="fill-6" placeholder="在此填写答案" autocomplete="off" data-page-node-id="RTH6N6KtKJh5qm7iXOlafc">
+<div class="feedback hidden" id="fb-6" data-page-node-id="cfJwrFbCT5HUJiYpYKiUc3"></div>
+</div>
+<div class="question" data-qid="7" data-type="short" data-score="8" data-page-node-id="eXlYnlG4BcXbRgNbHhBzEJ">
+<div class="q-head" data-page-node-id="DFrGs5QpwJE8olFzF6B7Z8"><span class="q-no" data-page-node-id="t0He5HPsLNjHDiYNXWfY1S">第 7 题</span><span class="q-type t-short" data-page-node-id="6EKyzTR6npCtXepxyfv31J">简答题</span><span class="q-score" data-page-node-id="QU49OiUUASYiPeZok72CRq">（8 分）</span><span class="verdict" id="verdict-7" data-page-node-id="hMsoYB8J33Nc9ExEHOeoxj"></span></div>
+<div class="q-stem" data-page-node-id="mh2G5yRB2YOz2ZukNe4fMq">简述「阳微阴弦」的含义及其对胸痹病机与治疗的指导意义。</div>
+<textarea class="short-input" id="short-7" rows="4" placeholder="在此作答"></textarea>
+<div class="self-grade hidden" id="sg-7" data-page-node-id="OKexbIRUbmKq9uwlQ5KxRi">自评分：<input type="number" class="sg-input" id="sgv-7" min="0" max="8" value="8" data-page-node-id="CMVsGJcjWv9KX9WM6PLiEw"> / 8 分（对照参考答案与要点自评，未填按 0 分计）</div>
+<div class="feedback hidden" id="fb-7" data-page-node-id="SYxwFkVCy4hV8LQBdDHOUq"></div>
+</div>
+
+  <div class="submit-bar" data-page-node-id="2hYW1ECLwBulYzxECarsBf">
+    <button id="submit-btn" onclick="gradeExam()" data-page-node-id="8HMmiWfZN1lwDZKdL7linH">提交试卷 · 查看成绩</button>
+  </div>
+
+  <div id="score-card" class="hidden" data-page-node-id="GLHCpMH5YfuPrKBEwQ7vbJ"></div>
+
+  <div class="paper-foot" data-page-node-id="6ZksZZCKueH5cEN2bBCCUn">中医综合题库 · 生成于 2026-09-05 · 本卷仅供学习自测，不构成医疗建议</div>
+</div>
+<script>
+
+const EXAM = {"title": "中医综合·胸痹专题演示卷", "outline": "胸痹的病机（阳微阴弦）、分型论治、代表方剂（栝蒌薤白剂类）、经典条文", "total_score": 22, "duration": "15分钟", "questions": [{"type": "single", "score": 2, "stem": "胸痹的基本病机是：", "options": ["A. 心肾不交", "B. 阳微阴弦", "C. 肝郁气滞", "D. 痰热扰心", "E. 脾胃虚寒"], "answer": 1, "explanation": "《金匮要略》：夫脉当取太过不及，阳微阴弦，即胸痹而痛，所以然者，责其极虚也。阳微为上焦阳气不足，阴弦为阴寒内盛，本虚标实。", "source": "《金匮要略·胸痹心痛短气病脉证治第九》"}, {"type": "single", "score": 2, "stem": "胸痹之病，喘息咳唾，胸背痛，短气，寸口脉沉而迟，关上小紧数者，治疗宜选：", "options": ["A. 瓜蒌薤白半夏汤", "B. 枳实薤白桂枝汤", "C. 瓜蒌薤白白酒汤", "D. 人参汤", "E. 茯苓杏仁甘草汤"], "answer": 2, "explanation": "条文原文：胸痹之病，喘息咳唾，胸背痛，短气，寸口脉沉而迟，关上小紧数，栝蒌薤白白酒汤主之。", "source": "《金匮要略·胸痹心痛短气病脉证治第九》第3条"}, {"type": "multiple", "score": 3, "stem": "下列属于瓜蒌薤白半夏汤组成药物的有：", "options": ["A. 栝蒌实", "B. 薤白", "C. 半夏", "D. 白酒", "E. 桂枝"], "answers": [0, 1, 2, 3], "explanation": "栝蒌薤白半夏汤方：栝蒌实（一枚，捣） 薤白（三两） 半夏（半斤） 白酒（一斗）。无桂枝，桂枝见于枳实薤白桂枝汤。", "source": "《金匮要略·胸痹心痛短气病脉证治第九》"}, {"type": "multiple", "score": 3, "stem": "胸痹「心痛彻背」可见于下列哪些方证？", "options": ["A. 瓜蒌薤白半夏汤证", "B. 乌头赤石脂丸证", "C. 桂枝生姜枳实汤证", "D. 人参汤证"], "answers": [0, 1], "explanation": "胸痹不得卧，心痛彻背者，栝蒌薤白半夏汤主之；心痛彻背，背痛彻心，乌头赤石脂丸主之。", "source": "《金匮要略·胸痹心痛短气病脉证治第九》"}, {"type": "fill", "score": 2, "stem": "师曰：夫脉当取太过不及，阳微阴弦，即胸痹而痛，所以然者，责其____也。", "answers": ["极虚"], "explanation": "原文：所以然者，责其极虚也。指出胸痹属本虚标实之证。", "source": "《金匮要略·胸痹心痛短气病脉证治第九》第1条"}, {"type": "fill", "score": 2, "stem": "胸痹心中痞，留气结在胸，胸满，胁下逆抢心，偏于气滞者用枳实薤白桂枝汤，偏于虚寒者用____汤。", "answers": ["人参", "人参汤"], "explanation": "同病异治：实者枳实薤白桂枝汤，虚者人参汤（即理中汤）。", "source": "《金匮要略·胸痹心痛短气病脉证治第九》第5条"}, {"type": "short", "score": 8, "stem": "简述「阳微阴弦」的含义及其对胸痹病机与治疗的指导意义。", "reference": "阳微阴弦出自《金匮要略·胸痹心痛短气病脉证治第九》。从脉象言：微脉主阳虚，关前（寸口）为阳，微脉见于寸口，提示上焦阳气不足、胸阳不振；弦脉主阴寒内盛，关后（尺中）为阴，弦脉见于尺中，提示下焦阴寒内盛、水饮痰浊上乘。从病机言：胸痹总属本虚标实——本虚为胸阳不振，标实为阴寒、痰浊、水饮等阴邪痹阻胸阳，阴乘阳位，气机痹塞，故胸痹而痛。对治疗的指导意义：急则治标，通阳散结、豁痰下气（如栝蒌薤白白酒汤类）；缓则治本，温阳益气扶正（如人参汤）；虚实夹杂者通补兼施。仲景「责其极虚也」提示培补胸阳为治本之要。", "key_points": ["脉象解释：寸脉微为上焦阳虚胸阳不振，尺脉弦为下焦阴寒内盛（2分）", "病机归纳：本虚标实，阴乘阳位，痹阻胸阳（3分）", "治疗指导：标实治以通阳散结豁痰，本虚治以温阳益气，分缓急（3分）"], "source": "《金匮要略·胸痹心痛短气病脉证治第九》"}], "exam_id": "exam-dc6aefb456", "submit_url": "/api/exam/submit"};
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function normText(s) {
+  return (s || "").replace(/\s+/g, "").replace(/[，,。;；:：!！?？]/g, "").trim();
+}
+
+function gradeExam() {
+  const name = document.getElementById("student-name").value.trim();
+  if (!name) { alert("请先在卷首填写学生姓名！"); document.getElementById("student-name").focus(); return; }
+
+  let objectiveScore = 0, objectiveMax = 0, subjectiveMax = 0, subjectiveSelf = 0;
+  let answered = 0, correctCount = 0, objectiveCount = 0;
+  const qResults = [];
+
+  EXAM.questions.forEach((q, i) => {
+    const idx = i + 1;
+    const qDiv = document.querySelector('[data-qid="' + idx + '"]');
+    const verdict = document.getElementById("verdict-" + idx);
+    const fb = document.getElementById("fb-" + idx);
+    fb.innerHTML = ""; fb.classList.remove("hidden");
+    let gained = 0, full = q.score, isObjective = true;
+    let rec = { qid: idx, type: q.type, max_score: full, score: 0, answer: null, correct: null };
+
+    if (q.type === "single") {
+      objectiveMax += full; objectiveCount++;
+      const chosen = document.querySelector('input[name="q' + idx + '"]:checked');
+      if (chosen) { answered++; rec.answer = Number(chosen.value); }
+      if (chosen && Number(chosen.value) === q.answer) { gained = full; correctCount++; }
+      rec.correct = (rec.answer === q.answer);
+      // 高亮：正确答案绿色，错选红色
+      q.options.forEach((_, j) => {
+        const el = document.querySelector(".opt-" + idx + "-" + j);
+        el.classList.remove("opt-right", "opt-wrong");
+        if (j === q.answer) el.classList.add("opt-right");
+        else if (chosen && Number(chosen.value) === j) el.classList.add("opt-wrong");
+      });
+      fb.innerHTML = feedbackHTML(chosen, q);
+      disableGroup('input[name="q' + idx + '"]');
+    } else if (q.type === "multiple") {
+      objectiveMax += full; objectiveCount++;
+      const checked = [...document.querySelectorAll('input[name="q' + idx + '"]:checked')].map(x => Number(x.value)).sort();
+      if (checked.length) { answered++; rec.answer = checked; }
+      const std = [...q.answers].sort((a,b)=>a-b);
+      if (checked.length && checked.length === std.length && checked.every((v, k) => v === std[k])) {
+        gained = full; correctCount++;
+      }
+      rec.correct = (Array.isArray(rec.answer) && rec.answer.length === std.length && rec.answer.every((v, k) => v === std[k]));
+      q.options.forEach((_, j) => {
+        const el = document.querySelector(".opt-" + idx + "-" + j);
+        el.classList.remove("opt-right", "opt-wrong");
+        if (std.includes(j)) el.classList.add("opt-right");
+        else if (checked.includes(j)) el.classList.add("opt-wrong");
+      });
+      const ansLabel = std.map(j => q.options[j].split(/[.、．]/)[0] || ("选项" + (j+1))).join("、");
+      fb.innerHTML = (checked.length ? "" : '<p class="miss">⚠️ 未作答</p>') +
+        '<p><b>正确答案：</b>' + esc(ansLabel) + answerTail(q) + "</p>";
+      disableGroup('input[name="q' + idx + '"]');
+    } else if (q.type === "fill") {
+      objectiveMax += full; objectiveCount++;
+      const inp = document.getElementById("fill-" + idx);
+      const val = normText(inp.value);
+      if (val) { answered++; rec.answer = inp.value; }
+      const ok = val && q.answers.some(a => normText(a) === val);
+      if (ok) { gained = full; correctCount++; }
+      rec.correct = ok;
+      inp.disabled = true;
+      inp.classList.add(ok ? "fill-right" : "fill-wrong");
+      fb.innerHTML = '<p><b>你的答案：</b>' + esc(inp.value || "（未作答）") +
+        '<br><b>正确答案：</b>' + esc(q.answers.join(" ／ ")) + answerTail(q) + "</p>";
+    } else if (q.type === "short") {
+      isObjective = false; subjectiveMax += full;
+      const ta = document.getElementById("short-" + idx);
+      const sg = document.getElementById("sg-" + idx);
+      const sgv = document.getElementById("sgv-" + idx);
+      ta.disabled = true;
+      const selfVal = Math.min(Math.max(Number(sgv.value) || 0, 0), full);
+      subjectiveSelf += selfVal;
+      gained = selfVal;
+      if (ta.value.trim()) { answered++; rec.answer = ta.value; }
+      rec.correct = null; rec.self_score = selfVal;
+      if (ta.value.trim()) { answered++; }
+      sg.classList.remove("hidden");
+      fb.innerHTML = '<div class="ref-answer"><p><b>📝 参考答案：</b></p>' +
+        '<p class="ref-text">' + esc(q.reference).replace(/\n/g, "<br>") + "</p>" +
+        (q.key_points ? '<p><b>🎯 评分要点：</b></p><ul>' +
+          q.key_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "") +
+        answerTail(q) + "</div>";
+    }
+    rec.score = gained;
+    if (isObjective) objectiveScore += gained;
+    qResults.push(rec);
+    qDiv.classList.add(gained >= full ? "q-full" : (gained > 0 ? "q-partial" : "q-zero"));
+    verdict.textContent = gained >= full ? "✓ " + gained + " 分" : (gained > 0 ? "△ " + gained + " 分" : "✗ 0 分");
+    verdict.className = "verdict " + (gained >= full ? "v-right" : (gained > 0 ? "v-partial" : "v-wrong"));
+    if (q.type === "short") verdict.textContent = "自评 " + gained + "/" + full + " 分";
+  });
+
+  const total = objectiveScore + subjectiveSelf;
+  const rate = EXAM.total_score ? Math.round(total / EXAM.total_score * 100) : 0;
+  const card = document.getElementById("score-card");
+  card.classList.remove("hidden");
+  card.innerHTML =
+    '<h2>📊 成绩单</h2>' +
+    '<div class="score-grid">' +
+    '<div class="s-item"><div class="s-label">学生姓名</div><div class="s-value" id="recorded-name">' + esc(name) + "</div></div>" +
+    '<div class="s-item"><div class="s-label">客观题（自动批改）</div><div class="s-value">' + objectiveScore + " / " + objectiveMax + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">主观题（自评）</div><div class="s-value">' + subjectiveSelf + " / " + subjectiveMax + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">答题情况</div><div class="s-value">' + answered + " / " + EXAM.questions.length + ' 题已答</div></div>' +
+    '<div class="s-item"><div class="s-label">客观题正确率</div><div class="s-value">' + (objectiveCount ? Math.round(correctCount / objectiveCount * 100) : 0) + '%</div></div>' +
+    '<div class="s-item s-total"><div class="s-label">总分</div><div class="s-value">' + total + " / " + EXAM.total_score + ' 分</div></div>' +
+    "</div>" +
+    '<div class="score-bar"><div class="score-bar-fill" style="width:' + rate + '%"></div></div>' +
+    '<p class="score-note">提交时间已记录 · 主观题得分以自评为准，可对照上方参考答案与评分要点</p>' +
+    '<p class="score-note" id="upload-note"></p>';
+  if (card.scrollIntoView) card.scrollIntoView({ behavior: "smooth" });
+  document.getElementById("submit-btn").disabled = true;
+  document.getElementById("submit-btn").textContent = "已提交并批改";
+
+  // —— 成绩上报：构造结构化 JSON，POST 到服务器约定接口 ——
+  const payload = {
+    type: "exam_result",            // 固定标识：服务器以此识别成绩上报请求
+    version: 1,
+    exam_id: EXAM.exam_id,
+    exam_title: EXAM.title,
+    student_name: name,
+    submitted_at: new Date().toISOString(),
+    total_score: EXAM.total_score,  // 满分
+    final_score: total,             // 总得分（客观自动 + 主观自评）
+    objective_score: objectiveScore,
+    objective_max: objectiveMax,
+    subjective_self: subjectiveSelf,
+    subjective_max: subjectiveMax,
+    answered_count: answered,
+    question_count: EXAM.questions.length,
+    correct_count: correctCount,
+    objective_count: objectiveCount,
+    accuracy: objectiveCount ? Math.round(correctCount / objectiveCount * 100) : 0,
+    answers: qResults               // 逐题明细：qid/type/score/max_score/answer/correct/self_score
+  };
+  reportResult(payload);
+}
+
+/**
+ * 成绩上报（三重保障，互相独立、失败静默）：
+ *  1. navigator.sendBeacon —— 页面关闭/跳转也能送达（PWA 场景首选）
+ *  2. fetch keepalive POST —— sendBeacon 不可用时的兜底
+ *  3. localStorage 留档 —— 网络均失败时本地保存，服务器可后续取回
+ * 另外始终挂载在 window.__LAST_EXAM_RESULT__，便于宿主系统/自动化测试读取。
+ */
+function reportResult(payload) {
+  const body = JSON.stringify(payload);
+  const url = EXAM.submit_url || "/api/exam/submit";
+  let sent = false;
+  try {
+    if (navigator.sendBeacon) {
+      sent = navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    }
+  } catch (e) { /* ignore */ }
+  if (!sent) {
+    try {
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                   body: body, keepalive: true })
+        .then(r => setUploadNote(r.ok))
+        .catch(() => setUploadNote(false));
+      sent = true;
+    } catch (e) { /* ignore */ }
+  }
+  try {
+    localStorage.setItem("exam_result:" + payload.exam_id + ":" + payload.submitted_at, body);
+  } catch (e) { /* ignore */ }
+  window.__LAST_EXAM_RESULT__ = payload;
+  if (sent) setUploadNote(true);
+}
+
+function setUploadNote(ok) {
+  const note = document.getElementById("upload-note");
+  if (note) note.textContent = ok === false
+    ? "⚠️ 成绩上报失败，已保存在本机（localStorage），可重新联网后同步"
+    : "✅ 成绩已上报至服务器（POST " + (EXAM.submit_url || "/api/exam/submit") + "），并已本地留档";
+}
+
+function feedbackHTML(chosen, q) {
+  const label = j => q.options[j].split(/[.、．]/)[0] || ("选项" + (j + 1));
+  let html = chosen ? "" : '<p class="miss">⚠️ 未作答</p>';
+  html += '<p><b>正确答案：</b>' + esc(label(q.answer)) + answerTail(q) + "</p>";
+  if (chosen && Number(chosen.value) !== q.answer) {
+    html += '<p class="wrong-pick"><b>你的选择：</b>' + esc(label(Number(chosen.value))) + "（错误）</p>";
+  }
+  return html;
+}
+
+function answerTail(q) {
+  let html = "";
+  if (q.explanation) html += '<br><b>解析：</b>' + esc(q.explanation);
+  if (q.source) html += ' <span class="src">【出处：' + esc(q.source) + "】</span>";
+  return html;
+}
+
+function disableGroup(sel) {
+  document.querySelectorAll(sel).forEach(x => x.disabled = true);
+}
+
+</script>
+</body>
+</html>

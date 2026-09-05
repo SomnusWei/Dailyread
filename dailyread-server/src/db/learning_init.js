@@ -115,6 +115,47 @@ const SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT = `
 ALTER TABLE lc_users ADD COLUMN dr_bound_at DATETIME NULL AFTER dr_user_id
 `;
 
+// 考试：试卷/答题卡 HTML 发布（exam_code = 试卷 HTML 内嵌的 exam_id，唯一）
+// start_at/end_at 为 DATETIME（存 'YYYY-MM-DD HH:mm:ss' 北京时间墙上时间，应用层读取字符串比较以规避时区歧义）
+const SQL_CREATE_LC_EXAMS = `
+CREATE TABLE IF NOT EXISTS lc_exams (
+    id              BIGINT PRIMARY KEY AUTO_INCREMENT,
+    uploader_id     BIGINT NOT NULL,
+    exam_code       VARCHAR(64) NOT NULL,
+    title           VARCHAR(128) NOT NULL,
+    paper_filename  VARCHAR(255) NOT NULL,
+    answer_filename VARCHAR(255) NOT NULL,
+    start_at        DATETIME NULL,
+    end_at          DATETIME NULL,
+    level_scope     TEXT NOT NULL,
+    extra_users     TEXT NULL,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_exam_code (exam_code),
+    INDEX idx_uploader (uploader_id),
+    INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+`;
+
+// 考试成绩上报记录（exam_id + student_username 唯一，首次成绩锁定，不覆盖）
+const SQL_CREATE_LC_EXAM_SCORES = `
+CREATE TABLE IF NOT EXISTS lc_exam_scores (
+    id               BIGINT PRIMARY KEY AUTO_INCREMENT,
+    exam_id          BIGINT NOT NULL,
+    student_username VARCHAR(64) NOT NULL,
+    final_score      DECIMAL(6,2) NULL,
+    total_score      DECIMAL(6,2) NULL,
+    objective_score  DECIMAL(6,2) NULL,
+    objective_max    DECIMAL(6,2) NULL,
+    subjective_self  DECIMAL(6,2) NULL,
+    subjective_max   DECIMAL(6,2) NULL,
+    accuracy         DECIMAL(5,2) NULL,
+    submitted_at     VARCHAR(32) DEFAULT '',
+    detail_json      MEDIUMTEXT NULL,
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_exam_student (exam_id, student_username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+`;
+
 // 每日阅读完成率记录表（PWA 12:00 结算，教师/管理员可查）
 // lc_user_id + task_date 唯一约束：每天每账号一条，重复结算覆盖
 const SQL_CREATE_LC_DR_COMPLETION_RATES = `
@@ -141,6 +182,8 @@ async function ensureLearningSchema() {
   await pool.query(SQL_CREATE_LC_INBOX);
   await pool.query(SQL_CREATE_LC_SUBMISSIONS);
   await pool.query(SQL_CREATE_LC_DR_COMPLETION_RATES);
+  await pool.query(SQL_CREATE_LC_EXAMS);
+  await pool.query(SQL_CREATE_LC_EXAM_SCORES);
 
   const migrations = [
     ['lc_inbox.content', SQL_ALTER_LC_INBOX_ADD_CONTENT],
@@ -149,7 +192,8 @@ async function ensureLearningSchema() {
     ['lc_assignments.due_at', SQL_ALTER_LC_ASSIGNMENTS_ADD_DUE_AT],
     ['lc_handouts.extra_users', SQL_ALTER_LC_HANDOUTS_ADD_EXTRA_USERS],
     ['lc_users.dr_user_id', SQL_ALTER_LC_USERS_ADD_DR_USER_ID],
-    ['lc_users.dr_bound_at', SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT]
+    ['lc_users.dr_bound_at', SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT],
+    ['lc_exam_scores.student_display', "ALTER TABLE lc_exam_scores ADD COLUMN student_display VARCHAR(64) DEFAULT ''"]
   ];
   for (const [name, sql] of migrations) {
     try {

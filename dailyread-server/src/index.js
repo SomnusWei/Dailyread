@@ -20,6 +20,7 @@ const configRoutes = require('./routes/config');
 const migrateRoutes = require('./routes/migrate');
 const adminRoutes = require('./routes/admin');
 const learningRoutes = require('./routes/learning');
+const examSubmitRoutes = require('./routes/examSubmit');
 const drProxyRoutes = require('./routes/drProxy');
 const { ensureLearningSchema } = require('./db/learning_init');
 const { startScheduler } = require('./cron');
@@ -58,6 +59,9 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // 讲义文件静态托管（文件名为随机串，路径不可枚举）
 app.use('/uploads/handouts', express.static(path.join(__dirname, '..', 'uploads', 'handouts'), { maxAge: '7d' }));
 
+// 考卷 HTML 静态托管（文件名为随机串，路径不可枚举）
+app.use('/uploads/exams', express.static(path.join(__dirname, '..', 'uploads', 'exams'), { maxAge: '7d' }));
+
 // 管理后台 - 访问 /admin/ 重定向到登录页
 app.get('/admin/', (req, res) => {
   res.redirect('/login.html');
@@ -72,6 +76,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/migrate', migrateRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/learning', learningRoutes);
+app.use('/api/exam', examSubmitRoutes);
 app.use('/api/dr', drProxyRoutes);
 
 // 健康检查
