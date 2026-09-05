@@ -182,6 +182,9 @@ python extract_content.py --system 心系 --depth deep --ancient --category 伤�
 
 ```bash
 python scripts/build_exam_html.py --exam exam.json --output-dir 试卷输出 --name "{试卷名}"
+# 默认随机打乱选择题选项顺序，避免“正确答案位置集中（如几乎全为 A）”：
+#   --no-shuffle  保留题库原选项顺序
+#   --seed N      固定打乱种子，可复现某一次选项顺序
 ```
 
 1. **交互式 HTML 试卷（必出）**——顶部填学生姓名；单选→单选框、多选→复选框、填空→输入框、简答→文本域；底部提交后**原地立即批改**：客观题自动判分（对错高亮）、主观题给参考答案+评分要点自评、成绩卡显示姓名/得分/正确率/总分，提交后锁定作答区

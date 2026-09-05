@@ -30,15 +30,24 @@ JSON 题目 schema（exam.json）：
 
 用法：
   python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name 中医基础模拟卷
+  # 默认会随机打乱选择题选项顺序，避免“正确答案位置集中（如几乎全为 A）”。
+  # 需要固定某次顺序用 --seed 复现；需要保留原选项顺序时加 --no-shuffle：
+  python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name 模拟卷 --no-shuffle
+  python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name 模拟卷 --seed 42
   # PWA 部署时可自定义成绩上报接口（默认 POST /api/exam/submit）：
   python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name 中医基础模拟卷 --submit-url /api/exam/submit
   # 答案卷转 PDF（可选）：
   "C:/Program Files/Google/Chrome/Application/chrome.exe" --headless --disable-gpu \
     --print-to-pdf="答案卷.pdf" --no-pdf-header-footer "试卷输出/xxx_答案卷.html"
+
+注意：选择题选项会被随机打乱并重贴 A/B/C… 前缀；解析（explanation）文字内请勿引用选项字母，
+应引用选项文字内容；确需按字母解析的题目可加 --no-shuffle 保留原序。
 """
 
 import os
+import re
 import json
+import random
 import hashlib
 import argparse
 from datetime import date
@@ -53,6 +62,47 @@ TYPE_META = {
     "fill":     {"label": "填空题",   "hint": "填空（____ 处填写答案）"},
     "short":    {"label": "简答题",   "hint": "简答（文字作答，提交后对照参考答案自评）"},
 }
+
+# ---------- 选择题选项随机打乱 ----------
+# 默认在生成试卷时打乱选择题选项顺序，避免“正确答案大概率固定在某一位（如几乎全为 A）”
+OPTION_PREFIXES = "ABCDEFGHIJKLMNOP"
+_OPTION_PREFIX_RE = re.compile(r"^[A-Za-z][.、．)）:：]\s*")
+
+
+def _strip_option_prefix(opt):
+    """去掉选项文本自带的首字母前缀（A. / B． / C、 等），返回正文"""
+    return _OPTION_PREFIX_RE.sub("", str(opt)).strip()
+
+
+def shuffle_question_options(questions, rng=None):
+    """随机打乱 single/multiple 选择题的选项顺序，并同步修正 answer/answers 索引。
+
+    - 打乱前先剥离旧字母前缀，打乱后按新位置重贴 A/B/C… 前缀，
+      保证考卷卷面、在线判分、答案卷三处始终一致；
+    - 解析（explanation）文字内请勿引用选项字母，应引用选项文字内容，
+      否则打乱后字母不再对应原选项（此类题目可用 --no-shuffle 保留原序）。
+    返回被洗牌的题目数。
+    """
+    if rng is None:
+        rng = random
+    shuffled = 0
+    for q in questions:
+        if q.get("type") not in ("single", "multiple"):
+            continue
+        opts = q.get("options")
+        if not isinstance(opts, list) or len(opts) < 2:
+            continue
+        contents = [_strip_option_prefix(o) or str(o).strip() for o in opts]
+        order = list(range(len(contents)))
+        rng.shuffle(order)
+        q["options"] = [f"{OPTION_PREFIXES[j]}. {contents[i]}" for j, i in enumerate(order)]
+        old_to_new = [order.index(i) for i in range(len(order))]
+        if q["type"] == "single" and "answer" in q:
+            q["answer"] = old_to_new[int(q["answer"])]
+        elif q["type"] == "multiple" and q.get("answers"):
+            q["answers"] = sorted(old_to_new[int(a)] for a in q["answers"])
+        shuffled += 1
+    return shuffled
 
 
 def esc(s):
@@ -791,6 +841,10 @@ def main():
     parser.add_argument("--name", default="", help="输出文件名（不含扩展名），默认取卷名")
     parser.add_argument("--submit-url", default=DEFAULT_SUBMIT_URL,
                         help=f"成绩上报接口 URL（默认 {DEFAULT_SUBMIT_URL}，相对路径则上报到 PWA 同源）")
+    parser.add_argument("--no-shuffle", action="store_true",
+                        help="不随机打乱选择题选项顺序（默认打乱，避免正确答案位置集中出现）")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="选项打乱随机种子（便于复现某一次选项顺序；默认每次随机）")
     args = parser.parse_args()
 
     with open(args.exam, "r", encoding="utf-8") as f:
@@ -802,6 +856,12 @@ def main():
         for e in errors:
             print(f"  - {e}")
         return 1
+
+    # 打乱选择题选项顺序（试卷与答案卷共用同一份 data，顺序天然一致）
+    if not args.no_shuffle:
+        n = shuffle_question_options(data["questions"], random.Random(args.seed))
+        if n:
+            print(f"🔀 已随机打乱 {n} 道选择题的选项顺序（固定某次顺序可加 --seed，保留原序可加 --no-shuffle）")
 
     os.makedirs(args.output_dir, exist_ok=True)
     base = args.name or data["title"]
