@@ -229,13 +229,50 @@
     });
   }
 
+  // ---------- 阅读正文行内标记渲染 ----------
+  // ##..## 红色小字注解  **..** 加粗  ==..== 黄色高亮（与鸿蒙 Reader/Win 预览同一套状态机语义）
+  function renderArticleMarkup(rawText) {
+    var s = esc(rawText); // 先整体转义，防注入
+    var out = '';
+    var state = 'normal';
+    var buf = '';
+    var push = function (t, type) {
+      if (!t) return;
+      if (type === 'anno') out += '<span class="dr-anno">' + t + '</span>';
+      else if (type === 'bold') out += '<strong>' + t + '</strong>';
+      else if (type === 'hl') out += '<span class="dr-hl">' + t + '</span>';
+      else out += t;
+    };
+    var i = 0;
+    while (i < s.length) {
+      if (state === 'normal') {
+        if (s[i] === '#' && s[i + 1] === '#') { push(buf, 'n'); buf = ''; state = 'anno'; i += 2; }
+        else if (s[i] === '*' && s[i + 1] === '*') { push(buf, 'n'); buf = ''; state = 'bold'; i += 2; }
+        else if (s[i] === '=' && s[i + 1] === '=') { push(buf, 'n'); buf = ''; state = 'hl'; i += 2; }
+        else { buf += s[i]; i++; }
+      } else if (state === 'anno') {
+        if (s[i] === '#' && s[i + 1] === '#') { push(buf, 'anno'); buf = ''; state = 'normal'; i += 2; }
+        else { buf += s[i]; i++; }
+      } else if (state === 'bold') {
+        if (s[i] === '*' && s[i + 1] === '*') { push(buf, 'bold'); buf = ''; state = 'normal'; i += 2; }
+        else { buf += s[i]; i++; }
+      } else { // hl
+        if (s[i] === '=' && s[i + 1] === '=') { push(buf, 'hl'); buf = ''; state = 'normal'; i += 2; }
+        else { buf += s[i]; i++; }
+      }
+    }
+    push(buf, state === 'anno' ? 'anno' : (state === 'bold' ? 'bold' : (state === 'hl' ? 'hl' : 'n')));
+    return out;
+  }
+
   function renderReader(article, clientId, from, alreadyCheckedIn) {
     document.getElementById('readerTitle').textContent = article.title || '—';
     var content = document.getElementById('readerContent');
     // 应用字号
     content.style.fontSize = state.fontSize + 'px';
-    // 渲染内容（content_html 优先，否则 content）
-    var html = article.contentHtml || article.content || '';
+    // 渲染内容：已带 HTML 的 contentHtml 原样显示；纯文本 content 走行内标记解析（## 注解/** 加粗/== 高亮）
+    var hasHtml = article.contentHtml && String(article.contentHtml).trim();
+    var html = hasHtml ? article.contentHtml : renderArticleMarkup(article.content || '');
     if (article.imagewebp && !article.iscontent) {
       html = '<img src="data:image/webp;base64,' + article.imagewebp + '" />' + html;
     }

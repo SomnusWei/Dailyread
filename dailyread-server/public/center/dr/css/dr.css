@@ -146,6 +146,11 @@
 .dr-reader-scroll { flex: 1; overflow-y: auto; padding: 24px 20px; -webkit-overflow-scrolling: touch; }
 .dr-reader-content { font-size: var(--dr-reader-fs, 18px); line-height: 1.85; color: var(--text); white-space: pre-wrap; word-break: break-word; }
 .dr-reader-content img { max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0; }
+.dr-reader-content strong { font-weight: 700; }
+/* 行内标记：##..## 红字小号注解 */
+.dr-reader-content .dr-anno { color: #FF0000; font-size: 0.86em; }
+/* ==..== 黄色高亮 */
+.dr-reader-content .dr-hl { background: #FFEB3B; border-radius: 2px; }
 
 /* 音频控制条 */
 .dr-audio-bar {

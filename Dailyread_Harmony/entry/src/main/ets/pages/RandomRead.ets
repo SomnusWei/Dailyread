@@ -11,7 +11,8 @@ import { ServerStatusIndicator } from '../components/ServerStatusIndicator';
 
 interface TextSegment {
   text: string;
-  type: 'normal' | 'annotation' | 'bold';
+  // normal=正文  annotation=##..##红色小字注解  bold=**..**加粗  highlight==..==黄色高亮
+  type: 'normal' | 'annotation' | 'bold' | 'highlight';
   id: string;
 }
 
@@ -269,7 +270,7 @@ struct RandomReadPage {
   parseContent(rawContent: string, articleId: number): TextSegment[] {
     const segments: TextSegment[] = [];
     let currentText: string = '';
-    let state: 'normal' | 'annotation' | 'bold' = 'normal';
+    let state: 'normal' | 'annotation' | 'bold' | 'highlight' = 'normal';
     let segmentIndex: number = 0;
 
     let i: number = 0;
@@ -288,6 +289,13 @@ struct RandomReadPage {
             currentText = '';
           }
           state = 'bold';
+          i += 2;
+        } else if (i + 1 < rawContent.length && rawContent[i] === '=' && rawContent[i + 1] === '=') {
+          if (currentText) {
+            segments.push({ text: currentText, type: 'normal', id: `${articleId}_seg_${segmentIndex++}` });
+            currentText = '';
+          }
+          state = 'highlight';
           i += 2;
         } else {
           currentText += rawContent[i];
@@ -309,6 +317,18 @@ struct RandomReadPage {
         if (i + 1 < rawContent.length && rawContent[i] === '*' && rawContent[i + 1] === '*') {
           if (currentText) {
             segments.push({ text: currentText, type: 'bold', id: `${articleId}_seg_${segmentIndex++}` });
+            currentText = '';
+          }
+          state = 'normal';
+          i += 2;
+        } else {
+          currentText += rawContent[i];
+          i++;
+        }
+      } else if (state === 'highlight') {
+        if (i + 1 < rawContent.length && rawContent[i] === '=' && rawContent[i + 1] === '=') {
+          if (currentText) {
+            segments.push({ text: currentText, type: 'highlight', id: `${articleId}_seg_${segmentIndex++}` });
             currentText = '';
           }
           state = 'normal';
@@ -480,7 +500,9 @@ struct RandomReadPage {
                     Span(segment.text)
                       .fontSize(segment.type === 'annotation' ? this.fontSize - 2 : this.fontSize)
                       .fontColor(segment.type === 'annotation' ? '#FF0000' : '#333333')
-                      .fontWeight(segment.type === 'bold' ? FontWeight.Bold : FontWeight.Normal);
+                      .fontWeight(segment.type === 'bold' ? FontWeight.Bold : FontWeight.Normal)
+                      // ==..== 黄色高亮背景（其余片段透明，避免占位）
+                      .textBackgroundStyle(segment.type === 'highlight' ? { color: '#FFEB3B', radius: 2 } : { color: Color.Transparent, radius: 0 });
                   }, (segment: TextSegment) => segment.id)
                 }
                 .fontSize(this.fontSize)
