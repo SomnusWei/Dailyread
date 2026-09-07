@@ -230,38 +230,43 @@
   }
 
   // ---------- 阅读正文行内标记渲染 ----------
-  // ##..## 红色小字注解  **..** 加粗  ==..== 黄色高亮（与鸿蒙 Reader/Win 预览同一套状态机语义）
+  // ##..## 红色小字注解  **..** 加粗  ==..== 黄色高亮（栈式解析，可嵌套组合，与鸿蒙/Win 同一套语义）
   function renderArticleMarkup(rawText) {
-    var s = esc(rawText); // 先整体转义，防注入
-    var out = '';
-    var state = 'normal';
-    var buf = '';
-    var push = function (t, type) {
-      if (!t) return;
-      if (type === 'anno') out += '<span class="dr-anno">' + t + '</span>';
-      else if (type === 'bold') out += '<strong>' + t + '</strong>';
-      else if (type === 'hl') out += '<span class="dr-hl">' + t + '</span>';
-      else out += t;
-    };
+    var chunks = []; // {text, anno, bold, hl}
+    var cur = '';
+    var openStack = [];
+    var flags = { anno: false, bold: false, hl: false };
+    function flush() {
+      if (!cur) return;
+      chunks.push({ text: cur, anno: flags.anno, bold: flags.bold, hl: flags.hl });
+      cur = '';
+    }
+    var s = String(rawText == null ? '' : rawText);
     var i = 0;
     while (i < s.length) {
-      if (state === 'normal') {
-        if (s[i] === '#' && s[i + 1] === '#') { push(buf, 'n'); buf = ''; state = 'anno'; i += 2; }
-        else if (s[i] === '*' && s[i + 1] === '*') { push(buf, 'n'); buf = ''; state = 'bold'; i += 2; }
-        else if (s[i] === '=' && s[i + 1] === '=') { push(buf, 'n'); buf = ''; state = 'hl'; i += 2; }
-        else { buf += s[i]; i++; }
-      } else if (state === 'anno') {
-        if (s[i] === '#' && s[i + 1] === '#') { push(buf, 'anno'); buf = ''; state = 'normal'; i += 2; }
-        else { buf += s[i]; i++; }
-      } else if (state === 'bold') {
-        if (s[i] === '*' && s[i + 1] === '*') { push(buf, 'bold'); buf = ''; state = 'normal'; i += 2; }
-        else { buf += s[i]; i++; }
-      } else { // hl
-        if (s[i] === '=' && s[i + 1] === '=') { push(buf, 'hl'); buf = ''; state = 'normal'; i += 2; }
-        else { buf += s[i]; i++; }
-      }
+      var ch = s[i];
+      var nxt = s[i + 1];
+      var flag = '';
+      if (ch === '#' && nxt === '#') flag = 'anno';
+      else if (ch === '*' && nxt === '*') flag = 'bold';
+      else if (ch === '=' && nxt === '=') flag = 'hl';
+      if (!flag) { cur += ch; i++; continue; }
+      var top = openStack.length ? openStack[openStack.length - 1] : '';
+      if (top === flag) { flush(); openStack.pop(); flags[flag] = false; }
+      else { flush(); openStack.push(flag); flags[flag] = true; }
+      i += 2;
     }
-    push(buf, state === 'anno' ? 'anno' : (state === 'bold' ? 'bold' : (state === 'hl' ? 'hl' : 'n')));
+    flush(); // 未闭合样式保留到结尾
+    var out = '';
+    for (var k = 0; k < chunks.length; k++) {
+      var c = chunks[k];
+      var t = esc(c.text); // 分块转义，防注入
+      // 包装顺序：注解(红+小) → 高亮(黄底) → 加粗（各属性独立可叠加）
+      if (c.anno) t = '<span class="dr-anno">' + t + '</span>';
+      if (c.hl) t = '<span class="dr-hl">' + t + '</span>';
+      if (c.bold) t = '<strong>' + t + '</strong>';
+      out += t;
+    }
     return out;
   }
 

@@ -937,66 +937,51 @@ class ReaderPreviewDialog(QDialog):
 
     @staticmethod
     def parse_segments(raw_content):
-        """与鸿蒙 Reader.parseContent 相同的流式状态机解析（## 注解、** 加粗、== 黄色高亮）。"""
+        """与鸿蒙 Reader.parseContent 相同的栈式解析（## 注解 / ** 加粗 / == 高亮，可嵌套组合）。
+
+        返回 [(text, {'anno':bool,'bold':bool,'hl':bool}), ...]
+        """
         segments = []
-        current_text = ''
-        state = 'normal'
+        current = ''
+        open_stack = []  # 'anno' | 'bold' | 'hl'
+        flags = {'anno': False, 'bold': False, 'hl': False}
+
+        def flush():
+            nonlocal current
+            if not current:
+                return
+            segments.append((current, dict(flags)))
+            current = ''
+
+        def set_flag(flag, on):
+            flags[flag] = on
+
         i, n = 0, len(raw_content)
         while i < n:
-            if state == 'normal':
-                if i + 1 < n and raw_content[i] == '#' and raw_content[i + 1] == '#':
-                    if current_text:
-                        segments.append((current_text, 'normal'))
-                        current_text = ''
-                    state = 'annotation'
-                    i += 2
-                elif i + 1 < n and raw_content[i] == '*' and raw_content[i + 1] == '*':
-                    if current_text:
-                        segments.append((current_text, 'normal'))
-                        current_text = ''
-                    state = 'bold'
-                    i += 2
-                elif i + 1 < n and raw_content[i] == '=' and raw_content[i + 1] == '=':
-                    if current_text:
-                        segments.append((current_text, 'normal'))
-                        current_text = ''
-                    state = 'highlight'
-                    i += 2
-                else:
-                    current_text += raw_content[i]
-                    i += 1
-            elif state == 'annotation':
-                if i + 1 < n and raw_content[i] == '#' and raw_content[i + 1] == '#':
-                    if current_text:
-                        segments.append((current_text, 'annotation'))
-                        current_text = ''
-                    state = 'normal'
-                    i += 2
-                else:
-                    current_text += raw_content[i]
-                    i += 1
-            elif state == 'bold':
-                if i + 1 < n and raw_content[i] == '*' and raw_content[i + 1] == '*':
-                    if current_text:
-                        segments.append((current_text, 'bold'))
-                        current_text = ''
-                    state = 'normal'
-                    i += 2
-                else:
-                    current_text += raw_content[i]
-                    i += 1
-            else:  # highlight（==..==）
-                if i + 1 < n and raw_content[i] == '=' and raw_content[i + 1] == '=':
-                    if current_text:
-                        segments.append((current_text, 'highlight'))
-                        current_text = ''
-                    state = 'normal'
-                    i += 2
-                else:
-                    current_text += raw_content[i]
-                    i += 1
-        if current_text:
-            segments.append((current_text, state if state in ('annotation', 'bold', 'highlight') else 'normal'))
+            ch = raw_content[i]
+            nxt = raw_content[i + 1] if i + 1 < n else ''
+            flag = ''
+            if ch == '#' and nxt == '#':
+                flag = 'anno'
+            elif ch == '*' and nxt == '*':
+                flag = 'bold'
+            elif ch == '=' and nxt == '=':
+                flag = 'hl'
+            if not flag:
+                current += ch
+                i += 1
+                continue
+            top = open_stack[-1] if open_stack else ''
+            if top == flag:
+                flush()
+                open_stack.pop()
+                set_flag(flag, False)
+            else:
+                flush()
+                open_stack.append(flag)
+                set_flag(flag, True)
+            i += 2
+        flush()  # 未闭合样式保留到结尾
         return segments
 
     def __init__(self, article: dict, article_page=None, parent=None):
@@ -1142,15 +1127,14 @@ class ReaderPreviewDialog(QDialog):
         if should_show_content:
             base_normal = make_char_fmt(fs, '#333333')
             cursor.setCharFormat(base_normal)
-            for seg_text, seg_type in self.parse_segments(content):
-                if seg_type == 'annotation':
-                    fmt = make_char_fmt(max(10, fs - 4), '#FF0000')
-                elif seg_type == 'bold':
-                    fmt = make_char_fmt(fs, '#333333', bold=True)
-                elif seg_type == 'highlight':
-                    fmt = make_char_fmt(fs, '#333333', bg='#FFEB3B')
-                else:
-                    fmt = base_normal
+            for seg_text, seg_flags in self.parse_segments(content):
+                # 样式可组合：## 红字小号、** 加粗、== 黄色高亮（支持 ==**…**== 等嵌套）
+                fmt = make_char_fmt(
+                    max(10, fs - 4) if seg_flags['anno'] else fs,
+                    '#FF0000' if seg_flags['anno'] else '#333333',
+                    bold=seg_flags['bold'],
+                    bg='#FFEB3B' if seg_flags['hl'] else None,
+                )
                 cursor.setCharFormat(fmt)  # 每段首个分片也需设置，否则沿用上一段格式导致加粗/注解丢失
                 pieces = seg_text.split('\n')
                 for idx, piece in enumerate(pieces):

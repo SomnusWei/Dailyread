@@ -11,8 +11,10 @@ import { ServerStatusIndicator } from '../components/ServerStatusIndicator';
 
 interface TextSegment {
   text: string;
-  // normal=正文  annotation=##..##红色小字注解  bold=**..**加粗  highlight==..==黄色高亮
-  type: 'normal' | 'annotation' | 'bold' | 'highlight';
+  // 样式组合可嵌套：anno=##..##红色小字  bold=**..**加粗  hl==..==黄色高亮（同一段可多属性同时为 true）
+  anno: boolean;
+  bold: boolean;
+  hl: boolean;
   id: string;
 }
 
@@ -267,83 +269,63 @@ struct RandomReadPage {
     return p;
   }
 
+  // 栈式解析：##…## 红字小号 / **…** 加粗 / ==…== 黄色高亮，三种样式可任意嵌套组合
   parseContent(rawContent: string, articleId: number): TextSegment[] {
     const segments: TextSegment[] = [];
     let currentText: string = '';
-    let state: 'normal' | 'annotation' | 'bold' | 'highlight' = 'normal';
     let segmentIndex: number = 0;
+    const openStack: string[] = [];
+    let stAnno: boolean = false;
+    let stBold: boolean = false;
+    let stHl: boolean = false;
+    const flush = (): void => {
+      if (currentText === '') {
+        return;
+      }
+      segments.push({ text: currentText, anno: stAnno, bold: stBold, hl: stHl, id: `${articleId}_seg_${segmentIndex++}` });
+      currentText = '';
+    };
+    const setFlag = (flag: string, on: boolean): void => {
+      if (flag === 'anno') {
+        stAnno = on;
+      } else if (flag === 'bold') {
+        stBold = on;
+      } else {
+        stHl = on;
+      }
+    };
 
     let i: number = 0;
     while (i < rawContent.length) {
-      if (state === 'normal') {
-        if (i + 1 < rawContent.length && rawContent[i] === '#' && rawContent[i + 1] === '#') {
-          if (currentText) {
-            segments.push({ text: currentText, type: 'normal', id: `${articleId}_seg_${segmentIndex++}` });
-            currentText = '';
-          }
-          state = 'annotation';
-          i += 2;
-        } else if (i + 1 < rawContent.length && rawContent[i] === '*' && rawContent[i + 1] === '*') {
-          if (currentText) {
-            segments.push({ text: currentText, type: 'normal', id: `${articleId}_seg_${segmentIndex++}` });
-            currentText = '';
-          }
-          state = 'bold';
-          i += 2;
-        } else if (i + 1 < rawContent.length && rawContent[i] === '=' && rawContent[i + 1] === '=') {
-          if (currentText) {
-            segments.push({ text: currentText, type: 'normal', id: `${articleId}_seg_${segmentIndex++}` });
-            currentText = '';
-          }
-          state = 'highlight';
-          i += 2;
-        } else {
-          currentText += rawContent[i];
-          i++;
-        }
-      } else if (state === 'annotation') {
-        if (i + 1 < rawContent.length && rawContent[i] === '#' && rawContent[i + 1] === '#') {
-          if (currentText) {
-            segments.push({ text: currentText, type: 'annotation', id: `${articleId}_seg_${segmentIndex++}` });
-            currentText = '';
-          }
-          state = 'normal';
-          i += 2;
-        } else {
-          currentText += rawContent[i];
-          i++;
-        }
-      } else if (state === 'bold') {
-        if (i + 1 < rawContent.length && rawContent[i] === '*' && rawContent[i + 1] === '*') {
-          if (currentText) {
-            segments.push({ text: currentText, type: 'bold', id: `${articleId}_seg_${segmentIndex++}` });
-            currentText = '';
-          }
-          state = 'normal';
-          i += 2;
-        } else {
-          currentText += rawContent[i];
-          i++;
-        }
-      } else if (state === 'highlight') {
-        if (i + 1 < rawContent.length && rawContent[i] === '=' && rawContent[i + 1] === '=') {
-          if (currentText) {
-            segments.push({ text: currentText, type: 'highlight', id: `${articleId}_seg_${segmentIndex++}` });
-            currentText = '';
-          }
-          state = 'normal';
-          i += 2;
-        } else {
-          currentText += rawContent[i];
-          i++;
-        }
+      const ch: string = rawContent[i];
+      const next: string = (i + 1 < rawContent.length) ? rawContent[i + 1] : '';
+      let flag: string = '';
+      if (ch === '#' && next === '#') {
+        flag = 'anno';
+      } else if (ch === '*' && next === '*') {
+        flag = 'bold';
+      } else if (ch === '=' && next === '=') {
+        flag = 'hl';
       }
+      if (flag === '') {
+        currentText += ch;
+        i++;
+        continue;
+      }
+      const top: string = openStack.length > 0 ? openStack[openStack.length - 1] : '';
+      if (top === flag) {
+        flush();
+        openStack.pop();
+        setFlag(flag, false);
+      } else {
+        flush();
+        openStack.push(flag);
+        setFlag(flag, true);
+      }
+      i += 2;
     }
 
-    if (currentText) {
-      segments.push({ text: currentText, type: 'normal', id: `${articleId}_seg_${segmentIndex++}` });
-    }
-
+    flush();
     return segments;
   }
 
@@ -498,11 +480,11 @@ struct RandomReadPage {
                 Text() {
                   ForEach(this.contentSegments, (segment: TextSegment) => {
                     Span(segment.text)
-                      .fontSize(segment.type === 'annotation' ? this.fontSize - 2 : this.fontSize)
-                      .fontColor(segment.type === 'annotation' ? '#FF0000' : '#333333')
-                      .fontWeight(segment.type === 'bold' ? FontWeight.Bold : FontWeight.Normal)
-                      // ==..== 黄色高亮背景（其余片段透明，避免占位）
-                      .textBackgroundStyle(segment.type === 'highlight' ? { color: '#FFEB3B', radius: 2 } : { color: Color.Transparent, radius: 0 });
+                      .fontSize(segment.anno ? this.fontSize - 2 : this.fontSize)
+                      .fontColor(segment.anno ? '#FF0000' : '#333333')
+                      .fontWeight(segment.bold ? FontWeight.Bold : FontWeight.Normal)
+                      // ==..== 黄色高亮背景（其余片段透明），样式可组合（嵌套）
+                      .textBackgroundStyle(segment.hl ? { color: '#FFEB3B', radius: 2 } : { color: Color.Transparent, radius: 0 });
                   }, (segment: TextSegment) => segment.id)
                 }
                 .fontSize(this.fontSize)
