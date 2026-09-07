@@ -28,7 +28,8 @@
     fontSize: parseInt(localStorage.getItem(FONT_KEY) || '20', 10),
     currentView: 'home',
     audioEl: null,        // 当前 audio 元素
-    loopAudio: false
+    loopAudio: localStorage.getItem('dr_audioLoop') === '1',
+    autoPlayAudio: localStorage.getItem('dr_audioAuto') === '1'
   };
 
   // ---------- API 封装（lc token + /api/dr/* 代理路由） ----------
@@ -314,6 +315,15 @@
       return;
     }
     audio.loop = state.loopAudio;
+    // 自动播放（设置页开关；移动端若被浏览器拦截则静默跳过，等待用户点击播放）
+    if (state.autoPlayAudio) {
+      audio.addEventListener('canplay', function () {
+        try {
+          var p = audio.play();
+          if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+      });
+    }
     // UI 绑定
     var playBtn = document.getElementById('audioPlayBtn');
     var timeEl = document.getElementById('audioTime');
@@ -325,8 +335,12 @@
     audio.addEventListener('timeupdate', function () { timeEl.textContent = fmtTime(audio.currentTime); });
     audio.addEventListener('ended', function () { playBtn.textContent = '▶'; });
     loopChk.checked = state.loopAudio;
-    loopChk.onchange = function () { state.loopAudio = loopChk.checked; audio.loop = loopChk.checked; };
-    // 自动播放：不自动播放，等用户点击（移动端限制）。
+    loopChk.onchange = function () {
+      state.loopAudio = loopChk.checked;
+      audio.loop = loopChk.checked;
+      localStorage.setItem('dr_audioLoop', loopChk.checked ? '1' : '0');
+    };
+    // 自动播放/循环播放均可由设置页开关控制；移动端若被拦截则等用户首次点击播放。
     // keepScreenOn / loopAudio / 字号等均为各端浏览器本地设置，不从服务端读取、不上传。
   }
 
@@ -511,6 +525,8 @@
       + '<div class="dr-settings-row"><div><div class="dr-settings-label">每日阅读时长</div><div class="dr-settings-desc">由 Windows 端「每日阅读时长」维护（影响每日任务字数）</div></div><b style="color:#1976D2;">' + (c.dailyMinutes || 20) + ' 分钟</b></div>'
       + '<div class="dr-settings-row"><div><div class="dr-settings-label">目标完成率</div><div class="dr-settings-desc">由 Windows 端「目标完成率」维护（影响任务筛选）</div></div><b style="color:#1976D2;">' + (c.targetCheckRate || 30) + ' %</b></div>'
       + '<div class="dr-settings-row"><div><div class="dr-settings-label">阅读字号</div><div class="dr-settings-desc">仅保存在本机浏览器（当前 ' + state.fontSize + 'px）</div></div><button class="dr-btn dr-btn-ghost" id="cfgFontBtn">调节字号</button></div>'
+      + '<div class="dr-settings-row"><div><div class="dr-settings-label">自动播放</div><div class="dr-settings-desc">打开文章后自动开始朗读（仅本机保存；移动端若被拦截需点一次播放）</div></div><label class="dr-switch"><input type="checkbox" id="cfgAudioAuto"' + (state.autoPlayAudio ? ' checked' : '') + '></label></div>'
+      + '<div class="dr-settings-row"><div><div class="dr-settings-label">循环播放</div><div class="dr-settings-desc">单篇音频循环朗读，与阅读页音频条开关同步（仅本机保存）</div></div><label class="dr-switch"><input type="checkbox" id="cfgAudioLoop"' + (state.loopAudio ? ' checked' : '') + '></label></div>'
       + '</div>'
       + '<div class="dr-settings-section">'
       + '<div class="dr-settings-row"><div><div class="dr-settings-label">绑定的 DailyRead 账号</div><div class="dr-settings-desc">' + esc(state.drUser ? (state.drUser.nickname || state.drUser.username) : '—') + '（' + esc(state.drUser ? state.drUser.username : '') + '）</div></div><button class="dr-btn dr-btn-ghost" id="cfgUnbind">管理绑定</button></div>'
@@ -528,6 +544,22 @@
     document.getElementById('cfgUnbind').addEventListener('click', function () {
       location.href = '/center/dr/bind.html';
     });
+
+    var autoCb = document.getElementById('cfgAudioAuto');
+    if (autoCb) {
+      autoCb.addEventListener('change', function () {
+        state.autoPlayAudio = autoCb.checked;
+        localStorage.setItem('dr_audioAuto', autoCb.checked ? '1' : '0');
+      });
+    }
+    var loopCb = document.getElementById('cfgAudioLoop');
+    if (loopCb) {
+      loopCb.addEventListener('change', function () {
+        state.loopAudio = loopCb.checked;
+        localStorage.setItem('dr_audioLoop', loopCb.checked ? '1' : '0');
+        if (state.audioEl) state.audioEl.loop = loopCb.checked; // 正在播放时立即生效
+      });
+    }
   }
 
   // ---------- 启动 ----------

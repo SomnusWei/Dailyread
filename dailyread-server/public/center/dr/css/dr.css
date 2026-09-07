@@ -124,6 +124,8 @@
 .dr-settings-row:last-child { border-bottom: none; }
 .dr-settings-label { font-size: 14px; font-weight: 600; }
 .dr-settings-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.dr-switch { display: inline-flex; align-items: center; margin-left: 12px; cursor: pointer; }
+.dr-switch input { width: 42px; height: 24px; accent-color: #34c98e; cursor: pointer; }
 .dr-settings-input { width: 80px; padding: 6px 10px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; text-align: center; }
 
 /* ---------- 阅读页浮层 ---------- */
