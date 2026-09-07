@@ -103,7 +103,7 @@ struct ReaderPage {
             this.contentSegments = this.parseContent(this.article.content);
           } catch (e) {
             console.error('parseContent failed: ' + JSON.stringify(e));
-            this.contentSegments = [{ text: this.article.content, type: 'normal' }];
+            this.contentSegments = [{ text: this.article.content, anno: false, bold: false, hl: false }];
           }
         }
       } else {
@@ -119,7 +119,7 @@ struct ReaderPage {
                 this.contentSegments = this.parseContent(this.article.content);
               } catch (e) {
                 console.error('parseContent failed: ' + JSON.stringify(e));
-                this.contentSegments = [{ text: this.article.content, type: 'normal' }];
+                this.contentSegments = [{ text: this.article.content, anno: false, bold: false, hl: false }];
               }
             }
             break;

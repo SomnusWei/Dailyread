@@ -103,7 +103,7 @@ struct RandomReadPage {
             parsedSegments = this.parseContent(selectedArticle.content, selectedArticle.id);
           } catch (e) {
             console.error('parseContent failed: ' + JSON.stringify(e));
-            parsedSegments = [{ text: selectedArticle.content, type: 'normal', id: `${selectedArticle.id}_seg_err` }];
+            parsedSegments = [{ text: selectedArticle.content, anno: false, bold: false, hl: false, id: `${selectedArticle.id}_seg_err` }];
           }
         }
 
