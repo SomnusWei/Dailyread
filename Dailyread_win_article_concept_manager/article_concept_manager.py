@@ -937,7 +937,7 @@ class ReaderPreviewDialog(QDialog):
 
     @staticmethod
     def parse_segments(raw_content):
-        """与鸿蒙 Reader.parseContent 相同的流式状态机解析（## 注解、** 加粗）。"""
+        """与鸿蒙 Reader.parseContent 相同的流式状态机解析（## 注解、** 加粗、== 黄色高亮）。"""
         segments = []
         current_text = ''
         state = 'normal'
@@ -956,6 +956,12 @@ class ReaderPreviewDialog(QDialog):
                         current_text = ''
                     state = 'bold'
                     i += 2
+                elif i + 1 < n and raw_content[i] == '=' and raw_content[i + 1] == '=':
+                    if current_text:
+                        segments.append((current_text, 'normal'))
+                        current_text = ''
+                    state = 'highlight'
+                    i += 2
                 else:
                     current_text += raw_content[i]
                     i += 1
@@ -969,7 +975,7 @@ class ReaderPreviewDialog(QDialog):
                 else:
                     current_text += raw_content[i]
                     i += 1
-            else:  # bold
+            elif state == 'bold':
                 if i + 1 < n and raw_content[i] == '*' and raw_content[i + 1] == '*':
                     if current_text:
                         segments.append((current_text, 'bold'))
@@ -979,8 +985,18 @@ class ReaderPreviewDialog(QDialog):
                 else:
                     current_text += raw_content[i]
                     i += 1
+            else:  # highlight（==..==）
+                if i + 1 < n and raw_content[i] == '=' and raw_content[i + 1] == '=':
+                    if current_text:
+                        segments.append((current_text, 'highlight'))
+                        current_text = ''
+                    state = 'normal'
+                    i += 2
+                else:
+                    current_text += raw_content[i]
+                    i += 1
         if current_text:
-            segments.append((current_text, state if state in ('annotation', 'bold') else 'normal'))
+            segments.append((current_text, state if state in ('annotation', 'bold', 'highlight') else 'normal'))
         return segments
 
     def __init__(self, article: dict, article_page=None, parent=None):
@@ -1096,12 +1112,14 @@ class ReaderPreviewDialog(QDialog):
         except Exception:
             pass
 
-        def make_char_fmt(size, color, bold=False):
+        def make_char_fmt(size, color, bold=False, bg=None):
             fmt = QTextCharFormat()
             f = QFont()
             f.setPixelSize(size)
             fmt.setFont(f)
             fmt.setForeground(QColor(color))
+            if bg:
+                fmt.setBackground(QBrush(QColor(bg)))
             if bold:
                 fmt.setFontWeight(QFont.Weight.Bold)
             return fmt
@@ -1129,6 +1147,8 @@ class ReaderPreviewDialog(QDialog):
                     fmt = make_char_fmt(max(10, fs - 4), '#FF0000')
                 elif seg_type == 'bold':
                     fmt = make_char_fmt(fs, '#333333', bold=True)
+                elif seg_type == 'highlight':
+                    fmt = make_char_fmt(fs, '#333333', bg='#FFEB3B')
                 else:
                     fmt = base_normal
                 cursor.setCharFormat(fmt)  # 每段首个分片也需设置，否则沿用上一段格式导致加粗/注解丢失
