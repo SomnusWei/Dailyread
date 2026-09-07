@@ -1401,11 +1401,11 @@ class ArticleEditDialog(QDialog):
 
         # 按钮行（左侧预览，右侧保存/取消）
         btn_row = QHBoxLayout()
-        preview_btn = QPushButton("预览阅读")
+        preview_btn = QPushButton("预览阅读(&Q)")
         preview_btn.setStyleSheet(
             "QPushButton{background:#00897b;color:white;padding:6px 18px;border:none;border-radius:4px;font-size:13px;}"
             "QPushButton:hover{background:#00796b;}")
-        preview_btn.setToolTip("按鸿蒙端阅读界面实时预览当前内容（##…## 注解红字小号、**…** 加粗、图片）")
+        preview_btn.setToolTip("按鸿蒙端阅读界面实时预览当前内容（##…## 注解红字小号、**…** 加粗、图片）\n快捷键：Alt+Q")
         preview_btn.clicked.connect(self.preview_reading)
         btn_row.addWidget(preview_btn)
         btn_row.addStretch(1)
