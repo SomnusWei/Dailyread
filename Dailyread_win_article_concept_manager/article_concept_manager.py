@@ -19,8 +19,11 @@ import uuid
 from datetime import datetime
 
 import requests
-from PyQt6.QtCore import Qt, QTimer, QSize, QByteArray, QBuffer, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap, QImage, QPainter, QBrush, QPen, QRadialGradient
+from PyQt6.QtCore import Qt, QTimer, QSize, QByteArray, QBuffer, QThread, pyqtSignal, QUrl
+from PyQt6.QtGui import (
+    QColor, QFont, QIcon, QPixmap, QImage, QPainter, QBrush, QPen, QRadialGradient,
+    QTextCursor, QTextCharFormat, QTextBlockFormat, QTextImageFormat, QTextDocument
+)
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel,
@@ -745,6 +748,20 @@ def webp_base64_to_pixmap(b64_str: str, max_width: int = 300, max_height: int = 
         return QPixmap()
 
 
+def webp_base64_to_image(b64_str: str) -> QImage:
+    """将 WebP base64 字符串解码为原始尺寸 QImage（阅读预览用）"""
+    if not b64_str:
+        return QImage()
+    try:
+        raw_bytes = base64.b64decode(b64_str)
+        img = QImage()
+        img.loadFromData(QByteArray(raw_bytes), "WEBP")
+        return img
+    except Exception as e:
+        print(f"图片解码失败: {e}")
+        return QImage()
+
+
 def get_base64_size_kb(b64_str: str) -> float:
     """计算 base64 字符串对应原始数据的大小（KB）"""
     if not b64_str:
@@ -903,6 +920,250 @@ class NumericTableWidgetItem(QTableWidgetItem):
 
 
 # ==================== 文章编辑对话框 ====================
+
+class ReaderPreviewDialog(QDialog):
+    """阅读预览：在 Win 端按鸿蒙端「每日阅读·阅读界面」同款渲染预览文章（只读，不打卡不写库）。
+
+    渲染规则对齐 Dailyread_Harmony Reader.ets：
+      - 白底 #FFFFFF；标题粗体 fontSize+6、正文 #333333；注解 ##…## 红色且字号 -4；加粗 **…**
+      - 行距 ≈ 字号 × 1.8；A- / A+ 调节字号（12–60）；正文下方为图片；底部打卡样式展示。
+    """
+
+    FONT_MIN = 12
+    FONT_MAX = 60
+    FONT_DEFAULT = 26
+    FONT_STEP = 2
+    IMG_CONTENT_MAX_W = 560  # 宽图自适应到内容最大宽度（近似鸿蒙“满宽等比例”）
+
+    @staticmethod
+    def parse_segments(raw_content):
+        """与鸿蒙 Reader.parseContent 相同的流式状态机解析（## 注解、** 加粗）。"""
+        segments = []
+        current_text = ''
+        state = 'normal'
+        i, n = 0, len(raw_content)
+        while i < n:
+            if state == 'normal':
+                if i + 1 < n and raw_content[i] == '#' and raw_content[i + 1] == '#':
+                    if current_text:
+                        segments.append((current_text, 'normal'))
+                        current_text = ''
+                    state = 'annotation'
+                    i += 2
+                elif i + 1 < n and raw_content[i] == '*' and raw_content[i + 1] == '*':
+                    if current_text:
+                        segments.append((current_text, 'normal'))
+                        current_text = ''
+                    state = 'bold'
+                    i += 2
+                else:
+                    current_text += raw_content[i]
+                    i += 1
+            elif state == 'annotation':
+                if i + 1 < n and raw_content[i] == '#' and raw_content[i + 1] == '#':
+                    if current_text:
+                        segments.append((current_text, 'annotation'))
+                        current_text = ''
+                    state = 'normal'
+                    i += 2
+                else:
+                    current_text += raw_content[i]
+                    i += 1
+            else:  # bold
+                if i + 1 < n and raw_content[i] == '*' and raw_content[i + 1] == '*':
+                    if current_text:
+                        segments.append((current_text, 'bold'))
+                        current_text = ''
+                    state = 'normal'
+                    i += 2
+                else:
+                    current_text += raw_content[i]
+                    i += 1
+        if current_text:
+            segments.append((current_text, state if state in ('annotation', 'bold') else 'normal'))
+        return segments
+
+    def __init__(self, article: dict, article_page=None, parent=None):
+        super().__init__(parent or article_page)
+        self.article = article or {}
+        self.article_page = article_page  # ArticlePage 实例，供“编辑文章”跳回
+        try:
+            fs = int(self.article.get('fontSize') or self.FONT_DEFAULT)
+        except (TypeError, ValueError):
+            fs = self.FONT_DEFAULT
+        self.font_size = max(self.FONT_MIN, min(self.FONT_MAX, fs))
+        self.setWindowTitle("阅读预览")
+        self.setMinimumSize(680, 620)
+        self.resize(780, 880)
+        self.setup_ui()
+        self.render_content()
+
+    # ---------------- UI ----------------
+    def setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # 顶部工具条（返回 + 标题 + 音频标识）
+        topbar = QHBoxLayout()
+        topbar.setContentsMargins(10, 8, 10, 8)
+        topbar.setSpacing(8)
+        back_btn = QPushButton("✕")
+        back_btn.setFixedSize(30, 30)
+        back_btn.setStyleSheet(
+            "QPushButton{border:none;background:transparent;color:#666;font-size:15px;}"
+            "QPushButton:hover{color:#000;}")
+        back_btn.setToolTip("关闭预览")
+        back_btn.clicked.connect(self.reject)
+        topbar.addWidget(back_btn)
+
+        self.top_title = QLabel(self.article.get('title') or '未命名')
+        self.top_title.setStyleSheet("font-size:16px;font-weight:bold;color:#333;border:none;")
+        topbar.addWidget(self.top_title, 1)
+
+        audio = self.article.get('audiobase64') or ''
+        audio_label = QLabel("🎵 含音频" if audio else "")
+        audio_label.setStyleSheet("color:#8a8a8a;font-size:12px;")
+        audio_label.setToolTip("预览不播放音频，请以鸿蒙端/PWA 听音")
+        topbar.addWidget(audio_label)
+        root.addLayout(topbar)
+
+        line = QWidget()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background:#e8e8e8;")
+        root.addWidget(line)
+
+        # 正文（自带滚动）——对齐鸿蒙 Scroll 内容
+        self.text_edit = QTextEdit()
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setStyleSheet(
+            "QTextEdit{background:#FFFFFF;border:none;padding:14px 16px;}")
+        root.addWidget(self.text_edit, 1)
+
+        # 底部字号工具条（A- / 字号 / A+ …… 编辑）
+        fontbar = QHBoxLayout()
+        fontbar.setContentsMargins(12, 8, 12, 8)
+        fontbar.setSpacing(8)
+        minus = self._make_font_btn("A-", self._zoom_out)
+        self.size_label = QLabel(str(self.font_size))
+        self.size_label.setFixedWidth(34)
+        self.size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.size_label.setStyleSheet("font-size:14px;font-weight:bold;color:#333;")
+        plus = self._make_font_btn("A+", self._zoom_in)
+        fontbar.addWidget(minus)
+        fontbar.addWidget(self.size_label)
+        fontbar.addWidget(plus)
+        fontbar.addStretch(1)
+        root.addLayout(fontbar)
+
+    def _make_font_btn(self, text, slot):
+        btn = QPushButton(text)
+        btn.setFixedSize(38, 30)
+        btn.setStyleSheet(
+            "QPushButton{background:#f2f2f2;border:1px solid #ddd;border-radius:4px;color:#333;}"
+            "QPushButton:hover{background:#e0e0e0;}")
+        btn.clicked.connect(slot)
+        return btn
+
+    def _zoom_out(self):
+        self.font_size = max(self.FONT_MIN, self.font_size - self.FONT_STEP)
+        self.render_content()
+
+    def _zoom_in(self):
+        self.font_size = min(self.FONT_MAX, self.font_size + self.FONT_STEP)
+        self.render_content()
+
+    # ---------------- 渲染 ----------------
+    def render_content(self):
+        self.size_label.setText(str(self.font_size))
+        fs = self.font_size
+        doc = self.text_edit.document()
+        cursor = QTextCursor(doc)
+        cursor.select(QTextCursor.SelectionType.Document)
+        cursor.removeSelectedText()
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+
+        # 默认字体：像素字号与鸿蒙一致（中文用系统默认族即可）
+        base_font = QFont()
+        base_font.setPixelSize(fs)
+        doc.setDefaultFont(base_font)
+
+        block_fmt = QTextBlockFormat()
+        try:
+            # 行距 ≈ 字号 × 1.8（对齐鸿蒙 lineHeight = fontSize * 1.8）
+            lh_type = int(QTextBlockFormat.LineHeightTypes.ProportionalHeight)
+            block_fmt.setLineHeight(180, lh_type)
+        except Exception:
+            pass
+
+        def make_char_fmt(size, color, bold=False):
+            fmt = QTextCharFormat()
+            f = QFont()
+            f.setPixelSize(size)
+            fmt.setFont(f)
+            fmt.setForeground(QColor(color))
+            if bold:
+                fmt.setFontWeight(QFont.Weight.Bold)
+            return fmt
+
+        article = self.article
+        title = article.get('title') or ''
+        chinese_chars = article.get('chineseChars', 0)
+
+        # 标题行（粗体 fontSize+6）
+        cursor.setCharFormat(make_char_fmt(fs + 6, '#333333', bold=True))
+        cursor.insertText(title)
+        # 字数行
+        cursor.insertBlock(block_fmt)
+        cursor.setCharFormat(make_char_fmt(12, '#999999'))
+        cursor.insertText(f"{chinese_chars} 字")
+        # 正文
+        cursor.insertBlock(block_fmt)
+        content = article.get('content') or ''
+        should_show_content = bool(content.strip()) or not (article.get('iscontent') is False and article.get('imagewebp'))
+        if should_show_content:
+            base_normal = make_char_fmt(fs, '#333333')
+            cursor.setCharFormat(base_normal)
+            for seg_text, seg_type in self.parse_segments(content):
+                if seg_type == 'annotation':
+                    fmt = make_char_fmt(max(10, fs - 4), '#FF0000')
+                elif seg_type == 'bold':
+                    fmt = make_char_fmt(fs, '#333333', bold=True)
+                else:
+                    fmt = base_normal
+                cursor.setCharFormat(fmt)  # 每段首个分片也需设置，否则沿用上一段格式导致加粗/注解丢失
+                pieces = seg_text.split('\n')
+                for idx, piece in enumerate(pieces):
+                    if idx > 0:
+                        cursor.insertBlock(block_fmt)
+                        cursor.setCharFormat(fmt)
+                    if piece:
+                        cursor.insertText(piece)
+        # 图片（<500px 原尺寸居中，>=500px 等宽自适应）
+        img_b64 = article.get('imagewebp') or ''
+        if img_b64:
+            img = webp_base64_to_image(img_b64)
+            if not img.isNull():
+                orig_w, orig_h = img.width(), img.height()
+                if 0 < orig_w < 500:
+                    target_w, target_h = orig_w, orig_h
+                else:
+                    ratio = orig_h / float(orig_w) if orig_w else 1.0
+                    target_w = min(orig_w, self.IMG_CONTENT_MAX_W)
+                    target_h = int(round(target_w * ratio))
+                cursor.insertBlock(block_fmt)
+                pix = QPixmap.fromImage(img)
+                url = QUrl('article_preview_image')
+                doc.addResource(QTextDocument.ResourceType.ImageResource, url, pix)
+                img_fmt = QTextImageFormat()
+                img_fmt.setName('article_preview_image')
+                img_fmt.setWidth(target_w)
+                img_fmt.setHeight(target_h)
+                cursor.insertImage(img_fmt)
+        # 末尾留白
+        cursor.insertBlock(block_fmt)
+        cursor.insertText('')
+
 
 class ArticleEditDialog(QDialog):
     """文章编辑对话框"""
@@ -1138,11 +1399,38 @@ class ArticleEditDialog(QDialog):
 
         main_layout.addLayout(content_layout)
 
-        # 按钮
+        # 按钮行（左侧预览，右侧保存/取消）
+        btn_row = QHBoxLayout()
+        preview_btn = QPushButton("预览阅读")
+        preview_btn.setStyleSheet(
+            "QPushButton{background:#00897b;color:white;padding:6px 18px;border:none;border-radius:4px;font-size:13px;}"
+            "QPushButton:hover{background:#00796b;}")
+        preview_btn.setToolTip("按鸿蒙端阅读界面实时预览当前内容（##…## 注解红字小号、**…** 加粗、图片）")
+        preview_btn.clicked.connect(self.preview_reading)
+        btn_row.addWidget(preview_btn)
+        btn_row.addStretch(1)
         buttonBox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttonBox.accepted.connect(self.on_ok)
         buttonBox.rejected.connect(self.reject)
-        main_layout.addWidget(buttonBox)
+        btn_row.addWidget(buttonBox)
+        main_layout.addLayout(btn_row)
+
+    def preview_reading(self):
+        """在编辑界面内实时预览当前编辑中的文章（未保存内容同样可预览；只读不打卡不写库）"""
+        title = self.titleEdit.text().strip() or '未命名'
+        content = self.contentEdit.toPlainText()
+        chinese_chars = sum(1 for ch in content if '\u4e00' <= ch <= '\u9fff')
+        prev_article = {
+            'title': title,
+            'content': content,
+            'contentHtml': '',
+            'chineseChars': chinese_chars,
+            'imagewebp': self.imagewebp_data,
+            'audiobase64': self.audiobase64_data,
+            'iscontent': self.isContentCheck.isChecked(),
+            'fontSize': self.article.get('fontSize') if isinstance(self.article, dict) else None,
+        }
+        ReaderPreviewDialog(prev_article, parent=self).exec()
 
     def on_select_image(self):
         """选择图片并压缩为WebP"""
