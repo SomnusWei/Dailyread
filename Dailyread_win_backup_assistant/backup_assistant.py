@@ -829,17 +829,25 @@ class MainWindow(QMainWindow):
 
     # ---------- 计划任务 ----------
     def task_status_text(self) -> str:
-        ps = ('$t = Get-ScheduledTask -TaskName "{0}" -ErrorAction SilentlyContinue;'
-              ' if ($t) {{ "{1}|" + $t.State + "|" + $t.LastRunTime.ToString("yyyy-MM-dd HH:mm") '
-              '+ "|" + $t.NextRunTime.ToString("yyyy-MM-dd HH:mm") }} else {{ "NONE" }}').replace('{1}', TASK_NAME)
+        # 通过 ScheduledTaskInfo 读取运行时间（LastRunTime/NextRunTime 可为 null 或 0001/9999，须归一）
+        ps = ('$t = Get-ScheduledTask -TaskName "%s" -ErrorAction SilentlyContinue;'
+              ' if ($t) { $i = $t | Get-ScheduledTaskInfo;'
+              ' $last = $null; $next = $null;'
+              ' if ($null -ne $i) { $last = $i.LastTaskRunTime; $next = $i.NextRunTime };'
+              ' if ($null -ne $last) { $last = $last.ToString("yyyy-MM-dd HH:mm") } else { $last = "NEVER" };'
+              ' if ($null -ne $next) { $next = $next.ToString("yyyy-MM-dd HH:mm") } else { $next = "NEVER" };'
+              ' "%s|" + $t.State + "|" + $last + "|" + $next } else { "NONE" }') % (TASK_NAME, TASK_NAME)
         try:
             r = subprocess.run(['powershell', '-NoProfile', '-Command', ps],
-                               capture_output=True, text=True, timeout=15, encoding='utf-8')
+                               capture_output=True, text=True, timeout=15,
+                               encoding='utf-8', errors='replace')
+            if r.returncode != 0 and not r.stdout.strip():
+                return '查询失败：PowerShell 返回异常（%s）' % r.stderr.strip()[-200:]
             out = r.stdout.strip().split('|')
             if out and out[0] == TASK_NAME:
                 state = out[1] if len(out) > 1 else '?'
-                last = out[2] if len(out) > 2 and out[2] != '01/01/0001 00:00' else '从未'
-                nxt = out[3] if len(out) > 3 and out[3] != '01/01/0001 00:00' else '未安排'
+                last = out[2] if len(out) > 2 and out[2] not in ('NEVER', '01/01/0001 00:00') else '从未'
+                nxt = out[3] if len(out) > 3 and out[3] not in ('NEVER', '01/01/0001 00:00', '9999-12-31 00:00') else '未安排'
                 return '状态：%s ｜ 上次运行：%s ｜ 下次运行：%s' % (state, last, nxt)
             return '尚未注册计划任务'
         except Exception as e:
