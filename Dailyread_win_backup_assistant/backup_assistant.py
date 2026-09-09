@@ -153,7 +153,6 @@ class BackupWorker(QThread):
         self.cancel = False
 
     def _log(self, msg: str):
-        write_log_line(msg)
         self.log_sig.emit(msg)
 
     def stop(self):
@@ -230,45 +229,33 @@ class BackupWorker(QThread):
                     shutil.rmtree(stage, ignore_errors=True)
                 os.makedirs(stage)
 
-                # 收集远端文件清单
+                # 收集远端文件清单（db-*.sql / site-*.tar.gz / sha256.txt，跳过日志）
+                attrs = sftp.listdir_attr(self.cfg['remote_root'] + '/' + name)
                 remote_files = []
-                for a in sftp.listdir_attr(self.cfg['remote_root'] + '/' + name):
-                    if a.filename == 'backup.log' or BACKUP_PAT.match(name) is None and a.filename.endswith('.log'):
+                for a in attrs:
+                    fn = a.filename
+                    if fn == 'backup.log' or not stat.S_ISREG(a.st_mode):
                         continue
-                    if a.filename in ('db-' + name[7:] + '.sql', 'site-' + name[7:] + '.tar.gz',
-                                      'sha256.txt') or re.match(r'^(db-|site-)', a.filename) or a.filename == 'sha256.txt':
-                        if stat.S_ISREG(a.st_mode):
-                            remote_files.append(a.filename)
+                    if fn == 'sha256.txt' or re.match(r'^(db-.+\.sql|site-.+\.tar\.gz)$', fn):
+                        remote_files.append(fn)
                 remote_files = sorted(set(remote_files))
-                # 至少应含 db/site 两个包与校验文件
                 if not remote_files:
                     raise RuntimeError('服务器包内容为空：%s' % name)
 
                 total_files = len(remote_files)
                 done_bytes = 0
-                total_bytes = sum(a.st_size for a in sftp.listdir_attr(self.cfg['remote_root'] + '/' + name)
-                                  if a.filename in remote_files)
-                last_emit = 0.0
+                total_bytes = sum(a.st_size for a in attrs if a.filename in remote_files)
                 for fn in remote_files:
                     if self.cancel:
                         raise RuntimeError('已取消')
                     index += 1
                     rp = '%s/%s/%s' % (self.cfg['remote_root'], name, fn)
                     lp = os.path.join(stage, fn)
-                    self._log('下载 %s (%s) [%d/%d] …' % (fn, human_size(self._rstat(sftp, rp)), index, total_files))
+                    file_size = self._rstat(sftp, rp)
+                    self._log('下载 %s (%s) [%d/%d] …' % (fn, human_size(file_size), index, total_files))
                     self.file_sig.emit(fn, index, total_files)
-
-                    def cb(t, tot):
-                        nonlocal last_emit
-                        if tot <= 0:
-                            return
-                        pct = (done_bytes + t) / total_bytes * 100 if total_bytes else 0
-                        now = time.time()
-                        if now - last_emit > 0.12 or t >= tot:
-                            last_emit = now
-                            self.progress_sig.emit(min(pct, 99))
-                    sftp.get(rp, lp, callback=cb)
-                    done_bytes += self._rstat(sftp, rp)
+                    self._download_file(sftp, rp, lp, file_size, done_bytes, total_bytes)
+                    done_bytes += file_size
                     self.progress_sig.emit(min(done_bytes / total_bytes * 100, 99))
 
                 # SHA-256 校验
@@ -311,6 +298,37 @@ class BackupWorker(QThread):
             return int(sftp.stat(path).st_size)
         except Exception:
             return 0
+
+    def _download_file(self, sftp, remote_path: str, local_path: str,
+                       file_size: int, done_bytes: int, total_bytes: int):
+        """手动分块下载——在 QThread 内直接读写 + emit 进度，
+        不使用 paramiko callback（paramiko 从 Transport 线程回调，
+        在打包 EXE 中跨线程发 Qt 信号会闪退）。"""
+        CHUNK = 65536
+        rf = sftp.open(remote_path, 'rb')
+        rf.settimeout(60)
+        written = 0
+        last_pct = 0.0
+        try:
+            with open(local_path, 'wb') as lf:
+                while True:
+                    if self.cancel:
+                        raise RuntimeError('已取消')
+                    data = rf.read(CHUNK)
+                    if not data:
+                        break
+                    lf.write(data)
+                    written += len(data)
+                    if total_bytes > 0:
+                        pct = (done_bytes + written) / total_bytes * 100
+                        if pct - last_pct >= 1.0 or written >= file_size:
+                            last_pct = pct
+                            self.progress_sig.emit(min(pct, 99))
+        finally:
+            try:
+                rf.close()
+            except Exception:
+                pass
 
     def _sha_of(self, path: str) -> str:
         h = hashlib.sha256()
@@ -944,6 +962,7 @@ def run_auto(cfg: dict) -> int:
     result = {}
 
     w = BackupWorker(cfg, False)
+    w.log_sig.connect(lambda m: write_log_line(m))
     w.progress_sig.connect(lambda p: None)
 
     from PyQt6.QtCore import QCoreApplication
