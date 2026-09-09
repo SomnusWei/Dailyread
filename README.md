@@ -338,6 +338,12 @@ Win 端录入            后端存储                鸿蒙端播放
 
 ## 📝 更新日志
 
+### 2026-09-09
+
+**数据备份（服务器 → 本地/NAS 全链路）：**
+- 🆕 **服务器定时自动出包**：`dailyread-server/scripts/backup.sh` 每日 03:10 经 cron 执行——`mysqldump --single-transaction` 在线热备全库（含建库语句，不锁表）+ `public/uploads/schema.sql` 站点数据打包，产物目录 `backups/backup-<时间>/`（`db-*.sql`、`site-*.tar.gz`、`sha256.txt`、`backup.log`）；按目录名时间戳自动清理超过 30 天的历史包。数据库凭据经 `scripts/db_env.js`（dotenv）从应用 `.env` 读取，脚本不硬编码、不回显密码
+- 🆕 **Windows 备份助手 App**（`Dailyread_win_backup_assistant/`，已打包 `每日阅读备份助手.exe`）：PyQt6 + paramiko(SFTP) 从部署服务器拉取备份包到**本地目录或 NAS 共享（`\\NAS\…`）**。提供：① 手动「立即备份（远程出包+拉取）」与「仅拉取最新包」；② 三页界面（立即备份/历史备份/定期自动）；③ 定期自动备份——一键注册 **Windows 计划任务**（每天或每周指定时间，可选“错过开机尽快补跑”）；④ 下载后自动 **SHA-256 完整性校验**（存在且校验一致的包自动跳过）；⑤ 按保留天数清理过期备份；⑥ 月度日志文件 + 界面内“恢复指引”（数据库导入与站点解压步骤）。EXE 静默模式 `--auto` 供计划任务调用
+
 ### 2026-09-05
 
 **学习中心 · 在线考试 + 中医综合 skill 试卷生成端到端对接：**

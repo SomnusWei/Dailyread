@@ -1,0 +1,4 @@
+# 该目录脚本部署到 Linux（服务端），统一以 LF 检出，避免 CRLF 造成 bash/node 报错
+*.sh   text eol=lf
+*.js   text eol=lf
+*.py   text eol=lf
