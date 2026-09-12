@@ -169,27 +169,44 @@ def human_size(size):
 
 def main():
     parser = argparse.ArgumentParser(description="中医知识库索引生成")
-    parser.add_argument("--textbook-dir", default=os.path.abspath(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "教材")),
-        help="教材目录（默认取与本 skill 同级的「教材」文件夹）")
+    parser.add_argument("--textbook-dir", default=None,
+        help="教材目录（不指定则按 --track 自动选择）")
+    parser.add_argument("--track", choices=["中医", "西医"], default="中医",
+        help="医学体系：中医/西医（默认中医）")
     parser.add_argument("--output", default="references/textbook-index.md", help="输出索引文件")
     args = parser.parse_args()
+    if args.textbook_dir is None:
+        sub = "中医教材" if args.track == "中医" else "西医教材"
+        args.textbook_dir = os.path.abspath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", sub))
+
+    # 收集所有 txt，并标记是否有同名 PDF（来源于 PDF 转写）
+    all_files = os.listdir(args.textbook_dir)
+    pdf_stems = {os.path.splitext(f)[0] for f in all_files if f.lower().endswith(".pdf")}
 
     files = sorted(
-        f for f in os.listdir(args.textbook_dir)
+        f for f in all_files
         if f.lower().endswith(".txt")
     )
     result = {cat: [] for cat in CATEGORY_ORDER}
+    pdf_count = 0
     for f in files:
         cat = classify(f)
         size = os.path.getsize(os.path.join(args.textbook_dir, f))
-        result[cat].append((f, size))
+        stem = os.path.splitext(f)[0]
+        from_pdf = stem in pdf_stems
+        if from_pdf:
+            pdf_count += 1
+        result[cat].append((f, size, from_pdf))
 
     lines = []
     lines.append("# 中医知识库总索引（教材目录全量）")
     lines.append("")
     lines.append(f"> 自动生成于 {datetime.now().strftime('%Y-%m-%d %H:%M')}，"
-                 f"共 {len(files)} 个文本文件。重建索引：`python scripts/build_textbook_index.py`")
+                 f"共 {len(files)} 个文本文件"
+                 f"（其中 {pdf_count} 个由 PDF 自动转写）。"
+                 f"重建索引：`python scripts/build_textbook_index.py`"
+                 f"｜同步新增 PDF：`python scripts/sync_new_materials.py`")
     lines.append("> 检索方法：先按类目锁定文件，再用 `scripts/search_textbooks.py` 或 Grep 在指定文件内搜关键词。")
     lines.append("")
     lines.append("## 类目总览")
@@ -208,15 +225,16 @@ def main():
         lines.append("")
         lines.append(f"> {CATEGORY_DESC[cat]}")
         lines.append("")
-        for f, size in result[cat]:
-            lines.append(f"- `{f}`（{human_size(size)}）")
+        for f, size, from_pdf in result[cat]:
+            tag = " `[PDF转]`" if from_pdf else ""
+            lines.append(f"- `{f}`（{human_size(size)}）{tag}")
         lines.append("")
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
 
-    print(f"✅ 索引已生成: {args.output}")
+    print(f"[OK] 索引已生成: {args.output}  (txt={len(files)}, from_pdf={pdf_count})")
     for cat in CATEGORY_ORDER:
         if result[cat]:
             print(f"   {cat}: {len(result[cat])}")

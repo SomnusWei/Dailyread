@@ -21,8 +21,12 @@ from text_utils import read_text_lines, clean_ancient_markup  # noqa: E402
 
 # 默认教材目录 = 与本 skill 同级的「教材」资料夹（安装时把教材放到 skill 根目录下，
 # 即与 SKILL.md 同一文件夹；不同位置可用 --textbook-dir 覆盖）
-DEFAULT_TEXTBOOK_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "教材"))
+def _default_textbook_dir(track="中医"):
+    sub = "中医教材" if track == "中医" else "西医教材"
+    return os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", sub))
+
+TRACK_CHOICES = ["中医", "西医"]
 
 # 类目 -> 文件名关键词（与 build_textbook_index.py 保持一致，简化版）
 CATEGORY_HINTS = {
@@ -84,7 +88,8 @@ def search_file(path, keywords, ctx_before, ctx_after):
 def main():
     parser = argparse.ArgumentParser(description="中医知识库全库检索")
     parser.add_argument("--keyword", required=True, help="搜索关键词，多个用逗号分隔")
-    parser.add_argument("--textbook-dir", default=DEFAULT_TEXTBOOK_DIR, help="教材目录")
+    parser.add_argument("--track", choices=["中医", "西医"], default="中医", help="医学体系：中医/西医（默认中医）")
+    parser.add_argument("--textbook-dir", default=None, help="教材目录（不指定则按 --track 自动选择）")
     parser.add_argument("--category", default="", help="类目过滤，逗号分隔（如: 伤寒论,金匮要略）")
     parser.add_argument("--files", default="", help="指定文件名，逗号分隔（精确匹配）")
     parser.add_argument("--context", type=int, default=6, help="上下文行数（默认6）")
@@ -93,6 +98,8 @@ def main():
     parser.add_argument("--quiet", action="store_true", help="只输出文件统计，不输出摘录")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     args = parser.parse_args()
+    if args.textbook_dir is None:
+        args.textbook_dir = _default_textbook_dir(args.track)
 
     keywords = [k.strip() for k in args.keyword.split(",") if k.strip()]
     categories = [c.strip() for c in args.category.split(",") if c.strip()]

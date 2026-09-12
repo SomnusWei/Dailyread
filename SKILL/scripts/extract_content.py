@@ -33,8 +33,12 @@ from text_utils import read_text_lines, clean_ancient_markup  # noqa: E402
 
 # 默认教材目录 = 与本 skill 同级的「教材」资料夹（安装时把教材放到 skill 根目录下，
 # 即与 SKILL.md 同一文件夹；不同位置可用 --textbook-dir 覆盖）
-DEFAULT_TEXTBOOK_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "教材"))
+def _default_textbook_dir(track="中医"):
+    sub = "中医教材" if track == "中医" else "西医教材"
+    return os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", sub))
+
+TRACK_CHOICES = ["中医", "西医"]
 KEYWORD_MAPPING_FILE = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "references", "keyword-mapping.md")
 
@@ -260,15 +264,18 @@ def save_modules(modules, output_dir, system):
 def main():
     parser = argparse.ArgumentParser(description="中医讲义素材提取工具（711 文件知识库版）")
     parser.add_argument("--system", default="", help="目标系统 (如: 肺系、心系、脾胃系、肝胆系、肾系、脑系、气血津液、肢体经络)")
+    parser.add_argument("--track", choices=["中医", "西医"], default="中医", help="医学体系：中医/西医（默认中医）")
     parser.add_argument("--keyword", default="", help="自定义关键词，逗号分隔（与 --system 二选一）")
     parser.add_argument("--depth", default="standard", choices=["basic", "standard", "deep"],
                         help="深度等级: basic/standard/deep (默认: standard)")
     parser.add_argument("--ancient", action="store_true",
                         help="检索古籍库（701 部，建议 depth=deep 时使用）")
     parser.add_argument("--category", default="", help="古籍类目过滤，逗号分隔（如: 伤寒论,金匮要略）")
-    parser.add_argument("--textbook-dir", default=DEFAULT_TEXTBOOK_DIR, help="教材目录路径")
+    parser.add_argument("--textbook-dir", default=None, help="教材目录路径")
     parser.add_argument("--output-dir", default="讲义素材", help="输出目录路径")
     args = parser.parse_args()
+    if args.textbook_dir is None:
+        args.textbook_dir = _default_textbook_dir(args.track)
 
     if not args.system and not args.keyword:
         parser.error("必须指定 --system 或 --keyword 之一")

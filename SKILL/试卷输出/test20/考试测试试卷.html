@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<!-- exam_id: exam-f29a0f8136 | submit_url: /api/exam/submit | 成绩上报字段说明见试卷内 JS（提交时 POST JSON） -->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="exam-id" content="exam-f29a0f8136">
+<meta name="exam-submit-url" content="/api/exam/submit">
+<meta name="exam-total-score" content="20">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>考试测试试卷</title>
+<style>
+:root {
+  --c-primary: #8b1e1e; --c-primary-light: #fdf2f2;
+  --c-ink: #2d2a26; --c-muted: #7a736b;
+  --c-right: #2e7d32; --c-right-bg: #e8f5e9;
+  --c-wrong: #c62828; --c-wrong-bg: #ffebee;
+  --c-border: #e2ddd6; --c-card: #ffffff; --c-page: #f7f5f2;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: var(--c-page);
+       color: var(--c-ink); line-height: 1.75; padding: 24px 12px 60px; }
+.paper { max-width: 860px; margin: 0 auto; }
+.paper-head { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 12px;
+               padding: 28px 32px; margin-bottom: 20px; border-top: 4px solid var(--c-primary); }
+.paper-head h1 { font-size: 22px; color: var(--c-primary); margin-bottom: 8px; }
+.paper-meta { color: var(--c-muted); font-size: 14px; }
+.paper-outline { margin-top: 10px; font-size: 14px; background: var(--c-primary-light);
+                  border-radius: 8px; padding: 10px 14px; }
+.name-row { margin-top: 16px; display: flex; align-items: center; gap: 10px; }
+.name-row label { font-weight: bold; white-space: nowrap; }
+#student-name { flex: 1; max-width: 280px; padding: 9px 12px; font-size: 15px;
+                 border: 1.5px solid var(--c-border); border-radius: 8px; }
+#student-name:focus { outline: none; border-color: var(--c-primary); }
+.question { background: var(--c-card); border: 1px solid var(--c-border); border-radius: 12px;
+             padding: 20px 24px; margin-bottom: 16px; }
+.q-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.q-no { font-weight: bold; color: var(--c-primary); }
+.q-type { font-size: 12px; padding: 2px 10px; border-radius: 10px; background: #eef2f5; color: #456; }
+.t-short { background: #f3ecf7; color: #6a4c93; }
+.q-score { color: var(--c-muted); font-size: 13px; }
+.verdict { margin-left: auto; font-weight: bold; }
+.v-right { color: var(--c-right); } .v-partial { color: #e65100; } .v-wrong { color: var(--c-wrong); }
+.q-stem { font-size: 15px; margin-bottom: 12px; }
+.opt { display: block; padding: 9px 12px; margin: 6px 0; border-radius: 8px; cursor: pointer;
+        border: 1px solid transparent; }
+.opt:hover { background: var(--c-page); }
+.opt-right { background: var(--c-right-bg) !important; border-color: var(--c-right); }
+.opt-wrong { background: var(--c-wrong-bg) !important; border-color: var(--c-wrong); }
+.fill-input, .short-input { width: 100%; padding: 10px 12px; font-size: 15px;
+                             border: 1.5px solid var(--c-border); border-radius: 8px;
+                             font-family: inherit; }
+.fill-input:focus, .short-input:focus { outline: none; border-color: var(--c-primary); }
+.fill-right { background: var(--c-right-bg); border-color: var(--c-right) !important; }
+.fill-wrong { background: var(--c-wrong-bg); border-color: var(--c-wrong) !important; }
+.self-grade { margin-top: 10px; font-size: 14px; color: #6a4c93; background: #f3ecf7;
+               border-radius: 8px; padding: 8px 12px; }
+.sg-input { width: 64px; padding: 4px 8px; border: 1.5px solid #d5c6e3; border-radius: 6px; }
+.feedback { margin-top: 12px; font-size: 14px; background: var(--c-page);
+             border-radius: 8px; padding: 12px 16px; }
+.feedback p { margin: 4px 0; }
+.miss, .wrong-pick { color: var(--c-wrong); }
+.ref-answer { background: #fffde7; border-left: 3px solid #f9a825; border-radius: 0 8px 8px 0;
+               padding: 12px 16px; }
+.ref-text { white-space: pre-wrap; }
+.src { color: var(--c-muted); font-size: 12.5px; }
+.q-full { border-color: var(--c-right); }
+.q-zero { border-color: #f3c3c3; }
+.hidden { display: none; }
+.submit-bar { text-align: center; margin: 28px 0; }
+#submit-btn { background: var(--c-primary); color: #fff; border: none; font-size: 16px;
+               padding: 13px 52px; border-radius: 999px; cursor: pointer; font-weight: bold;
+               box-shadow: 0 4px 14px rgba(139,30,30,.3); }
+#submit-btn:hover { filter: brightness(1.1); }
+#submit-btn:disabled { background: #9e9e9e; box-shadow: none; cursor: default; }
+#score-card { background: var(--c-card); border: 2px solid var(--c-primary); border-radius: 14px;
+               padding: 26px 32px; margin-top: 20px; }
+#score-card h2 { color: var(--c-primary); margin-bottom: 16px; }
+.score-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+               gap: 12px; }
+.s-item { background: var(--c-page); border-radius: 10px; padding: 12px 16px; }
+.s-label { font-size: 12.5px; color: var(--c-muted); }
+.s-value { font-size: 19px; font-weight: bold; margin-top: 3px; }
+.s-total { background: var(--c-primary); color: #fff; }
+.s-total .s-label { color: rgba(255,255,255,.8); }
+.score-bar { height: 10px; background: #eee; border-radius: 5px; margin-top: 16px; overflow: hidden; }
+.score-bar-fill { height: 100%; background: linear-gradient(90deg, #d84343, #8b1e1e);
+                   border-radius: 5px; transition: width .8s ease; }
+.score-note { font-size: 12.5px; color: var(--c-muted); margin-top: 10px; }
+/* —— 成绩回显模式（?r=1 + localStorage['lc_exam_review:<exam_id>']）样式 —— */
+.review-banner { background: #fff8e1; border: 1px solid #f0c36d; color: #6d4c00;
+                  border-radius: 8px; padding: 10px 14px; margin-top: 14px; font-size: 14px; }
+.review-tag { display: inline-block; background: var(--c-primary); color: #fff; font-size: 12px;
+               padding: 2px 10px; border-radius: 10px; vertical-align: middle; margin-left: 6px; }
+.ok-pick { color: var(--c-right); }
+.paper-foot { text-align: center; color: var(--c-muted); font-size: 12.5px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="paper">
+  <div class="paper-head">
+    <h1>考试测试试卷</h1>
+    <div class="paper-meta">共 20 题 · 时长 30分钟 · 满分 20 分 · 客观题 20 题（自动批改）</div>
+    <div class="paper-outline"><b>出题大纲：</b>中药学·解表药功效专项自测：发散风寒药与发散风热药（麻黄、桂枝、紫苏、生姜、香薷、荆芥、防风、羌活、白芷、细辛、辛夷、薄荷、牛蒡子、蝉蜕、桑叶、菊花、升麻等）的功效。共20题（单选16+多选4），每题1分。</div>
+    <div class="name-row">
+      <label for="student-name">👤 学生姓名：</label>
+      <input type="text" id="student-name" placeholder="请输入姓名后开始作答">
+    </div>
+  </div>
+
+<div class="question" data-qid="1" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 1 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-1"></span></div>
+<div class="q-stem">下列药物功效均为“发汗解表，宣肺平喘，利水消肿”的是（　）</div>
+<label class="opt opt-1-0"><input type="radio" name="q1" value="0"> <span>A. 麻黄</span></label>
+<label class="opt opt-1-1"><input type="radio" name="q1" value="1"> <span>B. 桂枝</span></label>
+<label class="opt opt-1-2"><input type="radio" name="q1" value="2"> <span>C. 香薷</span></label>
+<label class="opt opt-1-3"><input type="radio" name="q1" value="3"> <span>D. 紫苏叶</span></label>
+<label class="opt opt-1-4"><input type="radio" name="q1" value="4"> <span>E. 生姜</span></label>
+<div class="feedback hidden" id="fb-1"></div>
+</div>
+<div class="question" data-qid="2" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 2 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-2"></span></div>
+<div class="q-stem">桂枝的功效是（　）</div>
+<label class="opt opt-2-0"><input type="radio" name="q2" value="0"> <span>A. 发汗解肌，温通经脉，助阳化气</span></label>
+<label class="opt opt-2-1"><input type="radio" name="q2" value="1"> <span>B. 发汗解表，宣肺平喘</span></label>
+<label class="opt opt-2-2"><input type="radio" name="q2" value="2"> <span>C. 解表散寒，行气和胃</span></label>
+<label class="opt opt-2-3"><input type="radio" name="q2" value="3"> <span>D. 祛风解表，胜湿止痛</span></label>
+<label class="opt opt-2-4"><input type="radio" name="q2" value="4"> <span>E. 发汗解表，化湿和中</span></label>
+<div class="feedback hidden" id="fb-2"></div>
+</div>
+<div class="question" data-qid="3" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 3 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-3"></span></div>
+<div class="q-stem">紫苏叶的功效是（　）</div>
+<label class="opt opt-3-0"><input type="radio" name="q3" value="0"> <span>A. 解表散寒，行气和胃，解鱼蟹毒</span></label>
+<label class="opt opt-3-1"><input type="radio" name="q3" value="1"> <span>B. 解表散寒，温肺化饮</span></label>
+<label class="opt opt-3-2"><input type="radio" name="q3" value="2"> <span>C. 发汗解表，温中止呕</span></label>
+<label class="opt opt-3-3"><input type="radio" name="q3" value="3"> <span>D. 解表散寒，祛风止痛</span></label>
+<label class="opt opt-3-4"><input type="radio" name="q3" value="4"> <span>E. 发表散寒，利水消肿</span></label>
+<div class="feedback hidden" id="fb-3"></div>
+</div>
+<div class="question" data-qid="4" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 4 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-4"></span></div>
+<div class="q-stem">生姜的功效是（　）</div>
+<label class="opt opt-4-0"><input type="radio" name="q4" value="0"> <span>A. 解表散寒，温中止呕，温肺止咳</span></label>
+<label class="opt opt-4-1"><input type="radio" name="q4" value="1"> <span>B. 解表散寒，行气和胃</span></label>
+<label class="opt opt-4-2"><input type="radio" name="q4" value="2"> <span>C. 发汗解表，消肿排脓</span></label>
+<label class="opt opt-4-3"><input type="radio" name="q4" value="3"> <span>D. 解表散寒，宣通鼻窍</span></label>
+<label class="opt opt-4-4"><input type="radio" name="q4" value="4"> <span>E. 温中止呕，回阳救逆</span></label>
+<div class="feedback hidden" id="fb-4"></div>
+</div>
+<div class="question" data-qid="5" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 5 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-5"></span></div>
+<div class="q-stem">香薷的功效是（　）</div>
+<label class="opt opt-5-0"><input type="radio" name="q5" value="0"> <span>A. 发汗解表，化湿和中，利水消肿</span></label>
+<label class="opt opt-5-1"><input type="radio" name="q5" value="1"> <span>B. 发汗解表，宣肺平喘</span></label>
+<label class="opt opt-5-2"><input type="radio" name="q5" value="2"> <span>C. 解表散寒，行气和胃</span></label>
+<label class="opt opt-5-3"><input type="radio" name="q5" value="3"> <span>D. 祛风解表，胜湿止痛</span></label>
+<label class="opt opt-5-4"><input type="radio" name="q5" value="4"> <span>E. 发汗解表，温中止呕</span></label>
+<div class="feedback hidden" id="fb-5"></div>
+</div>
+<div class="question" data-qid="6" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 6 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-6"></span></div>
+<div class="q-stem">既能祛风解表，又能透疹消疮、止血的药物是（　）</div>
+<label class="opt opt-6-0"><input type="radio" name="q6" value="0"> <span>A. 荆芥</span></label>
+<label class="opt opt-6-1"><input type="radio" name="q6" value="1"> <span>B. 防风</span></label>
+<label class="opt opt-6-2"><input type="radio" name="q6" value="2"> <span>C. 紫苏叶</span></label>
+<label class="opt opt-6-3"><input type="radio" name="q6" value="3"> <span>D. 麻黄</span></label>
+<label class="opt opt-6-4"><input type="radio" name="q6" value="4"> <span>E. 桂枝</span></label>
+<div class="feedback hidden" id="fb-6"></div>
+</div>
+<div class="question" data-qid="7" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 7 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-7"></span></div>
+<div class="q-stem">防风的功效是（　）</div>
+<label class="opt opt-7-0"><input type="radio" name="q7" value="0"> <span>A. 祛风解表，胜湿止痛，止痉</span></label>
+<label class="opt opt-7-1"><input type="radio" name="q7" value="1"> <span>B. 祛风解表，透疹消疮</span></label>
+<label class="opt opt-7-2"><input type="radio" name="q7" value="2"> <span>C. 解表散寒，祛风止痛</span></label>
+<label class="opt opt-7-3"><input type="radio" name="q7" value="3"> <span>D. 发汗解表，祛风除湿</span></label>
+<label class="opt opt-7-4"><input type="radio" name="q7" value="4"> <span>E. 祛风止痛，通鼻窍</span></label>
+<div class="feedback hidden" id="fb-7"></div>
+</div>
+<div class="question" data-qid="8" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 8 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-8"></span></div>
+<div class="q-stem">羌活的功效是（　）</div>
+<label class="opt opt-8-0"><input type="radio" name="q8" value="0"> <span>A. 解表散寒，祛风胜湿，止痛</span></label>
+<label class="opt opt-8-1"><input type="radio" name="q8" value="1"> <span>B. 祛风解表，胜湿止痛，止痉</span></label>
+<label class="opt opt-8-2"><input type="radio" name="q8" value="2"> <span>C. 解表散寒，宣通鼻窍</span></label>
+<label class="opt opt-8-3"><input type="radio" name="q8" value="3"> <span>D. 发汗解表，消肿排脓</span></label>
+<label class="opt opt-8-4"><input type="radio" name="q8" value="4"> <span>E. 祛风胜湿，通络止痛</span></label>
+<div class="feedback hidden" id="fb-8"></div>
+</div>
+<div class="question" data-qid="9" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 9 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-9"></span></div>
+<div class="q-stem">白芷的功效是（　）</div>
+<label class="opt opt-9-0"><input type="radio" name="q9" value="0"> <span>A. 解表散寒，祛风止痛，宣通鼻窍，燥湿止带，消肿排脓</span></label>
+<label class="opt opt-9-1"><input type="radio" name="q9" value="1"> <span>B. 解表散寒，温肺化饮</span></label>
+<label class="opt opt-9-2"><input type="radio" name="q9" value="2"> <span>C. 祛风止痛，平肝息风</span></label>
+<label class="opt opt-9-3"><input type="radio" name="q9" value="3"> <span>D. 解表散寒，行气和胃</span></label>
+<label class="opt opt-9-4"><input type="radio" name="q9" value="4"> <span>E. 祛风解表，止痉</span></label>
+<div class="feedback hidden" id="fb-9"></div>
+</div>
+<div class="question" data-qid="10" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 10 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-10"></span></div>
+<div class="q-stem">细辛的功效是（　）</div>
+<label class="opt opt-10-0"><input type="radio" name="q10" value="0"> <span>A. 解表散寒，祛风止痛，通窍，温肺化饮</span></label>
+<label class="opt opt-10-1"><input type="radio" name="q10" value="1"> <span>B. 祛风解表，止痉</span></label>
+<label class="opt opt-10-2"><input type="radio" name="q10" value="2"> <span>C. 解表散寒，宣肺平喘</span></label>
+<label class="opt opt-10-3"><input type="radio" name="q10" value="3"> <span>D. 发汗解表，利水消肿</span></label>
+<label class="opt opt-10-4"><input type="radio" name="q10" value="4"> <span>E. 祛风止痛，消肿排脓</span></label>
+<div class="feedback hidden" id="fb-10"></div>
+</div>
+<div class="question" data-qid="11" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 11 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-11"></span></div>
+<div class="q-stem">辛夷的功效是（　）</div>
+<label class="opt opt-11-0"><input type="radio" name="q11" value="0"> <span>A. 散风寒，通鼻窍</span></label>
+<label class="opt opt-11-1"><input type="radio" name="q11" value="1"> <span>B. 祛风止痛，止痉</span></label>
+<label class="opt opt-11-2"><input type="radio" name="q11" value="2"> <span>C. 解表散寒，行气和胃</span></label>
+<label class="opt opt-11-3"><input type="radio" name="q11" value="3"> <span>D. 发汗解表，化湿和中</span></label>
+<label class="opt opt-11-4"><input type="radio" name="q11" value="4"> <span>E. 祛风解表，透疹</span></label>
+<div class="feedback hidden" id="fb-11"></div>
+</div>
+<div class="question" data-qid="12" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 12 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-12"></span></div>
+<div class="q-stem">薄荷的功效是（　）</div>
+<label class="opt opt-12-0"><input type="radio" name="q12" value="0"> <span>A. 疏散风热，清利头目，利咽透疹，疏肝行气</span></label>
+<label class="opt opt-12-1"><input type="radio" name="q12" value="1"> <span>B. 疏散风热，清肺润燥</span></label>
+<label class="opt opt-12-2"><input type="radio" name="q12" value="2"> <span>C. 疏散风热，平肝明目</span></label>
+<label class="opt opt-12-3"><input type="radio" name="q12" value="3"> <span>D. 发散风热，升举阳气</span></label>
+<label class="opt opt-12-4"><input type="radio" name="q12" value="4"> <span>E. 疏散风热，清热解毒</span></label>
+<div class="feedback hidden" id="fb-12"></div>
+</div>
+<div class="question" data-qid="13" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 13 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-13"></span></div>
+<div class="q-stem">牛蒡子的功效是（　）</div>
+<label class="opt opt-13-0"><input type="radio" name="q13" value="0"> <span>A. 疏散风热，宣肺祛痰，利咽透疹，解毒消肿</span></label>
+<label class="opt opt-13-1"><input type="radio" name="q13" value="1"> <span>B. 疏散风热，利咽透疹，疏肝行气</span></label>
+<label class="opt opt-13-2"><input type="radio" name="q13" value="2"> <span>C. 疏散风热，清利头目</span></label>
+<label class="opt opt-13-3"><input type="radio" name="q13" value="3"> <span>D. 疏散风热，明目退翳</span></label>
+<label class="opt opt-13-4"><input type="radio" name="q13" value="4"> <span>E. 发散风热，透疹止痒</span></label>
+<div class="feedback hidden" id="fb-13"></div>
+</div>
+<div class="question" data-qid="14" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 14 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-14"></span></div>
+<div class="q-stem">蝉蜕的功效是（　）</div>
+<label class="opt opt-14-0"><input type="radio" name="q14" value="0"> <span>A. 疏散风热，利咽开音，透疹，明目退翳，息风止痉</span></label>
+<label class="opt opt-14-1"><input type="radio" name="q14" value="1"> <span>B. 疏散风热，清利头目</span></label>
+<label class="opt opt-14-2"><input type="radio" name="q14" value="2"> <span>C. 疏散风热，清肺润燥</span></label>
+<label class="opt opt-14-3"><input type="radio" name="q14" value="3"> <span>D. 疏散风热，平肝息风</span></label>
+<label class="opt opt-14-4"><input type="radio" name="q14" value="4"> <span>E. 疏散风热，疏肝行气</span></label>
+<div class="feedback hidden" id="fb-14"></div>
+</div>
+<div class="question" data-qid="15" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 15 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-15"></span></div>
+<div class="q-stem">桑叶的功效是（　）</div>
+<label class="opt opt-15-0"><input type="radio" name="q15" value="0"> <span>A. 疏散风热，清肺润燥，清肝明目</span></label>
+<label class="opt opt-15-1"><input type="radio" name="q15" value="1"> <span>B. 疏散风热，清利头目</span></label>
+<label class="opt opt-15-2"><input type="radio" name="q15" value="2"> <span>C. 疏散风热，升举阳气</span></label>
+<label class="opt opt-15-3"><input type="radio" name="q15" value="3"> <span>D. 疏散风热，解毒消肿</span></label>
+<label class="opt opt-15-4"><input type="radio" name="q15" value="4"> <span>E. 疏散风热，利咽透疹</span></label>
+<div class="feedback hidden" id="fb-15"></div>
+</div>
+<div class="question" data-qid="16" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 16 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-16"></span></div>
+<div class="q-stem">菊花的功效是（　）</div>
+<label class="opt opt-16-0"><input type="radio" name="q16" value="0"> <span>A. 疏散风热，平抑肝阳，清肝明目，清热解毒</span></label>
+<label class="opt opt-16-1"><input type="radio" name="q16" value="1"> <span>B. 疏散风热，清肺润燥</span></label>
+<label class="opt opt-16-2"><input type="radio" name="q16" value="2"> <span>C. 疏散风热，升举阳气</span></label>
+<label class="opt opt-16-3"><input type="radio" name="q16" value="3"> <span>D. 疏散风热，利咽开音</span></label>
+<label class="opt opt-16-4"><input type="radio" name="q16" value="4"> <span>E. 疏散风热，息风止痉</span></label>
+<div class="feedback hidden" id="fb-16"></div>
+</div>
+<div class="question" data-qid="17" data-type="single" data-score="1">
+<div class="q-head"><span class="q-no">第 17 题</span><span class="q-type t-single">单选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-17"></span></div>
+<div class="q-stem">升麻的功效是（　）</div>
+<label class="opt opt-17-0"><input type="radio" name="q17" value="0"> <span>A. 发表透疹，清热解毒，升举阳气</span></label>
+<label class="opt opt-17-1"><input type="radio" name="q17" value="1"> <span>B. 疏散风热，升举阳气</span></label>
+<label class="opt opt-17-2"><input type="radio" name="q17" value="2"> <span>C. 解表散寒，升阳止泻</span></label>
+<label class="opt opt-17-3"><input type="radio" name="q17" value="3"> <span>D. 发表散寒，利水消肿</span></label>
+<label class="opt opt-17-4"><input type="radio" name="q17" value="4"> <span>E. 疏散风热，生津止渴</span></label>
+<div class="feedback hidden" id="fb-17"></div>
+</div>
+<div class="question" data-qid="18" data-type="multiple" data-score="1">
+<div class="q-head"><span class="q-no">第 18 题</span><span class="q-type t-multiple">多选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-18"></span></div>
+<div class="q-stem">下列药物中属于发散风寒药、其功效具有“通鼻窍”作用的有（　）</div>
+<label class="opt opt-18-0"><input type="checkbox" name="q18" value="0"> <span>A. 白芷</span></label>
+<label class="opt opt-18-1"><input type="checkbox" name="q18" value="1"> <span>B. 细辛</span></label>
+<label class="opt opt-18-2"><input type="checkbox" name="q18" value="2"> <span>C. 苍耳子</span></label>
+<label class="opt opt-18-3"><input type="checkbox" name="q18" value="3"> <span>D. 辛夷</span></label>
+<label class="opt opt-18-4"><input type="checkbox" name="q18" value="4"> <span>E. 香薷</span></label>
+<div class="feedback hidden" id="fb-18"></div>
+</div>
+<div class="question" data-qid="19" data-type="multiple" data-score="1">
+<div class="q-head"><span class="q-no">第 19 题</span><span class="q-type t-multiple">多选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-19"></span></div>
+<div class="q-stem">麻黄与桂枝的共同功效有（　）</div>
+<label class="opt opt-19-0"><input type="checkbox" name="q19" value="0"> <span>A. 发汗解表</span></label>
+<label class="opt opt-19-1"><input type="checkbox" name="q19" value="1"> <span>B. 温通经脉</span></label>
+<label class="opt opt-19-2"><input type="checkbox" name="q19" value="2"> <span>C. 助阳化气</span></label>
+<label class="opt opt-19-3"><input type="checkbox" name="q19" value="3"> <span>D. 散寒</span></label>
+<label class="opt opt-19-4"><input type="checkbox" name="q19" value="4"> <span>E. 利水消肿</span></label>
+<div class="feedback hidden" id="fb-19"></div>
+</div>
+<div class="question" data-qid="20" data-type="multiple" data-score="1">
+<div class="q-head"><span class="q-no">第 20 题</span><span class="q-type t-multiple">多选题</span><span class="q-score">（1 分）</span><span class="verdict" id="verdict-20"></span></div>
+<div class="q-stem">下列药物中能“疏散风热”且兼能“利咽”的有（　）</div>
+<label class="opt opt-20-0"><input type="checkbox" name="q20" value="0"> <span>A. 薄荷</span></label>
+<label class="opt opt-20-1"><input type="checkbox" name="q20" value="1"> <span>B. 牛蒡子</span></label>
+<label class="opt opt-20-2"><input type="checkbox" name="q20" value="2"> <span>C. 蝉蜕</span></label>
+<label class="opt opt-20-3"><input type="checkbox" name="q20" value="3"> <span>D. 桑叶</span></label>
+<label class="opt opt-20-4"><input type="checkbox" name="q20" value="4"> <span>E. 菊花</span></label>
+<div class="feedback hidden" id="fb-20"></div>
+</div>
+
+  <div class="submit-bar">
+    <button id="submit-btn" onclick="gradeExam()">提交试卷 · 查看成绩</button>
+  </div>
+
+  <div id="score-card" class="hidden"></div>
+
+  <div class="paper-foot">中医综合题库 · 生成于 2026-09-05 · 本卷仅供学习自测，不构成医疗建议</div>
+</div>
+<script>
+
+const EXAM = {"title": "考试测试试卷", "outline": "中药学·解表药功效专项自测：发散风寒药与发散风热药（麻黄、桂枝、紫苏、生姜、香薷、荆芥、防风、羌活、白芷、细辛、辛夷、薄荷、牛蒡子、蝉蜕、桑叶、菊花、升麻等）的功效。共20题（单选16+多选4），每题1分。", "total_score": 20, "duration": "30分钟", "questions": [{"type": "single", "score": 1, "category": "功效", "stem": "下列药物功效均为“发汗解表，宣肺平喘，利水消肿”的是（　）", "options": ["A. 麻黄", "B. 桂枝", "C. 香薷", "D. 紫苏叶", "E. 生姜"], "answer": 0, "explanation": "麻黄功效为发汗解表、宣肺平喘、利水消肿，为“发汗解表第一要药”。香薷无宣肺平喘之力。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "桂枝的功效是（　）", "options": ["A. 发汗解肌，温通经脉，助阳化气", "B. 发汗解表，宣肺平喘", "C. 解表散寒，行气和胃", "D. 祛风解表，胜湿止痛", "E. 发汗解表，化湿和中"], "answer": 0, "explanation": "桂枝辛甘温，功能发汗解肌、温通经脉、助阳化气，为治风寒表虚证与寒凝血瘀诸证要药。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "紫苏叶的功效是（　）", "options": ["A. 解表散寒，行气和胃，解鱼蟹毒", "B. 解表散寒，温肺化饮", "C. 发汗解表，温中止呕", "D. 解表散寒，祛风止痛", "E. 发表散寒，利水消肿"], "answer": 0, "explanation": "紫苏叶解表散寒、行气和胃，并能解鱼蟹毒。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "生姜的功效是（　）", "options": ["A. 解表散寒，温中止呕，温肺止咳", "B. 解表散寒，行气和胃", "C. 发汗解表，消肿排脓", "D. 解表散寒，宣通鼻窍", "E. 温中止呕，回阳救逆"], "answer": 0, "explanation": "生姜解表散寒、温中止呕、温肺止咳，为“呕家圣药”。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "香薷的功效是（　）", "options": ["A. 发汗解表，化湿和中，利水消肿", "B. 发汗解表，宣肺平喘", "C. 解表散寒，行气和胃", "D. 祛风解表，胜湿止痛", "E. 发汗解表，温中止呕"], "answer": 0, "explanation": "香薷发汗解表、化湿和中、利水消肿，素有“夏月之麻黄”之称。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "既能祛风解表，又能透疹消疮、止血的药物是（　）", "options": ["A. 荆芥", "B. 防风", "C. 紫苏叶", "D. 麻黄", "E. 桂枝"], "answer": 0, "explanation": "荆芥功效祛风解表、透疹消疮、炒炭止血，药性平和，风寒风热均宜。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "防风的功效是（　）", "options": ["A. 祛风解表，胜湿止痛，止痉", "B. 祛风解表，透疹消疮", "C. 解表散寒，祛风止痛", "D. 发汗解表，祛风除湿", "E. 祛风止痛，通鼻窍"], "answer": 0, "explanation": "防风祛风解表、胜湿止痛、止痉，为“风药中之润剂”。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "羌活的功效是（　）", "options": ["A. 解表散寒，祛风胜湿，止痛", "B. 祛风解表，胜湿止痛，止痉", "C. 解表散寒，宣通鼻窍", "D. 发汗解表，消肿排脓", "E. 祛风胜湿，通络止痛"], "answer": 0, "explanation": "羌活解表散寒、祛风胜湿、止痛，善治上半身风寒湿痹与太阳头痛。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "白芷的功效是（　）", "options": ["A. 解表散寒，祛风止痛，宣通鼻窍，燥湿止带，消肿排脓", "B. 解表散寒，温肺化饮", "C. 祛风止痛，平肝息风", "D. 解表散寒，行气和胃", "E. 祛风解表，止痉"], "answer": 0, "explanation": "白芷解表散寒、祛风止痛、宣通鼻窍、燥湿止带、消肿排脓，善治阳明头痛、鼻渊。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "细辛的功效是（　）", "options": ["A. 解表散寒，祛风止痛，通窍，温肺化饮", "B. 祛风解表，止痉", "C. 解表散寒，宣肺平喘", "D. 发汗解表，利水消肿", "E. 祛风止痛，消肿排脓"], "answer": 0, "explanation": "细辛解表散寒、祛风止痛、通窍、温肺化饮，治少阴头痛及寒饮咳喘。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "辛夷的功效是（　）", "options": ["A. 散风寒，通鼻窍", "B. 祛风止痛，止痉", "C. 解表散寒，行气和胃", "D. 发汗解表，化湿和中", "E. 祛风解表，透疹"], "answer": 0, "explanation": "辛夷专散风寒、通鼻窍，为治鼻渊头痛之要药，入汤剂宜包煎。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "薄荷的功效是（　）", "options": ["A. 疏散风热，清利头目，利咽透疹，疏肝行气", "B. 疏散风热，清肺润燥", "C. 疏散风热，平肝明目", "D. 发散风热，升举阳气", "E. 疏散风热，清热解毒"], "answer": 0, "explanation": "薄荷疏散风热、清利头目、利咽透疹、疏肝行气，入汤剂宜后下。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "牛蒡子的功效是（　）", "options": ["A. 疏散风热，宣肺祛痰，利咽透疹，解毒消肿", "B. 疏散风热，利咽透疹，疏肝行气", "C. 疏散风热，清利头目", "D. 疏散风热，明目退翳", "E. 发散风热，透疹止痒"], "answer": 0, "explanation": "牛蒡子疏散风热、宣肺祛痰、利咽透疹、解毒消肿，性寒滑利。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "蝉蜕的功效是（　）", "options": ["A. 疏散风热，利咽开音，透疹，明目退翳，息风止痉", "B. 疏散风热，清利头目", "C. 疏散风热，清肺润燥", "D. 疏散风热，平肝息风", "E. 疏散风热，疏肝行气"], "answer": 0, "explanation": "蝉蜕疏散风热、利咽开音、透疹、明目退翳、息风止痉。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "桑叶的功效是（　）", "options": ["A. 疏散风热，清肺润燥，清肝明目", "B. 疏散风热，清利头目", "C. 疏散风热，升举阳气", "D. 疏散风热，解毒消肿", "E. 疏散风热，利咽透疹"], "answer": 0, "explanation": "桑叶疏散风热、清肺润燥、清肝明目，蜜制增强润肺止咳之力。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "菊花的功效是（　）", "options": ["A. 疏散风热，平抑肝阳，清肝明目，清热解毒", "B. 疏散风热，清肺润燥", "C. 疏散风热，升举阳气", "D. 疏散风热，利咽开音", "E. 疏散风热，息风止痉"], "answer": 0, "explanation": "菊花疏散风热、平抑肝阳、清肝明目、清热解毒；野菊花长于清热解毒。", "source": "中药学·解表药（教材）"}, {"type": "single", "score": 1, "category": "功效", "stem": "升麻的功效是（　）", "options": ["A. 发表透疹，清热解毒，升举阳气", "B. 疏散风热，升举阳气", "C. 解表散寒，升阳止泻", "D. 发表散寒，利水消肿", "E. 疏散风热，生津止渴"], "answer": 0, "explanation": "升麻发表透疹、清热解毒、升举阳气；柴胡升举阳气、疏肝解郁；葛根解肌退热、生津止渴、升阳止泻。", "source": "中药学·解表药（教材）"}, {"type": "multiple", "score": 1, "category": "功效", "stem": "下列药物中属于发散风寒药、其功效具有“通鼻窍”作用的有（　）", "options": ["A. 白芷", "B. 细辛", "C. 苍耳子", "D. 辛夷", "E. 香薷"], "answers": [0, 1, 2, 3], "explanation": "白芷、细辛、苍耳子、辛夷均能宣通鼻窍，为治鼻渊常用；香薷不能通鼻窍。", "source": "中药学·解表药（教材）"}, {"type": "multiple", "score": 1, "category": "功效", "stem": "麻黄与桂枝的共同功效有（　）", "options": ["A. 发汗解表", "B. 温通经脉", "C. 助阳化气", "D. 散寒", "E. 利水消肿"], "answers": [0, 3], "explanation": "麻黄、桂枝均为辛温解表药，共能发汗解表、散寒；温通经脉、助阳化气、利水消肿为桂枝或麻黄单见之能。", "source": "中药学·解表药（教材）"}, {"type": "multiple", "score": 1, "category": "功效", "stem": "下列药物中能“疏散风热”且兼能“利咽”的有（　）", "options": ["A. 薄荷", "B. 牛蒡子", "C. 蝉蜕", "D. 桑叶", "E. 菊花"], "answers": [0, 1, 2], "explanation": "薄荷、牛蒡子、蝉蜕疏散风热并能利咽（薄荷利咽、牛蒡子利咽解毒、蝉蜕利咽开音）；桑叶、菊花利咽之力不显。", "source": "中药学·解表药（教材）"}], "exam_id": "exam-f29a0f8136", "submit_url": "/api/exam/submit"};
+
+// —— 学习中心账号自动识别（与 PWA 学习中心“账号关联”对接）——
+// 识别来源（按优先级）：URL ?student=<username> / ?u=<username> → 同源 localStorage['lc_user'].username
+// 识别到的账号写入 window.__lcUser，仅用于成绩归属上报；卷首姓名仍可自行修改。
+(function detectLcAccount() {
+  let account = "";
+  try {
+    const qp = new URLSearchParams(window.location.search);
+    account = (qp.get("student") || qp.get("u") || "").trim();
+    if (!account) {
+      const raw = localStorage.getItem("lc_user");
+      if (raw) {
+        const lc = JSON.parse(raw);
+        if (lc && typeof lc.username === "string" && lc.username.trim()) {
+          account = lc.username.trim();
+        }
+      }
+    }
+  } catch (e) { /* URL/localStorage/JSON 异常时静默降级，不影响作答 */ }
+  if (!account) return;
+  window.__lcUser = account;
+  const box = document.getElementById("student-name");
+  if (box && !box.value.trim()) {
+    box.value = account;            // 预填，学生可修改
+    box.placeholder = "已识别学习中心账号 " + account + "，可修改";
+  }
+})();
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function normText(s) {
+  return (s || "").replace(/\s+/g, "").replace(/[，,。;；:：!！?？]/g, "").trim();
+}
+
+function gradeExam() {
+  if (window.__REVIEW_MODE__) { alert("成绩回显模式不可提交，本卷已锁定"); return; }
+  const name = document.getElementById("student-name").value.trim();
+  if (!name) { alert("请先在卷首填写学生姓名！"); document.getElementById("student-name").focus(); return; }
+
+  let objectiveScore = 0, objectiveMax = 0, subjectiveMax = 0, subjectiveSelf = 0;
+  let answered = 0, correctCount = 0, objectiveCount = 0;
+  const qResults = [];
+
+  EXAM.questions.forEach((q, i) => {
+    const idx = i + 1;
+    const qDiv = document.querySelector('[data-qid="' + idx + '"]');
+    const verdict = document.getElementById("verdict-" + idx);
+    const fb = document.getElementById("fb-" + idx);
+    fb.innerHTML = ""; fb.classList.remove("hidden");
+    let gained = 0, full = q.score, isObjective = true;
+    let rec = { qid: idx, type: q.type, max_score: full, score: 0, answer: null, correct: null };
+
+    if (q.type === "single") {
+      objectiveMax += full; objectiveCount++;
+      const chosen = document.querySelector('input[name="q' + idx + '"]:checked');
+      if (chosen) { answered++; rec.answer = Number(chosen.value); }
+      if (chosen && Number(chosen.value) === q.answer) { gained = full; correctCount++; }
+      rec.correct = (rec.answer === q.answer);
+      // 高亮：正确答案绿色，错选红色
+      q.options.forEach((_, j) => {
+        const el = document.querySelector(".opt-" + idx + "-" + j);
+        el.classList.remove("opt-right", "opt-wrong");
+        if (j === q.answer) el.classList.add("opt-right");
+        else if (chosen && Number(chosen.value) === j) el.classList.add("opt-wrong");
+      });
+      fb.innerHTML = feedbackHTML(chosen, q);
+      disableGroup('input[name="q' + idx + '"]');
+    } else if (q.type === "multiple") {
+      objectiveMax += full; objectiveCount++;
+      const checked = [...document.querySelectorAll('input[name="q' + idx + '"]:checked')].map(x => Number(x.value)).sort();
+      if (checked.length) { answered++; rec.answer = checked; }
+      const std = [...q.answers].sort((a,b)=>a-b);
+      if (checked.length && checked.length === std.length && checked.every((v, k) => v === std[k])) {
+        gained = full; correctCount++;
+      }
+      rec.correct = (Array.isArray(rec.answer) && rec.answer.length === std.length && rec.answer.every((v, k) => v === std[k]));
+      q.options.forEach((_, j) => {
+        const el = document.querySelector(".opt-" + idx + "-" + j);
+        el.classList.remove("opt-right", "opt-wrong");
+        if (std.includes(j)) el.classList.add("opt-right");
+        else if (checked.includes(j)) el.classList.add("opt-wrong");
+      });
+      const ansLabel = std.map(j => q.options[j].split(/[.、．]/)[0] || ("选项" + (j+1))).join("、");
+      fb.innerHTML = (checked.length ? "" : '<p class="miss">⚠️ 未作答</p>') +
+        '<p><b>正确答案：</b>' + esc(ansLabel) + answerTail(q) + "</p>";
+      disableGroup('input[name="q' + idx + '"]');
+    } else if (q.type === "fill") {
+      objectiveMax += full; objectiveCount++;
+      const inp = document.getElementById("fill-" + idx);
+      const val = normText(inp.value);
+      if (val) { answered++; rec.answer = inp.value; }
+      const ok = val && q.answers.some(a => normText(a) === val);
+      if (ok) { gained = full; correctCount++; }
+      rec.correct = ok;
+      inp.disabled = true;
+      inp.classList.add(ok ? "fill-right" : "fill-wrong");
+      fb.innerHTML = '<p><b>你的答案：</b>' + esc(inp.value || "（未作答）") +
+        '<br><b>正确答案：</b>' + esc(q.answers.join(" ／ ")) + answerTail(q) + "</p>";
+    } else if (q.type === "short") {
+      isObjective = false; subjectiveMax += full;
+      const ta = document.getElementById("short-" + idx);
+      const sg = document.getElementById("sg-" + idx);
+      const sgv = document.getElementById("sgv-" + idx);
+      ta.disabled = true;
+      const selfVal = Math.min(Math.max(Number(sgv.value) || 0, 0), full);
+      subjectiveSelf += selfVal;
+      gained = selfVal;
+      if (ta.value.trim()) { answered++; rec.answer = ta.value; }
+      rec.correct = null; rec.self_score = selfVal;
+      if (ta.value.trim()) { answered++; }
+      sg.classList.remove("hidden");
+      fb.innerHTML = '<div class="ref-answer"><p><b>📝 参考答案：</b></p>' +
+        '<p class="ref-text">' + esc(q.reference).replace(/\n/g, "<br>") + "</p>" +
+        (q.key_points ? '<p><b>🎯 评分要点：</b></p><ul>' +
+          q.key_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "") +
+        answerTail(q) + "</div>";
+    }
+    rec.score = gained;
+    if (isObjective) objectiveScore += gained;
+    qResults.push(rec);
+    qDiv.classList.add(gained >= full ? "q-full" : (gained > 0 ? "q-partial" : "q-zero"));
+    verdict.textContent = gained >= full ? "✓ " + gained + " 分" : (gained > 0 ? "△ " + gained + " 分" : "✗ 0 分");
+    verdict.className = "verdict " + (gained >= full ? "v-right" : (gained > 0 ? "v-partial" : "v-wrong"));
+    if (q.type === "short") verdict.textContent = "自评 " + gained + "/" + full + " 分";
+  });
+
+  const total = objectiveScore + subjectiveSelf;
+  const rate = EXAM.total_score ? Math.round(total / EXAM.total_score * 100) : 0;
+  const card = document.getElementById("score-card");
+  card.classList.remove("hidden");
+  card.innerHTML =
+    '<h2>📊 成绩单</h2>' +
+    '<div class="score-grid">' +
+    '<div class="s-item"><div class="s-label">学生姓名</div><div class="s-value" id="recorded-name">' + esc(name) + "</div></div>" +
+    '<div class="s-item"><div class="s-label">客观题（自动批改）</div><div class="s-value">' + objectiveScore + " / " + objectiveMax + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">主观题（自评）</div><div class="s-value">' + subjectiveSelf + " / " + subjectiveMax + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">答题情况</div><div class="s-value">' + answered + " / " + EXAM.questions.length + ' 题已答</div></div>' +
+    '<div class="s-item"><div class="s-label">客观题正确率</div><div class="s-value">' + (objectiveCount ? Math.round(correctCount / objectiveCount * 100) : 0) + '%</div></div>' +
+    '<div class="s-item s-total"><div class="s-label">总分</div><div class="s-value">' + total + " / " + EXAM.total_score + ' 分</div></div>' +
+    "</div>" +
+    '<div class="score-bar"><div class="score-bar-fill" style="width:' + rate + '%"></div></div>' +
+    '<p class="score-note">提交时间已记录 · 主观题得分以自评为准，可对照上方参考答案与评分要点</p>' +
+    '<p class="score-note" id="upload-note"></p>';
+  if (card.scrollIntoView) card.scrollIntoView({ behavior: "smooth" });
+  document.getElementById("submit-btn").disabled = true;
+  document.getElementById("submit-btn").textContent = "已提交并批改";
+
+  // —— 成绩上报：构造结构化 JSON，POST 到服务器约定接口 ——
+  const payload = {
+    type: "exam_result",            // 固定标识：服务器以此识别成绩上报请求
+    version: 1,
+    exam_id: EXAM.exam_id,
+    exam_title: EXAM.title,
+    student_name: name,
+    submitted_at: new Date().toISOString(),
+    total_score: EXAM.total_score,  // 满分
+    final_score: total,             // 总得分（客观自动 + 主观自评）
+    objective_score: objectiveScore,
+    objective_max: objectiveMax,
+    subjective_self: subjectiveSelf,
+    subjective_max: subjectiveMax,
+    answered_count: answered,
+    question_count: EXAM.questions.length,
+    correct_count: correctCount,
+    objective_count: objectiveCount,
+    accuracy: objectiveCount ? Math.round(correctCount / objectiveCount * 100) : 0,
+    answers: qResults               // 逐题明细：qid/type/score/max_score/answer/correct/self_score
+  };
+  // 学习中心账号归属：若已识别到账号（URL ?student/?u 或 localStorage['lc_user']），
+  // 则显式携带 student_username，服务器据此归属（优先级高于卷内可修改的 student_name）。
+  if (window.__lcUser) { payload.student_username = window.__lcUser; }
+  reportResult(payload);
+}
+
+/**
+ * 成绩上报（三重保障，互相独立、失败静默）：
+ *  1. navigator.sendBeacon —— 页面关闭/跳转也能送达（PWA 场景首选）
+ *  2. fetch keepalive POST —— sendBeacon 不可用时的兜底
+ *  3. localStorage 留档 —— 网络均失败时本地保存，服务器可后续取回
+ * 另外始终挂载在 window.__LAST_EXAM_RESULT__，便于宿主系统/自动化测试读取。
+ */
+function reportResult(payload) {
+  const body = JSON.stringify(payload);
+  const url = EXAM.submit_url || "/api/exam/submit";
+  let sent = false;
+  try {
+    if (navigator.sendBeacon) {
+      sent = navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    }
+  } catch (e) { /* ignore */ }
+  if (!sent) {
+    try {
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                   body: body, keepalive: true })
+        .then(r => setUploadNote(r.ok))
+        .catch(() => setUploadNote(false));
+      sent = true;
+    } catch (e) { /* ignore */ }
+  }
+  try {
+    localStorage.setItem("exam_result:" + payload.exam_id + ":" + payload.submitted_at, body);
+  } catch (e) { /* ignore */ }
+  window.__LAST_EXAM_RESULT__ = payload;
+  if (sent) setUploadNote(true);
+}
+
+function setUploadNote(ok) {
+  const note = document.getElementById("upload-note");
+  if (note) note.textContent = ok === false
+    ? "⚠️ 成绩上报失败，已保存在本机（localStorage），可重新联网后同步"
+    : "✅ 成绩已上报至服务器（POST " + (EXAM.submit_url || "/api/exam/submit") + "），并已本地留档";
+}
+
+function feedbackHTML(chosen, q) {
+  const label = j => q.options[j].split(/[.、．]/)[0] || ("选项" + (j + 1));
+  let html = chosen ? "" : '<p class="miss">⚠️ 未作答</p>';
+  html += '<p><b>正确答案：</b>' + esc(label(q.answer)) + answerTail(q) + "</p>";
+  if (chosen && Number(chosen.value) !== q.answer) {
+    html += '<p class="wrong-pick"><b>你的选择：</b>' + esc(label(Number(chosen.value))) + "（错误）</p>";
+  }
+  return html;
+}
+
+function answerTail(q) {
+  let html = "";
+  if (q.explanation) html += '<br><b>解析：</b>' + esc(q.explanation);
+  if (q.source) html += ' <span class="src">【出处：' + esc(q.source) + "】</span>";
+  return html;
+}
+
+function disableGroup(sel) {
+  document.querySelectorAll(sel).forEach(x => x.disabled = true);
+}
+
+/* =====================================================================
+ * 成绩回显模式（?r=1 或 ?r + 同源 localStorage['lc_exam_review:<exam_id>']）
+ * —— 再次打开已提交过的试卷时还原该生作答与批改结果并锁定整卷 ——
+ * 仅在进入回显模式时运行，不影响正常作答/判分/上报/留档流程。
+ * ===================================================================== */
+function loadReviewRecord() {
+  try {
+    const qp = new URLSearchParams(window.location.search);
+    if (!qp.has("r")) return null;                       // 无 r 参数 → 全新作答
+    const raw = localStorage.getItem("lc_exam_review:" + EXAM.exam_id);
+    if (!raw) return null;                               // 无留档 → 全新作答
+    const rec = JSON.parse(raw);
+    if (!rec || !Array.isArray(rec.answers)) return null;
+    return rec;
+  } catch (e) { return null; }  // URL/localStorage/JSON 异常一律静默降级为全新作答
+}
+
+function reviewOptLabel(opt, j) {
+  return String(opt).split(/[.、．]/)[0] || ("选项" + (j + 1));
+}
+
+function reviewAnswered(ans) {
+  return !(ans == null || ans.answer == null ||
+    (Array.isArray(ans.answer) && ans.answer.length === 0) || String(ans.answer) === "");
+}
+
+function formatReviewTime(t) {
+  if (!t) return "未知";
+  const d = new Date(t);
+  if (isNaN(d.getTime())) return String(t);
+  const p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " +
+    p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+// 将留档作答还原到表单控件
+function reviewRestore(q, idx, ans) {
+  if (q.type === "single" || q.type === "multiple") {
+    const picks = q.type === "single"
+      ? (ans && ans.answer != null ? [Number(ans.answer)] : [])
+      : (ans && Array.isArray(ans.answer) ? ans.answer.map(Number) : []);
+    document.querySelectorAll('input[name="q' + idx + '"]').forEach(inp => {
+      inp.checked = picks.includes(Number(inp.value));
+    });
+  } else if (q.type === "fill") {
+    const inp = document.getElementById("fill-" + idx);
+    if (ans && ans.answer != null) inp.value = String(ans.answer);
+  } else if (q.type === "short") {
+    const ta = document.getElementById("short-" + idx);
+    if (ans && ans.answer != null) ta.value = String(ans.answer);
+    const sgv = document.getElementById("sgv-" + idx);
+    if (ans && ans.self_score != null) sgv.value = Math.min(Math.max(Number(ans.self_score) || 0, 0), q.score);
+    document.getElementById("sg-" + idx).classList.remove("hidden");
+  }
+}
+
+// 每题回显批改标注（客观题：绿=对/红=错并展示正误与作答；未答=未作答；简答：作答+自评）
+function reviewMark(q, idx, ans) {
+  const qDiv = document.querySelector('[data-qid="' + idx + '"]');
+  const verdict = document.getElementById("verdict-" + idx);
+  const fb = document.getElementById("fb-" + idx);
+  fb.innerHTML = ""; fb.classList.remove("hidden");
+  const full = q.score;
+  const answered = reviewAnswered(ans);
+  const correct = !!(ans && ans.correct);
+
+  if (q.type === "short") {
+    const selfVal = ans && typeof ans.self_score === "number"
+      ? Math.min(Math.max(ans.self_score, 0), full)
+      : (ans && typeof ans.score === "number" ? Math.min(Math.max(ans.score, 0), full) : 0);
+    fb.innerHTML = "<p><b>你的作答：</b>" + (answered ? esc(String(ans.answer)).replace(/\n/g, "<br>") : "（未作答）") + "</p>" +
+      "<div class='ref-answer'><p><b>📝 参考答案：</b></p>" +
+      "<p class='ref-text'>" + esc(q.reference).replace(/\n/g, "<br>") + "</p>" +
+      (q.key_points ? "<p><b>🎯 评分要点：</b></p><ul>" +
+        q.key_points.map(p => "<li>" + esc(p) + "</li>").join("") + "</ul>" : "") +
+      answerTail(q) +
+      "<p><b>自评得分：</b>" + selfVal + " / " + full + " 分</p></div>";
+    qDiv.classList.add(selfVal >= full ? "q-full" : (selfVal > 0 ? "q-partial" : "q-zero"));
+    verdict.textContent = "自评 " + selfVal + "/" + full + " 分";
+    verdict.className = "verdict " + (selfVal >= full ? "v-right" : (selfVal > 0 ? "v-partial" : "v-wrong"));
+    return;
+  }
+
+  // —— 客观题 single / multiple ——
+  if (q.type === "single" || q.type === "multiple") {
+    const chosen = answered ? (q.type === "single" ? [Number(ans.answer)] : ans.answer.map(Number)) : [];
+    const std = q.type === "single" ? [Number(q.answer)] : q.answers.map(Number);
+    q.options.forEach((_, j) => {
+      const el = document.querySelector(".opt-" + idx + "-" + j);
+      el.classList.remove("opt-right", "opt-wrong");
+      if (std.indexOf(j) >= 0) el.classList.add("opt-right");
+      else if (chosen.indexOf(j) >= 0) el.classList.add("opt-wrong");
+    });
+    const stdLabel = std.map(j => reviewOptLabel(q.options[j], j)).join("、");
+    let h = answered ? "" : '<p class="miss">⚠️ 未作答</p>';
+    h += "<p><b>正确答案：</b>" + esc(stdLabel) + answerTail(q) + "</p>";
+    if (answered) {
+      const myLabel = chosen.map(j => reviewOptLabel(q.options[j], j)).join("、");
+      h += '<p class="' + (correct ? "ok-pick" : "wrong-pick") + '"><b>你的选择：</b>' +
+        esc(myLabel) + (correct ? "（正确）" : "（错误）") + "</p>";
+    }
+    fb.innerHTML = h;
+  } else {
+    // 填空题：还原文本 + 对错底色 + 正确/本人作答展示
+    const inp = document.getElementById("fill-" + idx);
+    inp.classList.add(correct ? "fill-right" : "fill-wrong");
+    fb.innerHTML = "<p><b>你的答案：</b>" + esc(answered ? String(ans.answer) : "（未作答）") +
+      "<br><b>正确答案：</b>" + esc(q.answers.join(" ／ ")) + answerTail(q) + "</p>";
+  }
+  qDiv.classList.add(correct ? "q-full" : "q-zero");
+  verdict.textContent = !answered ? "✗ 未作答" : (correct ? "✓ " + full + " 分" : "✗ 0 分");
+  verdict.className = "verdict " + (correct ? "v-right" : "v-wrong");
+}
+
+// 顶部横幅 + 成绩卡（复用 #score-card 容器与既有 .s-item/.score-bar 样式）
+function renderReviewSummary(rec, name) {
+  let objMax = 0, subMax = 0;
+  EXAM.questions.forEach(q => { if (q.type === "short") subMax += q.score; else objMax += q.score; });
+  const num = v => (typeof v === "number" && isFinite(v) ? v : null);
+  const dash = v => (v == null ? "—" : v);
+  const objScore = num(rec.objective_score), selfScore = num(rec.subjective_self);
+  const finalScore = num(rec.final_score) != null ? num(rec.final_score)
+    : (objScore != null && selfScore != null ? objScore + selfScore : null);
+  const om = num(rec.objective_max) != null ? rec.objective_max : objMax;
+  const answeredCount = rec.answers.filter(a => reviewAnswered(a)).length;
+  const totalNum = num(finalScore);
+  const rate = EXAM.total_score ? Math.round((totalNum != null ? totalNum : 0) / EXAM.total_score * 100) : 0;
+
+  const head = document.querySelector(".paper-head");
+  const banner = document.createElement("div");
+  banner.id = "review-banner";
+  banner.className = "review-banner";
+  banner.innerHTML = "🔒 <b>成绩回显 · 已锁定</b>　学生：" + esc(name) +
+    "　总分：" + dash(finalScore) + " / " + EXAM.total_score + " 分　提交时间：" + esc(formatReviewTime(rec.submitted_at));
+  head.insertBefore(banner, document.querySelector(".name-row"));
+
+  const card = document.getElementById("score-card");
+  card.classList.remove("hidden");
+  card.innerHTML =
+    '<h2>📊 成绩单<span class="review-tag">成绩回显 · 已锁定</span></h2>' +
+    '<div class="score-grid">' +
+    '<div class="s-item"><div class="s-label">学生姓名</div><div class="s-value">' + esc(name) + "</div></div>" +
+    '<div class="s-item"><div class="s-label">客观题（自动批改）</div><div class="s-value">' + dash(objScore) + " / " + om + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">主观题（自评）</div><div class="s-value">' + dash(selfScore) + " / " + subMax + ' 分</div></div>' +
+    '<div class="s-item"><div class="s-label">答题情况</div><div class="s-value">' + answeredCount + " / " + EXAM.questions.length + ' 题已答</div></div>' +
+    '<div class="s-item"><div class="s-label">提交时间</div><div class="s-value" style="font-size:15px">' + esc(formatReviewTime(rec.submitted_at)) + "</div></div>" +
+    '<div class="s-item s-total"><div class="s-label">总分</div><div class="s-value">' + dash(finalScore) + " / " + EXAM.total_score + ' 分</div></div>' +
+    "</div>" +
+    '<div class="score-bar"><div class="score-bar-fill" style="width:' + rate + '%"></div></div>' +
+    '<p class="score-note">🔒 成绩回显模式：本卷已锁定，仅可查看，不可修改或重新提交</p>';
+  if (card.scrollIntoView) card.scrollIntoView({ behavior: "smooth" });
+}
+
+function enterReviewMode(rec) {
+  const byQid = {};
+  rec.answers.forEach(a => { byQid[a.qid] = a; });
+  EXAM.questions.forEach((q, i) => {
+    const idx = i + 1;
+    reviewRestore(q, idx, byQid[idx]);
+    reviewMark(q, idx, byQid[idx]);
+  });
+  // 锁定整卷：禁用全部作答控件与姓名输入
+  document.querySelectorAll("input, textarea, select").forEach(el => { el.disabled = true; });
+  // 禁用提交（双保险：按钮禁用 + gradeExam 顶部守卫）
+  const btn = document.getElementById("submit-btn");
+  btn.disabled = true;
+  btn.textContent = "成绩回显 · 已锁定";
+  btn.onclick = null;
+  // 卷首姓名回填并标注回显横幅、渲染成绩卡
+  const nameBox = document.getElementById("student-name");
+  const shownName = (rec.student_name && String(rec.student_name).trim()) || nameBox.value.trim() || "学生";
+  nameBox.value = shownName;
+  nameBox.placeholder = "成绩回显 · 已锁定";
+  renderReviewSummary(rec, shownName);
+}
+
+// —— 页面初始化：命中回显条件则立即进入回显模式 ——
+(function initReviewMode() {
+  const rec = loadReviewRecord();
+  if (!rec) return;               // 未命中 → 保持全新作答流程
+  window.__REVIEW_MODE__ = true;
+  enterReviewMode(rec);
+})();
+
+</script>
+</body>
+</html>
