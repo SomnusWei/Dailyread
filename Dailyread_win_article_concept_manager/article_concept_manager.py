@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime
 
 import requests
-from PyQt6.QtCore import Qt, QTimer, QSize, QByteArray, QBuffer, QThread, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QTimer, QSize, QByteArray, QBuffer, QThread, pyqtSignal, QUrl, QSettings
 from PyQt6.QtGui import (
     QColor, QFont, QIcon, QPixmap, QImage, QPainter, QBrush, QPen, QRadialGradient,
     QTextCursor, QTextCharFormat, QTextBlockFormat, QTextImageFormat, QTextDocument
@@ -3930,7 +3930,6 @@ class MainWindow(QMainWindow):
         def _bg_pull():
             try:
                 sync_service.pull_articles(self._on_articles_pulled_full, meta=True)
-                sync_service.pull_checkins(self._on_checkins_pulled)
             except Exception as e:
                 print(f"[Sync] 启动增量拉取失败: {e}")
         threading.Thread(target=_bg_pull, daemon=True).start()
