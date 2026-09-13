@@ -3572,6 +3572,7 @@ class ReaderDialog(QDialog):
     """文章阅读器弹窗：随机阅读、内容渲染、打卡后自动跳转下一篇未打卡文章"""
 
     checkin_done = pyqtSignal(str)  # 打卡完成信号，参数为 article clientId
+    _checkin_result = pyqtSignal(bool, str, str)  # (success, client_id, message)
 
     def __init__(self, data_model, parent=None):
         super().__init__(parent)
@@ -3585,6 +3586,8 @@ class ReaderDialog(QDialog):
         self.resize(900, 700)
         self._init_ui()
         self._init_audio()
+        # 打卡结果信号（后台线程 → 主线程）
+        self._checkin_result.connect(self._handle_checkin_result)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -3834,26 +3837,29 @@ class ReaderDialog(QDialog):
         try:
             r = api_client.checkin_by_article(client_id)
             if r.get('code') == 0:
-                QTimer.singleShot(0, lambda: self._on_checkin_success(client_id))
+                self._checkin_result.emit(True, client_id, '')
             else:
                 msg = r.get('message', '打卡失败')
-                QTimer.singleShot(0, lambda: self._on_checkin_fail(msg))
+                self._checkin_result.emit(False, client_id, msg)
         except Exception as e:
-            QTimer.singleShot(0, lambda: self._on_checkin_fail(str(e)))
+            self._checkin_result.emit(False, client_id, str(e))
 
-    def _on_checkin_success(self, client_id):
-        self._checked_cids.add(str(client_id))
-        self.checkin_done.emit(client_id)
-        total = len(self._pending_cids)
-        done = len(self._checked_cids)
-        self.progress_label.setText(f"进度: {done}/{total}")
-        # 自动跳转下一篇未打卡文章
-        QTimer.singleShot(800, self._pick_and_load)
-
-    def _on_checkin_fail(self, msg):
-        self.checkin_btn.setEnabled(True)
-        self.checkin_btn.setText("完成打卡")
-        QMessageBox.warning(self, "打卡失败", msg)
+    def _handle_checkin_result(self, success, client_id, msg):
+        """主线程处理打卡结果"""
+        if success:
+            self._checked_cids.add(str(client_id))
+            self.checkin_done.emit(client_id)
+            self.checkin_btn.setText("已打卡 ✅")
+            self.checkin_btn.setEnabled(False)
+            total = len(self._pending_cids)
+            done = len(self._checked_cids)
+            self.progress_label.setText(f"进度: {done}/{total}")
+            # 自动跳转下一篇未打卡文章
+            QTimer.singleShot(800, self._pick_and_load)
+        else:
+            self.checkin_btn.setEnabled(True)
+            self.checkin_btn.setText("完成打卡")
+            QMessageBox.warning(self, "打卡失败", msg)
 
     def closeEvent(self, event):
         self._stop_audio()
