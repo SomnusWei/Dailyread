@@ -166,6 +166,8 @@ class DataModel:
         self.version = 8
         # 写盘锁：保护异步 save() 与 closeEvent 的 save_sync() 不竞态
         self._save_lock = threading.Lock()
+        # 数据版本号：save() 异步写盘前检查，避免旧快照覆盖 save_sync() 的新数据
+        self._data_version = 0
         self.load()
 
     @staticmethod
@@ -239,6 +241,8 @@ class DataModel:
 
     def save(self):
         """保存数据到文件（异步序列化+写盘，不阻塞 UI）"""
+        # 快照当前版本号，写盘前检查是否已被更新版本覆盖
+        version = self._data_version
         # 深拷贝快照，避免后台线程序列化时主线程修改数据
         data = {
             'version': self.version,
@@ -252,14 +256,17 @@ class DataModel:
         # 序列化 + 文件写入都放到后台线程，彻底不阻塞 UI
         t = threading.Thread(
             target=self._serialize_and_write,
-            args=(self.APP_DATA_FILE, data),
+            args=(self.APP_DATA_FILE, data, version),
             daemon=True
         )
         t.start()
 
-    def _serialize_and_write(self, filepath: str, data: dict):
-        """后台线程：序列化为 JSON 并原子写盘（临时文件 + os.replace，避免竞态导致文件损坏）"""
+    def _serialize_and_write(self, filepath: str, data: dict, version: int = 0):
+        """后台线程：序列化为 JSON 并原子写盘。若已有更新版本写入则跳过。"""
         with self._save_lock:
+            if version != 0 and version < self._data_version:
+                # 已有更新的数据被 save_sync 写入，跳过本次旧快照
+                return
             tmp_path = filepath + '.tmp'
             try:
                 json_str = json.dumps(data, ensure_ascii=False)
@@ -294,6 +301,8 @@ class DataModel:
         audio_items = [(a.get('id'), len(a.get('audiobase64',''))) for a in arts if a.get('audiobase64')]
         _debug_log(f"save_sync articles={len(arts)} audio_count={len(audio_items)} audio_items={audio_items[:5]}")
         with self._save_lock:
+            # 递增版本号：使之前 save() 的旧快照在写盘时被跳过
+            self._data_version += 1
             tmp_path = self.APP_DATA_FILE + '.tmp'
             try:
                 with open(tmp_path, 'w', encoding='utf-8') as f:
@@ -3871,12 +3880,17 @@ class ReaderDialog(QDialog):
 class MainWindow(QMainWindow):
     """主窗口"""
 
+    # 后台拉取完成 → 主线程合并，避免后台线程修改 articles 与异步 save 竞态
+    _articles_pulled_signal = pyqtSignal(list, str)
+
     def __init__(self):
         super().__init__()
         self.data_model = DataModel()
         self.setup_ui()
         self.restore_window_geometry()
         self.auto_save_timer()
+        # 连接拉取信号到主线程合并槽
+        self._articles_pulled_signal.connect(self._on_articles_pulled_full)
         self._init_sync()
 
     def setup_ui(self):
@@ -4005,7 +4019,7 @@ class MainWindow(QMainWindow):
                 import threading
                 def _bg_full_pull():
                     try:
-                        sync_service.pull_articles(self._on_articles_pulled_full, meta=False)
+                        sync_service.pull_articles(self._emit_articles_pulled, meta=False)
                     except Exception as e:
                         print(f"[Sync] 重新登录后拉取失败: {e}")
                 threading.Thread(target=_bg_full_pull, daemon=True).start()
@@ -4023,7 +4037,7 @@ class MainWindow(QMainWindow):
         import threading
         def _bg_pull():
             try:
-                sync_service.pull_articles(self._on_articles_pulled_full, meta=True)
+                sync_service.pull_articles(self._emit_articles_pulled, meta=True)
             except Exception as e:
                 print(f"[Sync] 启动增量拉取失败: {e}")
         threading.Thread(target=_bg_pull, daemon=True).start()
@@ -4037,9 +4051,12 @@ class MainWindow(QMainWindow):
         # 跨线程安全更新
         QTimer.singleShot(0, update)
 
+    def _emit_articles_pulled(self, remote_articles, next_since):
+        """pull_articles 回调（可能在后台线程）：通过信号中转到主线程合并"""
+        self._articles_pulled_signal.emit(remote_articles, next_since)
+
     def _on_articles_pulled_full(self, remote_articles, next_since):
-        """合并服务端增量文章到本地（保留本地 audiobase64/imagewebp）。
-        可能在后台线程调用，UI 刷新需切回主线程。"""
+        """合并服务端增量文章到本地（保留本地 audiobase64/imagewebp）。在主线程执行。"""
         _debug_log(f"_on_articles_pulled_full ENTER remote_count={len(remote_articles)} local_before={len(self.data_model.articles)}")
         # 构建本地 clientId → 本地文章映射，合并时保留本地 audiobase64/imagewebp
         local_by_cid: dict = {}
