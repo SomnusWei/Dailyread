@@ -21,6 +21,7 @@ a = Analysis(
         'sync_service',
         'auth_dialogs',
         'migration_dialog',
+        'PyQt6.QtMultimedia',
     ],
     hookspath=[],
     hooksconfig={},
