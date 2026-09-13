@@ -24,6 +24,7 @@ from PyQt6.QtGui import (
     QColor, QFont, QIcon, QPixmap, QImage, QPainter, QBrush, QPen, QRadialGradient,
     QTextCursor, QTextCharFormat, QTextBlockFormat, QTextImageFormat, QTextDocument
 )
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import (
     QApplication, QComboBox, QDialog, QFileDialog,
     QFormLayout, QHBoxLayout, QHeaderView, QLabel,
@@ -2010,6 +2011,11 @@ class ArticlePage(QWidget):
         edit_btn.clicked.connect(self.edit_article)
         toolbar_layout.addWidget(edit_btn)
 
+        read_btn = QPushButton("📖 阅读")
+        read_btn.setStyleSheet("background-color: #e65100; color: white; padding: 5px 15px;")
+        read_btn.clicked.connect(self.read_article)
+        toolbar_layout.addWidget(read_btn)
+
         delete_btn = QPushButton("批量删除")
         delete_btn.clicked.connect(self.delete_articles)
         toolbar_layout.addWidget(delete_btn)
@@ -2387,6 +2393,18 @@ class ArticlePage(QWidget):
         if article:
             self.do_edit_article(article)
 
+    def read_article(self):
+        """在阅读器中打开选中文章"""
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, "提示", "请先选择要阅读的文章")
+            return
+        row = selected_rows[0].row()
+        article_id = int(self.table.item(row, 0).text())
+        article = next((a for a in self.data_model.articles if a['id'] == article_id), None)
+        if article:
+            self.window().open_in_reader(article)
+
     def do_edit_article(self, article: dict):
         """执行编辑"""
         dialog = ArticleEditDialog(article, self)
@@ -2703,7 +2721,7 @@ class BackupPage(QWidget):
         self.progressBar.setRange(0, 0)  # 不确定进度
         try:
             # 拉取服务端增量
-            sync_service.pull_articles(self._on_articles_pulled)
+            sync_service.pull_articles(self._on_articles_pulled, meta=True)
             sync_service.pull_checkins(self._on_checkins_pulled)
             queue_size = sync_service.queue.size()
             self.sync_status_label.setText(f"同步状态: 队列剩余 {queue_size} 条")
@@ -2765,7 +2783,7 @@ class BackupPage(QWidget):
             return
         self.progressStatusLabel.setText("正在拉取增量...")
         try:
-            sync_service.pull_articles(self._on_articles_pulled)
+            sync_service.pull_articles(self._on_articles_pulled, meta=True)
             self.progressStatusLabel.setText("拉取完成")
         except Exception as e:
             self.progressStatusLabel.setText(f"拉取失败: {e}")
@@ -2901,8 +2919,8 @@ class TodayTaskPage(QWidget):
         layout.addWidget(self.stats_label)
 
         # 任务表格
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["序号", "文章标题", "目标字数", "类型", "必读", "打卡"])
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(["序号", "文章标题", "目标字数", "类型", "必读", "打卡", "阅读"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -3045,6 +3063,24 @@ class TodayTaskPage(QWidget):
         check_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         check_item.setForeground(QColor("#107c10") if is_checked else QColor("#888888"))
         self.table.setItem(row, 5, check_item)
+
+        # 阅读按钮
+        article_id = item.get('articleId', '')
+        read_btn = QPushButton("📖 阅读")
+        read_btn.setStyleSheet("background-color: #e65100; color: white; padding: 2px 10px; border: none; border-radius: 3px;")
+        read_btn.clicked.connect(lambda checked, cid=article_id: self._open_article_in_reader(cid))
+        self.table.setCellWidget(row, 6, read_btn)
+
+    def _open_article_in_reader(self, client_id):
+        """从今日任务打开文章到阅读器"""
+        if not client_id or not self.data_model:
+            QMessageBox.warning(self, "提示", "无法找到该文章")
+            return
+        article = next((a for a in self.data_model.articles if str(a.get('clientId', '')) == str(client_id)), None)
+        if article:
+            self.window().open_in_reader(article)
+        else:
+            QMessageBox.warning(self, "提示", "本地未找到该文章，请先同步")
 
     def refresh_table(self):
         """外部调用刷新"""
@@ -3410,7 +3446,7 @@ class SettingsPage(QWidget):
             return
         self.sync_status_label.setText("正在同步...")
         try:
-            sync_service.pull_articles(self._on_articles_pulled)
+            sync_service.pull_articles(self._on_articles_pulled, meta=True)
             sync_service.pull_checkins(lambda r, s: None)
             queue_size = sync_service.queue.size()
             self.sync_status_label.setText("同步完成，队列剩余 " + str(queue_size) + " 条")
@@ -3485,6 +3521,264 @@ class SettingsPage(QWidget):
 
 
 
+# ==================== 阅读器页面 ====================
+
+class ReaderPage(QWidget):
+    """文章阅读器：内容渲染、字号/音频设置持久化、阅读打卡"""
+
+    checkin_done = pyqtSignal(str)  # 打卡完成信号，参数为 article clientId
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.current_article = None
+        self._audio_temp_path = None
+        self._can_checkin = False
+        self._settings = QSettings("DailyRead", "ArticleConceptManager")
+        # 读取本地持久化设置
+        self._font_size = int(self._settings.value("reader/font_size", 18))
+        self._auto_play = self._settings.value("reader/auto_play", False, type=bool)
+        self._loop_play = self._settings.value("reader/loop_play", False, type=bool)
+        self._init_ui()
+        self._init_audio()
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 10, 20, 10)
+
+        # 顶部工具栏
+        toolbar = QHBoxLayout()
+        self.title_label = QLabel("请选择文章")
+        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        self.title_label.setWordWrap(True)
+        toolbar.addWidget(self.title_label, stretch=1)
+
+        # 字号控制
+        toolbar.addWidget(QLabel("字号:"))
+        self.font_size_spin = QSpinBox()
+        self.font_size_spin.setRange(12, 60)
+        self.font_size_spin.setValue(self._font_size)
+        self.font_size_spin.valueChanged.connect(self._on_font_size_changed)
+        toolbar.addWidget(self.font_size_spin)
+
+        self.auto_play_cb = QCheckBox("自动播放")
+        self.auto_play_cb.setChecked(self._auto_play)
+        self.auto_play_cb.stateChanged.connect(self._on_auto_play_changed)
+        toolbar.addWidget(self.auto_play_cb)
+
+        self.loop_play_cb = QCheckBox("循环播放")
+        self.loop_play_cb.setChecked(self._loop_play)
+        self.loop_play_cb.stateChanged.connect(self._on_loop_play_changed)
+        toolbar.addWidget(self.loop_play_cb)
+
+        layout.addLayout(toolbar)
+
+        # 进度信息
+        self.progress_label = QLabel("")
+        self.progress_label.setStyleSheet("color: #555; padding: 4px;")
+        layout.addWidget(self.progress_label)
+
+        # 内容区（只读 QTextEdit 显示 HTML）
+        self.content_edit = QTextEdit()
+        self.content_edit.setReadOnly(True)
+        self.content_edit.setStyleSheet(f"font-size: {self._font_size}px; line-height: 1.8;")
+        layout.addWidget(self.content_edit, stretch=1)
+
+        # 底部打卡栏
+        bottom = QHBoxLayout()
+        self.checkin_btn = QPushButton("阅读打卡")
+        self.checkin_btn.setEnabled(False)
+        self.checkin_btn.setStyleSheet("padding: 8px 24px; font-size: 16px;")
+        self.checkin_btn.clicked.connect(self._on_checkin)
+        bottom.addStretch()
+        bottom.addWidget(self.checkin_btn)
+        bottom.addStretch()
+        layout.addLayout(bottom)
+
+        # 打卡倒计时提示
+        self.checkin_timer = QTimer(self)
+        self.checkin_timer.setSingleShot(True)
+        self.checkin_timer.timeout.connect(self._enable_checkin)
+
+    def _init_audio(self):
+        self.player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)
+        self.player.setAudioOutput(self.audio_output)
+        self.audio_output.setVolume(0.8)
+
+    def load_article(self, article):
+        """加载并显示文章"""
+        self.current_article = article
+        self.title_label.setText(article.get('title', ''))
+        # 渲染内容
+        html = self._render_content(article.get('content', ''))
+        self.content_edit.setHtml(html)
+        # 重置打卡状态
+        self._can_checkin = False
+        self.checkin_btn.setEnabled(False)
+        self.checkin_btn.setText("阅读打卡")
+        self.checkin_timer.start(10000)  # 10秒后可打卡
+        # 加载音频
+        self._load_audio(article)
+        # 更新进度
+        self._update_progress(article)
+
+    def _render_content(self, content):
+        """将 ##/**/== 标记转为 HTML"""
+        if not content:
+            return ""
+        lines = content.split('\n')
+        html_parts = []
+        for line in lines:
+            s = line
+            # ==text== → 黄底
+            s = re.sub(r'==([^=]+)==', r'<span style="background-color:#fff59d">\1</span>', s)
+            # **text** → 加粗
+            s = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
+            # ##text → 红色标题
+            if s.startswith('##'):
+                s = f'<span style="color:#d32f2f;font-weight:bold;font-size:{int(self._font_size*1.3)}px">{s[2:].strip()}</span>'
+            html_parts.append(s)
+        return '<div style="line-height:1.9">' + '<br>'.join(html_parts) + '</div>'
+
+    def _load_audio(self, article):
+        """加载音频：优先本地，缺失则按需从服务端拉取"""
+        self._stop_audio()
+        audio_b64 = article.get('audiobase64') or ''
+        if audio_b64:
+            self._play_audio_b64(audio_b64)
+        else:
+            # 本地无音频，尝试从服务端拉取
+            cid = article.get('clientId')
+            if cid:
+                threading.Thread(target=self._fetch_audio_async, args=(cid,), daemon=True).start()
+
+    def _fetch_audio_async(self, client_id):
+        try:
+            r = api_client.fetch_article_media(client_id)
+            if r.get('code') == 0:
+                data = r.get('data') or {}
+                audio = data.get('audiobase64') or ''
+                if audio:
+                    # 切回主线程播放
+                    QTimer.singleShot(0, lambda: self._play_audio_b64(audio))
+        except Exception as e:
+            print(f"[Reader] 拉取音频失败: {e}")
+
+    def _play_audio_b64(self, b64_str):
+        try:
+            audio_bytes = base64.b64decode(b64_str)
+            tmp = os.path.join(tempfile.gettempdir(), f"dr_audio_{uuid.uuid4().hex[:8]}.mp3")
+            with open(tmp, 'wb') as f:
+                f.write(audio_bytes)
+            self._audio_temp_path = tmp
+            self.player.setSource(QUrl.fromLocalFile(tmp))
+            self.player.setLoops(QMediaPlayer.Loops.Infinite if self._loop_play else QMediaPlayer.Loops.Once)
+            if self._auto_play:
+                self.player.play()
+        except Exception as e:
+            print(f"[Reader] 播放音频失败: {e}")
+
+    def _stop_audio(self):
+        try:
+            self.player.stop()
+        except Exception:
+            pass
+        if self._audio_temp_path and os.path.exists(self._audio_temp_path):
+            try:
+                os.remove(self._audio_temp_path)
+            except Exception:
+                pass
+        self._audio_temp_path = None
+
+    def _on_font_size_changed(self, size):
+        self._font_size = size
+        self._settings.setValue("reader/font_size", size)
+        self.content_edit.setStyleSheet(f"font-size: {size}px; line-height: 1.8;")
+        # 重新渲染以更新标题字号
+        if self.current_article:
+            self.content_edit.setHtml(self._render_content(self.current_article.get('content', '')))
+
+    def _on_auto_play_changed(self, state):
+        self._auto_play = state == Qt.CheckState.Checked.value
+        self._settings.setValue("reader/auto_play", self._auto_play)
+
+    def _on_loop_play_changed(self, state):
+        self._loop_play = state == Qt.CheckState.Checked.value
+        self._settings.setValue("reader/loop_play", self._loop_play)
+        if self.player.playbackState() != QMediaPlayer.PlaybackState.StoppedState:
+            self.player.setLoops(QMediaPlayer.Loops.Infinite if self._loop_play else QMediaPlayer.Loops.Once)
+
+    def _enable_checkin(self):
+        self._can_checkin = True
+        self.checkin_btn.setEnabled(True)
+        self.checkin_btn.setText("完成打卡")
+
+    def _update_progress(self, article):
+        """从今日任务中查找该文章的打卡状态"""
+        cid = str(article.get('clientId') or '')
+        try:
+            r = api_client.fetch_today_task()
+            if r.get('code') == 0:
+                data = r.get('data') or {}
+                items = data.get('items') or []
+                matched = next((it for it in items if str(it.get('articleId', '')) == cid), None)
+                if matched:
+                    checked = matched.get('isCheckedIn')
+                    if checked:
+                        self.progress_label.setText(f"✅ 今日已打卡（{matched.get('articleTitle', '')}）")
+                        self.checkin_btn.setText("已打卡")
+                        self.checkin_btn.setEnabled(False)
+                        self.checkin_timer.stop()
+                    else:
+                        total = len(items)
+                        done = sum(1 for it in items if it.get('isCheckedIn'))
+                        self.progress_label.setText(
+                            f"今日任务进度: {done}/{total}（阅读 10 秒后可打卡）")
+                else:
+                    self.progress_label.setText("该文章不在今日任务中")
+            else:
+                self.progress_label.setText("")
+        except Exception:
+            self.progress_label.setText("")
+
+    def _on_checkin(self):
+        if not self._can_checkin or not self.current_article:
+            return
+        cid = self.current_article.get('clientId')
+        if not cid:
+            return
+        self.checkin_btn.setEnabled(False)
+        self.checkin_btn.setText("打卡中...")
+        threading.Thread(target=self._do_checkin, args=(cid,), daemon=True).start()
+
+    def _do_checkin(self, client_id):
+        try:
+            r = api_client.checkin_by_article(client_id)
+            if r.get('code') == 0:
+                QTimer.singleShot(0, lambda: self._on_checkin_success(client_id))
+            else:
+                msg = r.get('message', '打卡失败')
+                QTimer.singleShot(0, lambda: self._on_checkin_fail(msg))
+        except Exception as e:
+            QTimer.singleShot(0, lambda: self._on_checkin_fail(str(e)))
+
+    def _on_checkin_success(self, client_id):
+        self.checkin_btn.setText("已打卡 ✅")
+        self.checkin_btn.setEnabled(False)
+        self.progress_label.setText("✅ 打卡成功！进度已同步到服务端")
+        # 通知主窗口刷新今日任务
+        self.checkin_done.emit(client_id)
+
+    def _on_checkin_fail(self, msg):
+        self.checkin_btn.setEnabled(True)
+        self.checkin_btn.setText("完成打卡")
+        QMessageBox.warning(self, "打卡失败", msg)
+
+    def closeEvent(self, event):
+        self._stop_audio()
+        super().closeEvent(event)
+
+
 # ==================== 主窗口 ====================
 
 class MainWindow(QMainWindow):
@@ -3513,11 +3807,16 @@ class MainWindow(QMainWindow):
 
         self.article_page = ArticlePage(self.data_model, self)
         self.today_task_page = TodayTaskPage(self.data_model, self)
+        self.reader_page = ReaderPage(self)
         self.settings_page = SettingsPage(self.data_model, self)
 
         self.tabs.addTab(self.article_page, "📖 文章管理")
         self.tabs.addTab(self.today_task_page, "📋 今日任务")
+        self.tabs.addTab(self.reader_page, "📖 阅读打卡")
         self.tabs.addTab(self.settings_page, "⚙️ 设置")
+
+        # 打卡完成后刷新今日任务进度
+        self.reader_page.checkin_done.connect(self._on_reader_checkin_done)
 
         self.setCentralWidget(self.tabs)
 
@@ -3559,6 +3858,18 @@ class MainWindow(QMainWindow):
         self._status_label.setText(text)
         self._status_label.setStyleSheet(style)
 
+    def open_in_reader(self, article):
+        """在阅读打卡页打开指定文章"""
+        self.reader_page.load_article(article)
+        self.tabs.setCurrentWidget(self.reader_page)
+
+    def _on_reader_checkin_done(self, client_id):
+        """阅读器打卡完成后刷新今日任务进度"""
+        try:
+            self.today_task_page._refresh_tasks()
+        except Exception:
+            pass
+
     def _setup_account_menu(self):
         """账号菜单栏"""
         menubar = self.menuBar()
@@ -3595,29 +3906,34 @@ class MainWindow(QMainWindow):
             if logged_in:
                 self._refresh_account_menu()
                 sync_service.start()
-                # 全量拉取：重置 since 后拉取服务端全部文章
+                # 全量拉取：重置 since 后后台拉取服务端全部文章（meta 模式不含音频，体积小）
                 sync_service.reset_sync_state()
-                try:
-                    sync_service.pull_articles(self._on_articles_pulled_full)
-                except Exception as e:
-                    print(f"[Sync] 重新登录后拉取失败: {e}")
+                import threading
+                def _bg_full_pull():
+                    try:
+                        sync_service.pull_articles(self._on_articles_pulled_full, meta=True)
+                    except Exception as e:
+                        print(f"[Sync] 重新登录后拉取失败: {e}")
+                threading.Thread(target=_bg_full_pull, daemon=True).start()
             else:
                 # 用户取消登录，关闭程序
                 self.close()
 
     def _init_sync(self):
-        """初始化同步服务"""
+        """初始化同步服务：本地数据立即可用，后台增量拉取服务端变更"""
         self._refresh_account_menu()
-        # 同步状态回调
         sync_service.set_status_callback(self._on_sync_status)
-        # 启动后台同步线程
         sync_service.start()
-        # 启动时重置同步状态，全量拉取服务端数据
-        sync_service.reset_sync_state()
-        try:
-            sync_service.pull_articles(self._on_articles_pulled_full)
-        except Exception as e:
-            print(f"[Sync] 启动拉取失败: {e}")
+        # 启动时不重置游标：用上次保存的 since 做增量拉取（仅切换账号/登录时才 reset）
+        # 后台线程执行，避免阻塞 UI
+        import threading
+        def _bg_pull():
+            try:
+                sync_service.pull_articles(self._on_articles_pulled_full, meta=True)
+                sync_service.pull_checkins(self._on_checkins_pulled)
+            except Exception as e:
+                print(f"[Sync] 启动增量拉取失败: {e}")
+        threading.Thread(target=_bg_pull, daemon=True).start()
 
     def _on_sync_status(self, msg):
         """同步状态变更通知（在主线程更新 UI）"""
@@ -3629,37 +3945,46 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, update)
 
     def _on_articles_pulled_full(self, remote_articles, next_since):
-        """全量替换：用服务端文章完全替换本地数据（切换账号/首次登录时调用）"""
+        """合并服务端增量文章到本地（保留本地 audiobase64/imagewebp）。
+        可能在后台线程调用，UI 刷新需切回主线程。"""
         _debug_log(f"_on_articles_pulled_full ENTER remote_count={len(remote_articles)} local_before={len(self.data_model.articles)}")
-        for ra in remote_articles:
-            _debug_log(f"  remote cid={ra.get('clientId')} has_audio_key={'audiobase64' in ra} audio_len={len(ra.get('audiobase64','') if ra.get('audiobase64') else '')}")
-        new_articles = []
-        # 构建本地 clientId → 本地文章映射，全量替换时保留本地 audiobase64/imagewebp
-        # （服务端旧数据可能无此字段，避免拉取覆盖导致音频/图片丢失）
+        # 构建本地 clientId → 本地文章映射，合并时保留本地 audiobase64/imagewebp
         local_by_cid: dict = {}
         for a in self.data_model.articles:
             cid = a.get('clientId')
             if cid:
                 local_by_cid[str(cid)] = a
+        changed = False
         for ra in remote_articles:
             cid = str(ra.get('clientId') or '')
             if not cid:
                 continue
             ra['clientId'] = cid
-            ra['id'] = len(new_articles) + 1
             ra.setdefault('iscontent', True)
-            # 保留本地 audiobase64/imagewebp：服务端为空时用本地值
+            # 保留本地 audiobase64/imagewebp：服务端元数据模式下不含这些字段
             local = local_by_cid.get(cid)
             if local:
-                if not ra.get('audiobase64'):
+                if 'audiobase64' not in ra or not ra.get('audiobase64'):
                     ra['audiobase64'] = local.get('audiobase64', '')
-                if not ra.get('imagewebp'):
+                if 'imagewebp' not in ra or not ra.get('imagewebp'):
                     ra['imagewebp'] = local.get('imagewebp', '')
-            new_articles.append(ra)
-        self.data_model.articles = new_articles
-        self.data_model.next_article_id = len(new_articles) + 1
-        self.data_model.save_sync()
-        self.refresh_all()
+                # 替换已存在的文章
+                idx = next((i for i, x in enumerate(self.data_model.articles) if str(x.get('clientId')) == cid), None)
+                if idx is not None:
+                    ra['id'] = self.data_model.articles[idx].get('id', idx + 1)
+                    self.data_model.articles[idx] = ra
+                else:
+                    self.data_model.articles.append(ra)
+            else:
+                ra['id'] = len(self.data_model.articles) + 1
+                self.data_model.articles.append(ra)
+            changed = True
+        if changed:
+            self.data_model.next_article_id = len(self.data_model.articles) + 1
+            self.data_model.save_sync()
+            # UI 刷新切回主线程
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(0, self.refresh_all)
         _debug_log(f"_on_articles_pulled_full DONE local_after={len(self.data_model.articles)}")
 
     def auto_save_timer(self):

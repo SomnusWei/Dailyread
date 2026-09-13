@@ -18,13 +18,18 @@ const ARTICLE_FIELDS = [
   'last_modified AS lastModified', 'client_id AS clientId', 'server_updated_at AS serverUpdatedAt'
 ];
 
-// GET /api/articles?since=&batch=1  增量拉取
+// 元数据模式字段：不含 imagewebp / audiobase64（大幅减小传输体积，用于启动增量同步）
+const META_FIELDS = ARTICLE_FIELDS.filter(f => f !== 'imagewebp' && f !== 'audiobase64');
+
+// GET /api/articles?since=&batch=1&meta=1  增量拉取
 // batch=1（鸿蒙端）：按累计体积(~3MB)分批返回，nextSince 用复合游标 'last_modified|id'
 //   （同秒多篇文章靠 id 推进，避免截断丢数据），客户端循环拉取直到空批次。
+// meta=1（Win 端/PWA 启动同步）：仅返回元数据（不含 audio/image base64），大幅减小体积。
 // 不带 batch=1 的旧客户端（Win 端 / PWA）：行为不变，一次返回全量。
 router.get('/', authRequired, async (req, res) => {
   const since = req.query.since || '';
   const batchMode = req.query.batch === '1';
+  const metaMode = req.query.meta === '1';
   try {
     // 解析复合游标 'last_modified|id'，兼容旧格式纯 last_modified（id 视为 0）
     let sinceTs = since;
@@ -34,12 +39,14 @@ router.get('/', authRequired, async (req, res) => {
       sinceTs = parts[0];
       sinceId = Number(parts[1]) || 0;
     }
+    const fields = metaMode ? META_FIELDS : ARTICLE_FIELDS;
+    const lenCols = metaMode ? '' : ', LENGTH(audiobase64) AS _aLen, LENGTH(imagewebp) AS _iLen';
     let sql, params;
     if (sinceTs) {
-      sql = `SELECT ${ARTICLE_FIELDS.join(', ')}, LENGTH(audiobase64) AS _aLen, LENGTH(imagewebp) AS _iLen FROM articles WHERE user_id = ? AND deleted = 0 AND (last_modified > ? OR (last_modified = ? AND id > ?)) ORDER BY last_modified ASC, id ASC`;
+      sql = `SELECT ${fields.join(', ')}${lenCols} FROM articles WHERE user_id = ? AND deleted = 0 AND (last_modified > ? OR (last_modified = ? AND id > ?)) ORDER BY last_modified ASC, id ASC`;
       params = [req.userId, sinceTs, sinceTs, sinceId];
     } else {
-      sql = `SELECT ${ARTICLE_FIELDS.join(', ')}, LENGTH(audiobase64) AS _aLen, LENGTH(imagewebp) AS _iLen FROM articles WHERE user_id = ? AND deleted = 0 ORDER BY last_modified ASC, id ASC`;
+      sql = `SELECT ${fields.join(', ')}${lenCols} FROM articles WHERE user_id = ? AND deleted = 0 ORDER BY last_modified ASC, id ASC`;
       params = [req.userId];
     }
     const [rows] = await pool.query(sql, params);
@@ -59,25 +66,55 @@ router.get('/', authRequired, async (req, res) => {
       outRows = rows.slice(0, cut);
       const truncated = cut < rows.length;
       if (outRows.length === 0) {
-        // 空批次：同步已完成，游标收敛到服务端最新时间
-        const [[maxRow]] = await pool.query('SELECT MAX(last_modified) AS maxTs FROM articles WHERE user_id = ? AND deleted = 0', [req.userId]);
-        nextSince = (maxRow && maxRow.maxTs) || '';
+        // 空批次：同步已完成，游标收敛到服务端最新时间+最大id
+        const [[maxRow]] = await pool.query('SELECT MAX(last_modified) AS maxTs, MAX(id) AS maxId FROM articles WHERE user_id = ? AND deleted = 0', [req.userId]);
+        nextSince = (maxRow && maxRow.maxTs) ? (maxRow.maxTs + '|' + (maxRow.maxId || 0)) : '';
       } else if (truncated) {
         const lastRow = outRows[outRows.length - 1];
         nextSince = lastRow.lastModified + '|' + lastRow.id;
       } else {
-        nextSince = outRows[outRows.length - 1].lastModified;
+        const lastRow = outRows[outRows.length - 1];
+        nextSince = lastRow.lastModified + '|' + lastRow.id;
       }
       outRows = outRows.map(r => { delete r._aLen; delete r._iLen; return r; });
     } else {
-      // 获取当前服务端最新时间，作为下次 since
-      const [[maxRow]] = await pool.query('SELECT MAX(last_modified) AS maxTs FROM articles WHERE user_id = ? AND deleted = 0', [req.userId]);
-      nextSince = (maxRow && maxRow.maxTs) || '';
+      // 非 batch：用最后一行的复合游标，避免同时间戳文章被重复返回
+      if (rows.length > 0) {
+        const lastRow = rows[rows.length - 1];
+        nextSince = lastRow.lastModified + '|' + lastRow.id;
+      } else {
+        const [[maxRow]] = await pool.query('SELECT MAX(last_modified) AS maxTs, MAX(id) AS maxId FROM articles WHERE user_id = ? AND deleted = 0', [req.userId]);
+        nextSince = (maxRow && maxRow.maxTs) ? (maxRow.maxTs + '|' + (maxRow.maxId || 0)) : '';
+      }
     }
     return res.json(success({ articles: outRows, nextSince }));
   } catch (e) {
     console.error('[articles/get]', e);
     return res.status(500).json(error('拉取失败: ' + e.message, 500));
+  }
+});
+
+// GET /api/articles/media?clientId=xxx  按需获取单篇文章的音频/图片（阅读器打开时懒加载）
+router.get('/media', authRequired, async (req, res) => {
+  const clientId = req.query.clientId;
+  if (!clientId) {
+    return res.status(400).json(error('缺少 clientId', 400));
+  }
+  try {
+    const [rows] = await pool.query(
+      'SELECT audiobase64, imagewebp FROM articles WHERE user_id = ? AND client_id = ? AND deleted = 0',
+      [req.userId, String(clientId)]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json(error('文章不存在', 404));
+    }
+    return res.json(success({
+      audiobase64: rows[0].audiobase64 || '',
+      imagewebp: rows[0].imagewebp || ''
+    }));
+  } catch (e) {
+    console.error('[articles/media]', e);
+    return res.status(500).json(error('获取失败: ' + e.message, 500));
   }
 });
 

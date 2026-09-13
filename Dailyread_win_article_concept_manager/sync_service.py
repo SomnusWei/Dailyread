@@ -261,11 +261,13 @@ class SyncService:
         self.queue.clear()
 
     # ---------- 增量拉取 ----------
-    def pull_articles(self, on_article_merged):
+    def pull_articles(self, on_article_merged, meta=True):
         """拉取服务端增量文章，合并到本地。
         on_article_merged(remote_articles: list, next_since: str)
+        meta=True 时仅拉取元数据（不含 audio/image base64），大幅减小体积。
+        合并时由调用方负责保留本地已有 audio/image。
         """
-        r = api_client.fetch_articles(self._last_article_since)
+        r = api_client.fetch_articles(self._last_article_since, meta=meta)
         if r.get('code') != 0:
             self._notify(f"拉取文章失败: {r.get('message')}")
             return

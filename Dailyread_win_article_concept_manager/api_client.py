@@ -138,8 +138,12 @@ class ApiClient:
         return False
 
     # ---------- 文章 API ----------
-    def fetch_articles(self, since=""):
-        params = {'since': since} if since else {}
+    def fetch_articles(self, since="", meta=False):
+        params = {}
+        if since:
+            params['since'] = since
+        if meta:
+            params['meta'] = '1'
         return self._request('GET', '/api/articles', params=params)
 
     def push_article(self, article):
@@ -174,6 +178,16 @@ class ApiClient:
 
     def checkin_task_item(self, item_id):
         return self._request('POST', '/api/daily-tasks/today/checkin', json={'itemId': item_id})
+
+    def checkin_by_article(self, article_client_id):
+        """通过文章 client_id 打卡今日任务（多端安全，推荐）"""
+        return self._request('POST', '/api/daily-tasks/today/checkin-by-article',
+                             json={'articleId': article_client_id})
+
+    # ---------- 文章媒体按需加载 ----------
+    def fetch_article_media(self, client_id):
+        """获取单篇文章的音频/图片 base64（阅读器懒加载）"""
+        return self._request('GET', '/api/articles/media', params={'clientId': client_id})
 
     # ---------- 配置 API ----------
     def fetch_config(self):
