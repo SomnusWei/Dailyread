@@ -189,13 +189,17 @@ class DataModel:
                     self.next_concept_id = data.get('next_concept_id', 1)
                     self.next_clinical_note_id = data.get('next_clinical_note_id', 1)
                     self.version = data.get('version', 7)
-                    # 兼容旧数据：补齐 iscontent / audiobase64 默认值
+                    # 兼容旧数据：补齐 iscontent / audiobase64 默认值，防止 None 导致 len() 崩溃
                     for a in self.articles:
                         a.setdefault('iscontent', True)
-                        a.setdefault('audiobase64', '')
+                        if a.get('audiobase64') is None:
+                            a['audiobase64'] = ''
+                        if a.get('imagewebp') is None:
+                            a['imagewebp'] = ''
                     # 回填 clientId（旧数据无此字段，用 migrate-{id} 保证两端一致）
                     self._backfill_client_ids()
-                _debug_log(f"load OK articles={len(self.articles)} first_has_audio_key={'audiobase64' in self.articles[0] if self.articles else 'empty'} first_audio_len={len(self.articles[0].get('audiobase64','')) if self.articles else 0}")
+                first_audio = self.articles[0].get('audiobase64') if self.articles else None
+                _debug_log(f"load OK articles={len(self.articles)} first_audio_len={len(first_audio or '') if self.articles else 0}")
             except Exception as e:
                 print(f"加载数据失败: {e}")
                 _debug_log(f"load FAIL: {e}")
@@ -243,7 +247,12 @@ class DataModel:
         """保存数据到文件（异步序列化+写盘，不阻塞 UI）"""
         # 快照当前版本号，写盘前检查是否已被更新版本覆盖
         version = self._data_version
-        # 深拷贝快照，避免后台线程序列化时主线程修改数据
+        # 清理 None 字段后再快照，防止保存为 JSON null 导致下次 load 崩溃
+        for a in self.articles:
+            if a.get('audiobase64') is None:
+                a['audiobase64'] = ''
+            if a.get('imagewebp') is None:
+                a['imagewebp'] = ''
         data = {
             'version': self.version,
             'articles': list(self.articles),
@@ -271,7 +280,7 @@ class DataModel:
             try:
                 json_str = json.dumps(data, ensure_ascii=False)
                 arts = data.get('articles', [])
-                audio_items = [(a.get('id'), len(a.get('audiobase64',''))) for a in arts if a.get('audiobase64')]
+                audio_items = [(a.get('id'), len(a.get('audiobase64') or '')) for a in arts if a.get('audiobase64')]
                 _debug_log(f"_serialize_and_write articles={len(arts)} audio_count={len(audio_items)} audio_items={audio_items[:5]}")
                 with open(tmp_path, 'w', encoding='utf-8') as f:
                     f.write(json_str)
@@ -288,6 +297,12 @@ class DataModel:
 
     def save_sync(self):
         """同步保存（关闭窗口时确保数据写完，原子写入避免与异步 save 竞态）"""
+        # 清理可能为 None 的字段，防止下次 load 时 len(None) 崩溃
+        for a in self.articles:
+            if a.get('audiobase64') is None:
+                a['audiobase64'] = ''
+            if a.get('imagewebp') is None:
+                a['imagewebp'] = ''
         data = {
             'version': self.version,
             'articles': self.articles,
@@ -298,7 +313,7 @@ class DataModel:
             'next_clinical_note_id': 1
         }
         arts = data.get('articles', [])
-        audio_items = [(a.get('id'), len(a.get('audiobase64',''))) for a in arts if a.get('audiobase64')]
+        audio_items = [(a.get('id'), len(a.get('audiobase64','') or '')) for a in arts if a.get('audiobase64')]
         _debug_log(f"save_sync articles={len(arts)} audio_count={len(audio_items)} audio_items={audio_items[:5]}")
         with self._save_lock:
             # 递增版本号：使之前 save() 的旧快照在写盘时被跳过
@@ -4074,10 +4089,10 @@ class MainWindow(QMainWindow):
             # 保留本地 audiobase64/imagewebp：服务端元数据模式下不含这些字段
             local = local_by_cid.get(cid)
             if local:
-                if 'audiobase64' not in ra or not ra.get('audiobase64'):
-                    ra['audiobase64'] = local.get('audiobase64', '')
-                if 'imagewebp' not in ra or not ra.get('imagewebp'):
-                    ra['imagewebp'] = local.get('imagewebp', '')
+                if not ra.get('audiobase64'):
+                    ra['audiobase64'] = local.get('audiobase64') or ''
+                if not ra.get('imagewebp'):
+                    ra['imagewebp'] = local.get('imagewebp') or ''
                 # 替换已存在的文章
                 idx = next((i for i, x in enumerate(self.data_model.articles) if str(x.get('clientId')) == cid), None)
                 if idx is not None:
