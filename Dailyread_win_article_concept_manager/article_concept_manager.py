@@ -3608,12 +3608,17 @@ class ReaderDialog(QDialog):
         self.content_edit.setStyleSheet(f"font-size: {fs}px; line-height: 1.8;")
         layout.addWidget(self.content_edit, stretch=1)
 
-        # 底部：换一篇 + 打卡
+        # 底部：换一篇 + 播放/暂停 + 打卡
         bottom = QHBoxLayout()
         self.next_btn = QPushButton("🎲 换一篇")
         self.next_btn.setStyleSheet("padding: 8px 20px; font-size: 14px;")
         self.next_btn.clicked.connect(self._on_next_article)
         bottom.addWidget(self.next_btn)
+        self.play_btn = QPushButton("▶️ 播放")
+        self.play_btn.setStyleSheet("padding: 8px 20px; font-size: 14px;")
+        self.play_btn.setEnabled(False)
+        self.play_btn.clicked.connect(self._toggle_play)
+        bottom.addWidget(self.play_btn)
         bottom.addStretch()
         self.checkin_btn = QPushButton("完成打卡")
         self.checkin_btn.setStyleSheet("padding: 8px 24px; font-size: 16px; background-color: #107c10; color: white;")
@@ -3626,6 +3631,7 @@ class ReaderDialog(QDialog):
         self.audio_output = QAudioOutput(self)
         self.player.setAudioOutput(self.audio_output)
         self.audio_output.setVolume(0.8)
+        self.player.playbackStateChanged.connect(self._on_playback_state_changed)
 
     def start_random_reading(self):
         """入口：拉取今日任务，从未打卡文章随机选一篇打开"""
@@ -3684,7 +3690,17 @@ class ReaderDialog(QDialog):
         self.current_article = article
         self.title_label.setText(article.get('title', ''))
         fs = int(self._settings.value("reader/font_size", 18))
+        # 浅色背景，避免深色主题下文字看不清
+        self.content_edit.setStyleSheet(
+            f"font-size: {fs}px; line-height: 1.8; background-color: #fdfdf8; color: #222;"
+        )
         html = self._render_content(article.get('content', ''), fs)
+        # 图片：有 imagewebp 且非纯文本文章时，在内容前插入图片
+        img_b64 = article.get('imagewebp') or ''
+        if img_b64 and not article.get('iscontent', True):
+            img_data_uri = self._webp_to_png_data_uri(img_b64)
+            if img_data_uri:
+                html = f'<div style="text-align:center;margin-bottom:12px;"><img src="{img_data_uri}" style="max-width:100%;"/></div>' + html
         self.content_edit.setHtml(html)
         # 打卡按钮默认可用（取消 10 秒限制）
         self.checkin_btn.setEnabled(True)
@@ -3697,6 +3713,23 @@ class ReaderDialog(QDialog):
         done = len(self._checked_cids)
         self.progress_label.setText(f"进度: {done}/{total}")
 
+    def _webp_to_png_data_uri(self, webp_b64):
+        """将 webp base64 转为 PNG data URI（Qt 对 webp 在 QTextEdit 中支持有限）"""
+        try:
+            raw = base64.b64decode(webp_b64)
+            img = QImage()
+            if not img.loadFromData(raw):
+                # 尝试直接用 webp data URI
+                return f"data:image/webp;base64,{webp_b64}"
+            buf = QBuffer()
+            buf.open(QBuffer.OpenModeFlag.WriteOnly)
+            img.save(buf, "PNG")
+            png_b64 = base64.b64encode(buf.data()).decode('ascii')
+            return f"data:image/png;base64,{png_b64}"
+        except Exception as e:
+            print(f"[Reader] 图片解码失败: {e}")
+            return f"data:image/webp;base64,{webp_b64}"
+
     def _render_content(self, content, font_size=18):
         """将 ##/**/== 标记转为 HTML"""
         if not content:
@@ -3705,15 +3738,20 @@ class ReaderDialog(QDialog):
         html_parts = []
         for line in lines:
             s = line
-            s = re.sub(r'==([^=]+)==', r'<span style="background-color:#fff59d">\1</span>', s)
+            # ==text== → 黄底深色文字（浅底深字，清晰可见）
+            s = re.sub(r'==([^=]+)==', r'<span style="background-color:#ffeb3b;color:#1a1a1a;padding:0 2px;">\1</span>', s)
+            # **text** → 加粗
             s = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
+            # ##text → 红色标题
             if s.startswith('##'):
                 s = f'<span style="color:#d32f2f;font-weight:bold;font-size:{int(font_size*1.3)}px">{s[2:].strip()}</span>'
             html_parts.append(s)
-        return f'<div style="line-height:1.9;font-size:{font_size}px">' + '<br>'.join(html_parts) + '</div>'
+        return f'<div style="line-height:1.9;font-size:{font_size}px;color:#222;">' + '<br>'.join(html_parts) + '</div>'
 
     def _load_audio(self, article):
         self._stop_audio()
+        self.play_btn.setEnabled(False)
+        self.play_btn.setText("▶️ 播放")
         audio_b64 = article.get('audiobase64') or ''
         if audio_b64:
             self._play_audio_b64(audio_b64)
@@ -3743,10 +3781,28 @@ class ReaderDialog(QDialog):
             self.player.setSource(QUrl.fromLocalFile(tmp))
             loop = self._settings.value("reader/loop_play", False, type=bool)
             self.player.setLoops(QMediaPlayer.Loops.Infinite if loop else QMediaPlayer.Loops.Once)
+            self.play_btn.setEnabled(True)
+            self.play_btn.setText("▶️ 播放")
             if self._settings.value("reader/auto_play", False, type=bool):
                 self.player.play()
         except Exception as e:
             print(f"[Reader] 播放音频失败: {e}")
+            self.play_btn.setEnabled(False)
+
+    def _toggle_play(self):
+        """播放/暂停切换"""
+        if not self._audio_temp_path:
+            return
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+        else:
+            self.player.play()
+
+    def _on_playback_state_changed(self, state):
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_btn.setText("⏸️ 暂停")
+        else:
+            self.play_btn.setText("▶️ 播放")
 
     def _stop_audio(self):
         try:
@@ -3938,12 +3994,12 @@ class MainWindow(QMainWindow):
             if logged_in:
                 self._refresh_account_menu()
                 sync_service.start()
-                # 全量拉取：重置 since 后后台拉取服务端全部文章（meta 模式不含音频，体积小）
+                # 全量拉取：重置 since 后后台拉取服务端全部文章（含音频图片，因本地已清空）
                 sync_service.reset_sync_state()
                 import threading
                 def _bg_full_pull():
                     try:
-                        sync_service.pull_articles(self._on_articles_pulled_full, meta=True)
+                        sync_service.pull_articles(self._on_articles_pulled_full, meta=False)
                     except Exception as e:
                         print(f"[Sync] 重新登录后拉取失败: {e}")
                 threading.Thread(target=_bg_full_pull, daemon=True).start()
