@@ -301,34 +301,40 @@ class BackupWorker(QThread):
 
     def _download_file(self, sftp, remote_path: str, local_path: str,
                        file_size: int, done_bytes: int, total_bytes: int):
-        """手动分块下载——在 QThread 内直接读写 + emit 进度，
-        不使用 paramiko callback（paramiko 从 Transport 线程回调，
-        在打包 EXE 中跨线程发 Qt 信号会闪退）。"""
-        CHUNK = 65536
-        rf = sftp.open(remote_path, 'rb')
-        rf.settimeout(60)
-        written = 0
-        last_pct = 0.0
-        try:
-            with open(local_path, 'wb') as lf:
-                while True:
-                    if self.cancel:
-                        raise RuntimeError('已取消')
-                    data = rf.read(CHUNK)
-                    if not data:
-                        break
-                    lf.write(data)
-                    written += len(data)
-                    if total_bytes > 0:
-                        pct = (done_bytes + written) / total_bytes * 100
-                        if pct - last_pct >= 1.0 or written >= file_size:
-                            last_pct = pct
-                            self.progress_sig.emit(min(pct, 99))
-        finally:
+        """用 sftp.get 无回调阻塞下载——paramiko Transport 线程不会回调，
+        在打包 EXE 中安全。进度通过文件大小轮询 emit。"""
+        import threading
+
+        err_box = [None]
+        done_flag = threading.Event()
+
+        def _do_get():
             try:
-                rf.close()
-            except Exception:
-                pass
+                sftp.get(remote_path, local_path)
+            except Exception as e:
+                err_box[0] = e
+            finally:
+                done_flag.set()
+
+        t = threading.Thread(target=_do_get, daemon=True)
+        t.start()
+
+        # 在 QThread 中轮询本地文件大小更新进度
+        last_pct = 0.0
+        while not done_flag.is_set():
+            if self.cancel:
+                raise RuntimeError('已取消')
+            if total_bytes > 0 and os.path.isfile(local_path):
+                local_size = os.path.getsize(local_path)
+                pct = (done_bytes + local_size) / total_bytes * 100
+                if pct - last_pct >= 1.0:
+                    last_pct = pct
+                    self.progress_sig.emit(min(pct, 99))
+            time.sleep(0.3)
+
+        t.join(timeout=5)
+        if err_box[0]:
+            raise err_box[0]
 
     def _sha_of(self, path: str) -> str:
         h = hashlib.sha256()

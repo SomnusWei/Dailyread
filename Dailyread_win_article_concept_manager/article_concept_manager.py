@@ -31,7 +31,8 @@ from PyQt6.QtWidgets import (
     QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox,
     QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget,
     QCheckBox, QDialogButtonBox, QTabWidget, QMainWindow,
-    QStatusBar, QGroupBox, QProgressBar, QScrollArea, QProgressDialog
+    QStatusBar, QGroupBox, QProgressBar, QScrollArea, QProgressDialog,
+    QSplashScreen
 )
 
 # 大版本更新：用户体系 + 云同步
@@ -49,6 +50,24 @@ def _debug_log(msg: str):
             f.write(f"{datetime.now().isoformat()} {msg}\n")
     except Exception:
         pass
+
+
+def _current_uid() -> str:
+    """返回当前登录用户 ID 字符串；未登录返回空串"""
+    try:
+        if api_client.user:
+            uid = api_client.user.get('id')
+            if uid is not None:
+                return str(uid)
+    except Exception:
+        pass
+    return ''
+
+
+def reader_setting_key(key: str) -> str:
+    """按账号生成阅读器设置键，如 reader/11/font_size；未登录时用全局键 reader/font_size"""
+    uid = _current_uid()
+    return f"reader/{uid}/{key}" if uid else f"reader/{key}"
 
 
 # ==================== 服务器状态检测 ====================
@@ -149,13 +168,51 @@ class StatusIndicator(QLabel):
 # ==================== 数据模型 ====================
 
 class DataModel:
-    """数据模型：管理文章"""
+    """数据模型：管理文章（按用户ID分文件持久化）"""
 
-    APP_DATA_FILE = data_path("app_data.json")
+    # 通用数据文件（旧版兼容 / 全局配置）
     BACKUP_FILE = data_path("daily_read_backup_windows.json")
     WEBDAV_CONFIG_FILE = data_path("webdav_config.json")
 
-    def __init__(self):
+    @staticmethod
+    def get_data_file(user_id=None) -> str:
+        """返回当前用户的数据文件路径（按用户ID分文件）"""
+        uid = user_id
+        if uid is None:
+            try:
+                from api_client import api_client
+                if api_client.user:
+                    uid = api_client.user.get('id')
+            except Exception:
+                pass
+        if uid:
+            return data_path(f"app_data_{uid}.json")
+        # 未登录时用通用文件
+        return data_path("app_data.json")
+
+    @staticmethod
+    def get_media_dir(user_id=None) -> str:
+        """返回当前用户的媒体文件目录（音频/图片独立存储，避免主 JSON 过大导致序列化卡顿）"""
+        uid = user_id
+        if uid is None:
+            try:
+                from api_client import api_client
+                if api_client.user:
+                    uid = api_client.user.get('id')
+            except Exception:
+                pass
+        d = data_path(f"media_{uid}" if uid else "media")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    @staticmethod
+    def _media_path(client_id: str, kind: str, user_id=None) -> str:
+        """kind: 'audio' | 'image'"""
+        safe = str(client_id).replace('/', '_').replace('\\', '_')
+        ext = 'mp3.b64' if kind == 'audio' else 'webp.b64'
+        return os.path.join(DataModel.get_media_dir(user_id), f"{safe}.{ext}")
+
+    def __init__(self, preloaded_data=None):
         self.articles: list = []
         # 保留兼容性字段（旧版本备份可能包含）
         self.concepts: list = []
@@ -164,11 +221,153 @@ class DataModel:
         self.next_concept_id = 1
         self.next_clinical_note_id = 1
         self.version = 8
+        # 当前用户数据文件路径
+        self.APP_DATA_FILE = self.get_data_file()
         # 写盘锁：保护异步 save() 与 closeEvent 的 save_sync() 不竞态
         self._save_lock = threading.Lock()
         # 数据版本号：save() 异步写盘前检查，避免旧快照覆盖 save_sync() 的新数据
         self._data_version = 0
-        self.load()
+        if preloaded_data is not None:
+            self._apply_loaded_data(preloaded_data)
+        else:
+            self.load()
+
+    def _apply_loaded_data(self, data):
+        """应用已加载的数据（用于后台预加载后传入）"""
+        self.articles = data.get('articles', [])
+        self.concepts = data.get('concepts', [])
+        self.clinical_notes = data.get('clinical_notes', [])
+        self.next_article_id = data.get('next_article_id', 1)
+        self.next_concept_id = data.get('next_concept_id', 1)
+        self.next_clinical_note_id = data.get('next_clinical_note_id', 1)
+        self.version = data.get('version', 7)
+        self._normalize_articles()
+        # 注意：音频/图片不在启动时全量加载（327 个文件共 80MB），
+        # 改为按需加载：打开文章时才读取对应媒体文件，避免启动卡顿。
+        # 表格中的"有图/有音频"标记通过文件存在性判断。
+
+    def _load_all_media(self):
+        """从 media 目录加载所有文章的音频/图片 base64 到内存"""
+        for a in self.articles:
+            cid = a.get('clientId')
+            if not cid:
+                continue
+            a['audiobase64'] = self._read_media(cid, 'audio') or a.get('audiobase64') or ''
+            a['imagewebp'] = self._read_media(cid, 'image') or a.get('imagewebp') or ''
+
+    @staticmethod
+    def _read_media(client_id, kind, user_id=None):
+        """从独立文件读取媒体 base64，不存在返回 None"""
+        try:
+            p = DataModel._media_path(client_id, kind, user_id)
+            if os.path.exists(p):
+                with open(p, 'r', encoding='utf-8') as f:
+                    return f.read()
+        except Exception:
+            pass
+        return None
+
+    def _write_media(self, client_id, kind, b64_str, skip_if_exists=True):
+        """将媒体 base64 写入独立文件
+
+        skip_if_exists=True 时，若文件已存在则跳过（避免每次自动保存都重写 80MB）。
+        媒体内容极少变更，首次写入后基本不变更；变更时由 save_sync 覆盖写入。
+        """
+        if not b64_str:
+            return
+        try:
+            p = self._media_path(client_id, kind)
+            if skip_if_exists and os.path.exists(p):
+                return
+            with open(p, 'w', encoding='utf-8') as f:
+                f.write(b64_str)
+        except Exception as e:
+            print(f"[Media] 写入 {kind} 失败: {e}")
+
+    def _strip_media(self, articles):
+        """返回不含音频/图片的文章副本（用于 JSON 序列化，减小体积避免卡顿）"""
+        stripped = []
+        for a in articles:
+            na = dict(a)
+            na.pop('audiobase64', None)
+            na.pop('imagewebp', None)
+            stripped.append(na)
+        return stripped
+
+    def _normalize_articles(self):
+        """补齐文章默认字段，防止 None 导致崩溃"""
+        for a in self.articles:
+            a.setdefault('iscontent', True)
+            if a.get('audiobase64') is None:
+                a['audiobase64'] = ''
+            if a.get('imagewebp') is None:
+                a['imagewebp'] = ''
+
+    @staticmethod
+    def load_data_file(user_id=None, progress_cb=None) -> dict:
+        """静态方法：从文件加载原始数据 dict（供后台线程调用，不依赖实例）
+
+        Args:
+            user_id: 用户ID，用于定位数据文件
+            progress_cb: 进度回调函数 cb(percent: int, msg: str)
+        """
+        def _report(p, msg):
+            if progress_cb:
+                try:
+                    progress_cb(p, msg)
+                except Exception:
+                    pass
+
+        filepath = DataModel.get_data_file(user_id)
+        _report(5, "正在定位数据文件...")
+        # 若用户专属文件不存在，尝试从通用 app_data.json 迁移
+        if not os.path.exists(filepath):
+            legacy = data_path("app_data.json")
+            if os.path.exists(legacy) and legacy != filepath:
+                try:
+                    _report(8, "正在迁移历史数据...")
+                    shutil.copy2(legacy, filepath)
+                    _debug_log(f"migrating app_data.json -> {os.path.basename(filepath)}")
+                except Exception:
+                    pass
+        if os.path.exists(filepath):
+            try:
+                file_size = os.path.getsize(filepath)
+                # 分块读取文件，报告读取进度（10% ~ 70%）
+                chunks = []
+                read_bytes = 0
+                chunk_size = 1024 * 1024  # 1MB
+                _report(10, f"正在读取数据 ({file_size/1024/1024:.1f} MB)...")
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    while True:
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        read_bytes += len(chunk.encode('utf-8'))
+                        pct = 10 + int(read_bytes / file_size * 60) if file_size else 70
+                        _report(min(pct, 70), f"正在读取数据 {read_bytes/1024/1024:.1f}/{file_size/1024/1024:.1f} MB")
+                content = ''.join(chunks)
+                _report(72, "正在解析数据...")
+                data = json.loads(content)
+                _report(95, "正在初始化文章...")
+                return data
+            except Exception as e:
+                print(f"加载数据失败: {e}")
+                _report(100, f"加载失败: {e}")
+        # 无数据文件：尝试加载备份样例
+        _report(50, "加载备份样例...")
+        return DataModel._load_backup_data()
+
+    @staticmethod
+    def _load_backup_data() -> dict:
+        if os.path.exists(DataModel.BACKUP_FILE):
+            try:
+                with open(DataModel.BACKUP_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"加载备份样例失败: {e}")
+        return {'articles': [], 'concepts': [], 'clinical_notes': []}
 
     @staticmethod
     def generate_client_id() -> str:
@@ -177,37 +376,23 @@ class DataModel:
 
     def load(self):
         """从文件加载数据"""
-        if os.path.exists(self.APP_DATA_FILE):
-            try:
-                with open(self.APP_DATA_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.articles = data.get('articles', [])
-                    # 保留兼容性字段但不使用
-                    self.concepts = data.get('concepts', [])
-                    self.clinical_notes = data.get('clinical_notes', [])
-                    self.next_article_id = data.get('next_article_id', 1)
-                    self.next_concept_id = data.get('next_concept_id', 1)
-                    self.next_clinical_note_id = data.get('next_clinical_note_id', 1)
-                    self.version = data.get('version', 7)
-                    # 兼容旧数据：补齐 iscontent / audiobase64 默认值，防止 None 导致 len() 崩溃
-                    for a in self.articles:
-                        a.setdefault('iscontent', True)
-                        if a.get('audiobase64') is None:
-                            a['audiobase64'] = ''
-                        if a.get('imagewebp') is None:
-                            a['imagewebp'] = ''
-                    # 回填 clientId（旧数据无此字段，用 migrate-{id} 保证两端一致）
-                    self._backfill_client_ids()
-                first_audio = self.articles[0].get('audiobase64') if self.articles else None
-                _debug_log(f"load OK articles={len(self.articles)} first_audio_len={len(first_audio or '') if self.articles else 0}")
-            except Exception as e:
-                print(f"加载数据失败: {e}")
-                _debug_log(f"load FAIL: {e}")
-                self.articles = []
-                self.concepts = []
-                self.clinical_notes = []
-        else:
-            self.load_backup_sample()
+        data = self.load_data_file()
+        self._apply_loaded_data(data)
+        self._backfill_client_ids()
+        first_audio = self.articles[0].get('audiobase64') if self.articles else None
+        _debug_log(f"load OK articles={len(self.articles)} first_audio_len={len(first_audio or '') if self.articles else 0}")
+
+    def switch_user(self):
+        """切换到当前登录用户的数据文件（登出后重新登录时调用）"""
+        self.APP_DATA_FILE = self.get_data_file()
+        self.articles = []
+        self.concepts = []
+        self.clinical_notes = []
+        self.next_article_id = 1
+        self.next_concept_id = 1
+        self.next_clinical_note_id = 1
+        self._data_version = 0
+        self.load()
 
     def _backfill_client_ids(self):
         """为缺少 clientId 的旧文章补齐（migrate-{id} 格式，保证多端一致）"""
@@ -219,50 +404,32 @@ class DataModel:
         if changed:
             self.save()
 
-    def load_backup_sample(self):
-        """加载备份样例"""
-        if os.path.exists(self.BACKUP_FILE):
-            try:
-                with open(self.BACKUP_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.articles = data.get('articles', [])
-                    # 保留兼容性字段但不使用
-                    self.concepts = data.get('concepts', [])
-                    self.clinical_notes = data.get('clinical_notes', data.get('clinicalNotes', []))
-                    # 记录日志
-                    if self.concepts:
-                        print(f"检测到旧备份文件包含 {len(self.concepts)} 条概念数据，已跳过使用")
-                    if self.clinical_notes:
-                        print(f"检测到旧备份文件包含 {len(self.clinical_notes)} 条临床笔记数据，已跳过使用")
-                    # 兼容旧数据：补齐 iscontent / audiobase64 默认值
-                    for a in self.articles:
-                        a.setdefault('iscontent', True)
-                        a.setdefault('audiobase64', '')
-                    # 回填 clientId
-                    self._backfill_client_ids()
-            except Exception as e:
-                print(f"加载备份样例失败: {e}")
-
     def save(self):
-        """保存数据到文件（异步序列化+写盘，不阻塞 UI）"""
-        # 快照当前版本号，写盘前检查是否已被更新版本覆盖
+        """保存数据到文件（异步序列化+写盘，不阻塞 UI）
+
+        音频/图片 base64 不写入主 JSON，而是存到独立媒体文件，
+        避免 json.dumps 序列化 80MB 数据时持有 GIL 阻塞主线程。
+        所有媒体写入和 JSON 序列化都在后台线程完成。
+        """
         version = self._data_version
-        # 清理 None 字段后再快照，防止保存为 JSON null 导致下次 load 崩溃
+        # 清理 None 字段
         for a in self.articles:
             if a.get('audiobase64') is None:
                 a['audiobase64'] = ''
             if a.get('imagewebp') is None:
                 a['imagewebp'] = ''
+        # 浅拷贝文章列表（dict 引用不变，后台线程读取时主线程不修改这些 dict）
+        articles_snapshot = list(self.articles)
         data = {
             'version': self.version,
-            'articles': list(self.articles),
+            'articles': articles_snapshot,
             'concepts': [],
             'clinical_notes': [],
             'next_article_id': self.next_article_id,
             'next_concept_id': 1,
             'next_clinical_note_id': 1
         }
-        # 序列化 + 文件写入都放到后台线程，彻底不阻塞 UI
+        # 媒体写入 + JSON 序列化全部放到后台线程，主线程零阻塞
         t = threading.Thread(
             target=self._serialize_and_write,
             args=(self.APP_DATA_FILE, data, version),
@@ -271,17 +438,27 @@ class DataModel:
         t.start()
 
     def _serialize_and_write(self, filepath: str, data: dict, version: int = 0):
-        """后台线程：序列化为 JSON 并原子写盘。若已有更新版本写入则跳过。"""
+        """后台线程：写媒体文件 + 剥离媒体 + 序列化为 JSON + 原子写盘。"""
         with self._save_lock:
             if version != 0 and version < self._data_version:
-                # 已有更新的数据被 save_sync 写入，跳过本次旧快照
                 return
+            # 1. 将音频/图片写入独立媒体文件
+            arts = data.get('articles', [])
+            for a in arts:
+                cid = a.get('clientId')
+                if not cid:
+                    continue
+                if a.get('audiobase64'):
+                    self._write_media(cid, 'audio', a['audiobase64'])
+                if a.get('imagewebp'):
+                    self._write_media(cid, 'image', a['imagewebp'])
+            # 2. 剥离媒体，只序列化元数据（体积从 80MB 降到 ~0.3MB）
+            data['articles'] = self._strip_media(arts)
+            # 3. 序列化 + 写盘
             tmp_path = filepath + '.tmp'
             try:
                 json_str = json.dumps(data, ensure_ascii=False)
-                arts = data.get('articles', [])
-                audio_items = [(a.get('id'), len(a.get('audiobase64') or '')) for a in arts if a.get('audiobase64')]
-                _debug_log(f"_serialize_and_write articles={len(arts)} audio_count={len(audio_items)} audio_items={audio_items[:5]}")
+                _debug_log(f"_serialize_and_write articles={len(arts)} json_size={len(json_str)/1024:.1f}KB")
                 with open(tmp_path, 'w', encoding='utf-8') as f:
                     f.write(json_str)
                 os.replace(tmp_path, filepath)
@@ -297,15 +474,31 @@ class DataModel:
 
     def save_sync(self):
         """同步保存（关闭窗口时确保数据写完，原子写入避免与异步 save 竞态）"""
-        # 清理可能为 None 的字段，防止下次 load 时 len(None) 崩溃
+        import time as _time
+        _t0 = _time.time()
+        # 清理可能为 None 的字段
         for a in self.articles:
             if a.get('audiobase64') is None:
                 a['audiobase64'] = ''
             if a.get('imagewebp') is None:
                 a['imagewebp'] = ''
+        # 音频/图片写入独立媒体文件（关闭时强制覆盖，确保最新）
+        _media_count = 0
+        for a in self.articles:
+            cid = a.get('clientId')
+            if not cid:
+                continue
+            if a.get('audiobase64'):
+                self._write_media(cid, 'audio', a['audiobase64'], skip_if_exists=False)
+                _media_count += 1
+            if a.get('imagewebp'):
+                self._write_media(cid, 'image', a['imagewebp'], skip_if_exists=False)
+                _media_count += 1
+        _debug_log(f"save_sync media_write count={_media_count} elapsed={(_time.time()-_t0)*1000:.0f}ms")
+        # 主 JSON 只存元数据
         data = {
             'version': self.version,
-            'articles': self.articles,
+            'articles': self._strip_media(self.articles),
             'concepts': [],
             'clinical_notes': [],
             'next_article_id': self.next_article_id,
@@ -313,10 +506,8 @@ class DataModel:
             'next_clinical_note_id': 1
         }
         arts = data.get('articles', [])
-        audio_items = [(a.get('id'), len(a.get('audiobase64','') or '')) for a in arts if a.get('audiobase64')]
-        _debug_log(f"save_sync articles={len(arts)} audio_count={len(audio_items)} audio_items={audio_items[:5]}")
+        _debug_log(f"save_sync articles={len(arts)}")
         with self._save_lock:
-            # 递增版本号：使之前 save() 的旧快照在写盘时被跳过
             self._data_version += 1
             tmp_path = self.APP_DATA_FILE + '.tmp'
             try:
@@ -500,12 +691,19 @@ class DataModel:
         if not articles or not api_client.is_logged_in():
             return
         # 准备 payload：确保每篇文章有 clientId 和必要字段
+        # 推送前从独立媒体文件加载音频/图片（启动时未全量加载到内存），避免空媒体覆盖服务端
         payload_articles = []
         for a in articles:
             if not isinstance(a, dict):
                 continue
             item = dict(a)
             item['clientId'] = str(item.get('clientId') or item.get('id') or '')
+            cid = item.get('clientId')
+            if cid:
+                if not item.get('audiobase64'):
+                    item['audiobase64'] = self._read_media(cid, 'audio') or ''
+                if not item.get('imagewebp'):
+                    item['imagewebp'] = self._read_media(cid, 'image') or ''
             payload_articles.append(item)
         if not payload_articles:
             return
@@ -899,31 +1097,41 @@ def audio_base64_to_tempfile(b64_str: str, suffix: str = '.m4a') -> str:
 
 
 def format_article_image_cell(article: dict) -> str:
-    """格式化文章图片列显示。
-
-    返回示例：
-      - 有图：'✓ 图(25KB)'
-      - 无图：'—'
-    """
+    """格式化文章图片列显示。优先检查独立媒体文件是否存在。"""
     has_image = bool(article.get('imagewebp', ''))
     if not has_image:
+        # 媒体已分离到独立文件，检查文件是否存在
+        cid = article.get('clientId')
+        if cid and os.path.exists(DataModel._media_path(str(cid), 'image')):
+            size_kb = _get_media_file_size_kb(cid, 'image')
+            return f"✓ {size_kb:.0f}KB"
         return '—'
     size_kb = get_base64_size_kb(article.get('imagewebp', ''))
     return f"✓ {size_kb:.0f}KB"
 
 
 def format_article_audio_cell(article: dict) -> str:
-    """格式化文章音频列显示。
-
-    返回示例：
-      - 有音频：'♪ 音(580KB)'
-      - 无音频：'—'
-    """
+    """格式化文章音频列显示。优先检查独立媒体文件是否存在。"""
     has_audio = bool(article.get('audiobase64', ''))
     if not has_audio:
+        cid = article.get('clientId')
+        if cid and os.path.exists(DataModel._media_path(str(cid), 'audio')):
+            size_kb = _get_media_file_size_kb(cid, 'audio')
+            return f"♪ {size_kb:.0f}KB"
         return '—'
     audio_kb = get_base64_size_kb(article.get('audiobase64', ''))
     return f"♪ {audio_kb:.0f}KB"
+
+
+def _get_media_file_size_kb(client_id, kind):
+    """获取独立媒体文件大小（KB）"""
+    try:
+        p = DataModel._media_path(str(client_id), kind)
+        if os.path.exists(p):
+            return os.path.getsize(p) / 1024
+    except Exception:
+        pass
+    return 0
 
 
 class NumericTableWidgetItem(QTableWidgetItem):
@@ -2014,11 +2222,12 @@ class BatchEditDialog(QDialog):
 class ArticlePage(QWidget):
     """文章管理页面"""
 
-    def __init__(self, data_model: DataModel, parent=None):
+    def __init__(self, data_model: DataModel, parent=None, defer_refresh=False):
         super().__init__(parent)
         self.data_model = data_model
         self.setup_ui()
-        self.refresh_table()
+        if not defer_refresh:
+            self.refresh_table()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -2148,13 +2357,19 @@ class ArticlePage(QWidget):
 
     def refresh_table(self, articles: list = None):
         """刷新表格（优化：禁用重绘 + 单次循环填充，避免每行触发重排）"""
+        import time as _time
+        _t0 = _time.time()
         if articles is None:
             articles = self.data_model.articles
 
         # 先禁用重绘和排序，避免每次setItem触发布局重算
         self.table.setUpdatesEnabled(False)
         self.table.setSortingEnabled(False)
+        # 关键：先清空所有行再重建。直接 setItem 替换已有 315×13 个 item 会触发
+        # 逐个旧 item 销毁 + 模型更新，导致每行 ~110ms、整体 30+ 秒卡顿。
+        self.table.setRowCount(0)
         self.table.setRowCount(len(articles))
+        _t_setup = _time.time()
 
         _align = Qt.AlignmentFlag.AlignCenter
         _QTableWidgetItem = QTableWidgetItem
@@ -2216,9 +2431,22 @@ class ArticlePage(QWidget):
             item_content.setTextAlignment(_align)
             self.table.setItem(row, 12, item_content)
 
+        _t_loop = _time.time()
         # 恢复排序和重绘
         self.table.setSortingEnabled(True)
         self.table.setUpdatesEnabled(True)
+        _t_teardown = _time.time()
+        _debug_log(f"refresh_table rows={len(articles)} setup={(_t_setup-_t0)*1000:.0f}ms loop={(_t_loop-_t_setup)*1000:.0f}ms teardown={(_t_teardown-_t_loop)*1000:.0f}ms total={(_t_teardown-_t0)*1000:.0f}ms")
+
+    def refresh_article_by_client_id(self, client_id):
+        """按 clientId 局部刷新单行（打卡后更新打卡天数/完成率，避免全表重建卡顿）"""
+        client_id = str(client_id)
+        article = next((a for a in self.data_model.articles if str(a.get('clientId', '')) == client_id), None)
+        if not article:
+            return
+        article_id = article.get('id')
+        if article_id is not None:
+            self.update_table_cells([article_id])
 
     def update_table_cells(self, article_ids: list):
         """局部刷新：只更新选中行变化的列，避免全表重建"""
@@ -2905,6 +3133,7 @@ class TodayTaskPage(QWidget):
         super().__init__(parent)
         self.data_model = data_model
         self._task_data = None
+        self._fetch_gen = 0  # 拉取版本号，用于丢弃过期结果
         self._setup_ui()
 
     def _setup_ui(self):
@@ -2957,15 +3186,19 @@ class TodayTaskPage(QWidget):
         self.stats_label.setText("正在加载...")
         from PyQt6.QtCore import QThread, pyqtSignal
 
+        # 递增版本号，旧请求的结果将被丢弃
+        self._fetch_gen += 1
+        gen = self._fetch_gen
+
         class FetchThread(QThread):
-            finished = pyqtSignal(dict)
+            finished = pyqtSignal(dict, int)
 
             def run(self_inner):
                 try:
                     r = api_client.fetch_today_task()
-                    self_inner.finished.emit(r)
+                    self_inner.finished.emit(r, gen)
                 except Exception as e:
-                    self_inner.finished.emit({'code': -1, 'message': str(e)})
+                    self_inner.finished.emit({'code': -1, 'message': str(e)}, gen)
 
         self._fetch_thread = FetchThread(self)
         self._fetch_thread.finished.connect(self._on_tasks_loaded)
@@ -2986,22 +3219,28 @@ class TodayTaskPage(QWidget):
         self.stats_label.setText("正在重新生成...")
         from PyQt6.QtCore import QThread, pyqtSignal
 
+        # 重新生成也递增版本号
+        self._fetch_gen += 1
+        gen = self._fetch_gen
+
         class GenThread(QThread):
-            finished = pyqtSignal(dict)
+            finished = pyqtSignal(dict, int)
 
             def run(self_inner):
                 try:
                     r = api_client.generate_today_task(force=True)
-                    self_inner.finished.emit(r)
+                    self_inner.finished.emit(r, gen)
                 except Exception as e:
-                    self_inner.finished.emit({'code': -1, 'message': str(e)})
+                    self_inner.finished.emit({'code': -1, 'message': str(e)}, gen)
 
         self._gen_thread = GenThread(self)
         self._gen_thread.finished.connect(self._on_tasks_loaded)
         self._gen_thread.start()
 
-    def _on_tasks_loaded(self, result):
-        """任务加载完成"""
+    def _on_tasks_loaded(self, result, gen=0):
+        """任务加载完成（gen 为拉取版本号，过期结果直接丢弃）"""
+        if gen != self._fetch_gen:
+            return  # 过期的请求结果，忽略
         self.refresh_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(True)
         if result.get('code') != 0:
@@ -3130,16 +3369,24 @@ class SettingsPage(QWidget):
     def load_reader_settings(self):
         from PyQt6.QtCore import QSettings
         s = QSettings("DailyRead", "ArticleConceptManager")
-        self.reader_settings['font_size'] = int(s.value("reader/font_size", 18))
-        self.reader_settings['auto_play'] = s.value("reader/auto_play", False, type=bool)
-        self.reader_settings['loop_play'] = s.value("reader/loop_play", False, type=bool)
+        # 按账号读取；若账号键不存在则回退到旧版全局键（兼容升级）
+        def _get(key, default, typ=None):
+            account_key = reader_setting_key(key)
+            global_key = f"reader/{key}"
+            if s.contains(account_key):
+                return s.value(account_key, default, type=typ) if typ else s.value(account_key, default)
+            return s.value(global_key, default, type=typ) if typ else s.value(global_key, default)
+        self.reader_settings['font_size'] = int(_get("font_size", 18))
+        self.reader_settings['auto_play'] = _get("auto_play", False, bool)
+        self.reader_settings['loop_play'] = _get("loop_play", False, bool)
 
     def save_reader_settings(self):
         from PyQt6.QtCore import QSettings
         s = QSettings("DailyRead", "ArticleConceptManager")
-        s.setValue("reader/font_size", self.reader_settings['font_size'])
-        s.setValue("reader/auto_play", self.reader_settings['auto_play'])
-        s.setValue("reader/loop_play", self.reader_settings['loop_play'])
+        # 按账号写入
+        s.setValue(reader_setting_key("font_size"), self.reader_settings['font_size'])
+        s.setValue(reader_setting_key("auto_play"), self.reader_settings['auto_play'])
+        s.setValue(reader_setting_key("loop_play"), self.reader_settings['loop_play'])
 
     def load_shortcuts(self):
         from PyQt6.QtCore import QSettings
@@ -3222,7 +3469,7 @@ class SettingsPage(QWidget):
         self.reader_loop_play_check.stateChanged.connect(self._on_reader_loop_play_changed)
         reader_layout.addRow(self.reader_loop_play_check)
 
-        reader_hint = QLabel("※ 以上设置仅保存在本机，不与服务器同步")
+        reader_hint = QLabel("※ 以上设置按账号保存在本机，不与服务器同步")
         reader_hint.setStyleSheet("color: #888; font-size: 11px;")
         reader_layout.addRow(reader_hint)
 
@@ -3320,7 +3567,7 @@ class SettingsPage(QWidget):
         about_group = QGroupBox("ℹ️ 关于")
         about_layout = QVBoxLayout(about_group)
         about_layout.addWidget(QLabel("每日阅读 · 文章管理器"))
-        about_layout.addWidget(QLabel("版本 1.51"))
+        about_layout.addWidget(QLabel("版本 V2.0.0"))
         about_layout.addWidget(QLabel("用于「每日阅读」APP 的本地数据管理工具"))
         layout.addWidget(about_group)
 
@@ -3596,7 +3843,11 @@ class ReaderDialog(QDialog):
     """文章阅读器弹窗：随机阅读、内容渲染、打卡后自动跳转下一篇未打卡文章"""
 
     checkin_done = pyqtSignal(str)  # 打卡完成信号，参数为 article clientId
-    _checkin_result = pyqtSignal(bool, str, str)  # (success, client_id, message)
+    _checkin_result = pyqtSignal(bool, str, str, dict)  # (success, client_id, message, {checkInDays, completionRate})
+    _tasks_loaded = pyqtSignal(list, int, int)    # (未打卡 articleId 列表, 今日任务总数, 已打卡数)
+    _article_loaded = pyqtSignal(dict)           # 从服务端拉取到的单篇文章
+    _audio_loaded = pyqtSignal(str)              # 从服务端拉取到的音频 base64
+    _show_msg = pyqtSignal(str, str)             # (title, message) 弹窗提示
 
     def __init__(self, data_model, parent=None):
         super().__init__(parent)
@@ -3605,6 +3856,9 @@ class ReaderDialog(QDialog):
         self._audio_temp_path = None
         self._checked_cids = set()  # 本次会话已打卡的 clientId
         self._pending_cids = []     # 待打卡的 clientId 列表
+        self._total_tasks = 0       # 今日任务总数
+        self._initial_checked = 0   # 本次会话开始前已打卡数
+        self._closed = False        # 关闭标志，防止后台回调访问已销毁对象
         self._settings = QSettings("DailyRead", "ArticleConceptManager")
         self.setWindowTitle("每日阅读")
         self.resize(900, 700)
@@ -3612,6 +3866,18 @@ class ReaderDialog(QDialog):
         self._init_audio()
         # 打卡结果信号（后台线程 → 主线程）
         self._checkin_result.connect(self._handle_checkin_result)
+        self._tasks_loaded.connect(self._on_tasks_loaded)
+        self._article_loaded.connect(self._on_article_loaded)
+        self._audio_loaded.connect(self._on_audio_loaded)
+        self._show_msg.connect(self._on_show_msg)
+
+    def _reader_setting(self, key, default=None, typ=None):
+        """按账号读取阅读器设置；账号键不存在时回退到旧版全局键"""
+        account_key = reader_setting_key(key)
+        global_key = f"reader/{key}"
+        if self._settings.contains(account_key):
+            return self._settings.value(account_key, default, type=typ) if typ else self._settings.value(account_key, default)
+        return self._settings.value(global_key, default, type=typ) if typ else self._settings.value(global_key, default)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -3631,7 +3897,7 @@ class ReaderDialog(QDialog):
         # 内容区
         self.content_edit = QTextEdit()
         self.content_edit.setReadOnly(True)
-        fs = int(self._settings.value("reader/font_size", 18))
+        fs = int(self._reader_setting("font_size", 18))
         self.content_edit.setStyleSheet(f"font-size: {fs}px; line-height: 1.8;")
         layout.addWidget(self.content_edit, stretch=1)
 
@@ -3661,23 +3927,53 @@ class ReaderDialog(QDialog):
         self.player.playbackStateChanged.connect(self._on_playback_state_changed)
 
     def start_random_reading(self):
-        """入口：拉取今日任务，从未打卡文章随机选一篇打开"""
-        try:
-            r = api_client.fetch_today_task()
-            if r.get('code') == 0:
-                data = r.get('data') or {}
-                items = data.get('items') or []
-                unchecked = [it for it in items if not it.get('isCheckedIn')]
-                self._pending_cids = [str(it.get('articleId', '')) for it in unchecked if it.get('articleId')]
-                self._checked_cids = set()
-                self._pick_and_load()
-                return
-            QMessageBox.warning(self, "提示", f"获取今日任务失败: {r.get('message')}")
-        except Exception as e:
-            QMessageBox.warning(self, "提示", f"获取今日任务失败: {e}")
+        """入口：后台拉取今日任务，从未打卡文章随机选一篇打开"""
+        self.title_label.setText("加载中...")
+        def _fetch():
+            try:
+                r = api_client.fetch_today_task()
+                if r.get('code') == 0:
+                    data = r.get('data') or {}
+                    items = data.get('items') or []
+                    total = len(items)
+                    checked = sum(1 for it in items if it.get('isCheckedIn'))
+                    unchecked = [it for it in items if not it.get('isCheckedIn')]
+                    cids = [str(it.get('articleId', '')) for it in unchecked if it.get('articleId')]
+                    self._tasks_loaded.emit(cids, total, checked)
+                else:
+                    self._show_msg.emit("提示", r.get('message', '获取今日任务失败'))
+            except Exception as e:
+                self._show_msg.emit("提示", f"获取今日任务失败: {e}")
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def _on_tasks_loaded(self, cids, total, initial_checked):
+        if self._closed:
+            return
+        self._pending_cids = cids
+        self._total_tasks = total
+        self._initial_checked = initial_checked
+        self._checked_cids = set()
+        self._pick_and_load()
+
+    def _on_article_loaded(self, article):
+        if self._closed or not article:
+            return
+        self.load_article(article)
+
+    def _on_audio_loaded(self, audio_b64):
+        if self._closed or not audio_b64:
+            return
+        self._play_audio_b64(audio_b64)
+
+    def _on_show_msg(self, title, msg):
+        if self._closed:
+            return
+        QMessageBox.warning(self, title, msg)
 
     def _pick_and_load(self):
         """从未打卡列表随机选一篇并加载"""
+        if self._closed:
+            return
         remaining = [c for c in self._pending_cids if c not in self._checked_cids]
         if not remaining:
             self.title_label.setText("🎉 今日任务全部完成！")
@@ -3705,29 +4001,48 @@ class ReaderDialog(QDialog):
                 arts = (r.get('data') or {}).get('articles', [])
                 art = next((a for a in arts if str(a.get('clientId', '')) == client_id), None)
                 if art:
-                    QTimer.singleShot(0, lambda: self.load_article(art))
+                    self._article_loaded.emit(art)
                 else:
-                    QTimer.singleShot(0, lambda: QMessageBox.warning(self, "提示", "未找到该文章"))
+                    self._show_msg.emit("提示", "未找到该文章")
             except Exception as e:
-                QTimer.singleShot(0, lambda: QMessageBox.warning(self, "提示", f"加载失败: {e}"))
+                self._show_msg.emit("提示", f"加载失败: {e}")
         threading.Thread(target=_fetch, daemon=True).start()
+
+    def _ensure_media_loaded(self, article):
+        """确保文章的音频/图片已加载到内存（按需从独立媒体文件读取）"""
+        cid = article.get('clientId')
+        if not cid:
+            return
+        if not article.get('audiobase64'):
+            article['audiobase64'] = DataModel._read_media(str(cid), 'audio') or ''
+        if not article.get('imagewebp'):
+            article['imagewebp'] = DataModel._read_media(str(cid), 'image') or ''
 
     def load_article(self, article):
         """加载并显示文章"""
+        if self._closed:
+            return
         self.current_article = article
+        # 按需加载媒体（音频/图片）：启动时未全量加载，打开文章时才读取文件
+        self._ensure_media_loaded(article)
         self.title_label.setText(article.get('title', ''))
-        fs = int(self._settings.value("reader/font_size", 18))
+        fs = int(self._reader_setting("font_size", 18))
         # 浅色背景，避免深色主题下文字看不清
         self.content_edit.setStyleSheet(
             f"font-size: {fs}px; line-height: 1.8; background-color: #fdfdf8; color: #222;"
         )
-        html = self._render_content(article.get('content', ''), fs)
-        # 图片：有 imagewebp 且非纯文本文章时，在内容前插入图片
+        # 文字内容：iscontent=False 时仅显示图片不显示文字
+        iscontent = article.get('iscontent', True)
+        html = self._render_content(article.get('content', ''), fs) if iscontent else ''
+        # 图片：有 imagewebp 就显示（不论 iscontent），放在文字内容下方
         img_b64 = article.get('imagewebp') or ''
-        if img_b64 and not article.get('iscontent', True):
+        if img_b64:
             img_data_uri = self._webp_to_png_data_uri(img_b64)
             if img_data_uri:
-                html = f'<div style="text-align:center;margin-bottom:12px;"><img src="{img_data_uri}" style="max-width:100%;"/></div>' + html
+                img_html = f'<div style="text-align:center;margin-top:16px;"><img src="{img_data_uri}" style="max-width:100%;"/></div>'
+                html = html + img_html
+        if not html:
+            html = '<div style="color:#999;text-align:center;margin-top:40px;">（无内容）</div>'
         self.content_edit.setHtml(html)
         # 打卡按钮默认可用（取消 10 秒限制）
         self.checkin_btn.setEnabled(True)
@@ -3735,9 +4050,13 @@ class ReaderDialog(QDialog):
         self.next_btn.setEnabled(True)
         # 加载音频
         self._load_audio(article)
-        # 更新进度
-        total = len(self._pending_cids)
-        done = len(self._checked_cids)
+        # 更新进度（已打卡 = 会话前已打卡 + 本次会话已打卡）
+        self._update_progress_label()
+
+    def _update_progress_label(self):
+        """更新右上角进度显示"""
+        done = self._initial_checked + len(self._checked_cids)
+        total = self._total_tasks if self._total_tasks > 0 else len(self._pending_cids)
         self.progress_label.setText(f"进度: {done}/{total}")
 
     def _webp_to_png_data_uri(self, webp_b64):
@@ -3769,9 +4088,10 @@ class ReaderDialog(QDialog):
             s = re.sub(r'==([^=]+)==', r'<span style="background-color:#ffeb3b;color:#1a1a1a;padding:0 2px;">\1</span>', s)
             # **text** → 加粗
             s = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
-            # ##text → 红色标题
+            # ##text → 红色注解，字号比正文小 2px（与 PWA dr-anno 一致）
             if s.startswith('##'):
-                s = f'<span style="color:#d32f2f;font-weight:bold;font-size:{int(font_size*1.3)}px">{s[2:].strip()}</span>'
+                anno_size = max(10, font_size - 2)
+                s = f'<span style="color:#d32f2f;font-weight:bold;font-size:{anno_size}px">{s[2:].strip()}</span>'
             html_parts.append(s)
         return f'<div style="line-height:1.9;font-size:{font_size}px;color:#222;">' + '<br>'.join(html_parts) + '</div>'
 
@@ -3794,7 +4114,7 @@ class ReaderDialog(QDialog):
                 data = r.get('data') or {}
                 audio = data.get('audiobase64') or ''
                 if audio:
-                    QTimer.singleShot(0, lambda: self._play_audio_b64(audio))
+                    self._audio_loaded.emit(audio)
         except Exception as e:
             print(f"[Reader] 拉取音频失败: {e}")
 
@@ -3806,11 +4126,11 @@ class ReaderDialog(QDialog):
                 f.write(audio_bytes)
             self._audio_temp_path = tmp
             self.player.setSource(QUrl.fromLocalFile(tmp))
-            loop = self._settings.value("reader/loop_play", False, type=bool)
+            loop = self._reader_setting("loop_play", False, bool)
             self.player.setLoops(QMediaPlayer.Loops.Infinite if loop else QMediaPlayer.Loops.Once)
             self.play_btn.setEnabled(True)
             self.play_btn.setText("▶️ 播放")
-            if self._settings.value("reader/auto_play", False, type=bool):
+            if self._reader_setting("auto_play", False, bool):
                 self.player.play()
         except Exception as e:
             print(f"[Reader] 播放音频失败: {e}")
@@ -3861,23 +4181,46 @@ class ReaderDialog(QDialog):
         try:
             r = api_client.checkin_by_article(client_id)
             if r.get('code') == 0:
-                self._checkin_result.emit(True, client_id, '')
+                data = r.get('data') or {}
+                info = {
+                    'checkInDays': data.get('checkInDays'),
+                    'completionRate': data.get('completionRate'),
+                }
+                self._checkin_result.emit(True, client_id, '', info)
             else:
                 msg = r.get('message', '打卡失败')
-                self._checkin_result.emit(False, client_id, msg)
+                self._checkin_result.emit(False, client_id, msg, {})
         except Exception as e:
-            self._checkin_result.emit(False, client_id, str(e))
+            self._checkin_result.emit(False, client_id, str(e), {})
 
-    def _handle_checkin_result(self, success, client_id, msg):
+    def _handle_checkin_result(self, success, client_id, msg, info):
         """主线程处理打卡结果"""
+        if self._closed:
+            return
         if success:
             self._checked_cids.add(str(client_id))
-            self.checkin_done.emit(client_id)
+            # 更新本地文章的打卡天数和完成率
+            if self.current_article and str(self.current_article.get('clientId', '')) == str(client_id):
+                if info.get('checkInDays') is not None:
+                    self.current_article['checkInDays'] = info['checkInDays']
+                if info.get('completionRate') is not None:
+                    self.current_article['completionRate'] = info['completionRate']
+                # 同步到 data_model.articles 中的对应文章
+                for a in self.data_model.articles:
+                    if str(a.get('clientId', '')) == str(client_id):
+                        if info.get('checkInDays') is not None:
+                            a['checkInDays'] = info['checkInDays']
+                        if info.get('completionRate') is not None:
+                            a['completionRate'] = info['completionRate']
+                        break
+                # 异步保存（不阻塞 UI）
+                self.data_model.save()
+            # 先更新按钮状态，让用户立即看到"已打卡"
             self.checkin_btn.setText("已打卡 ✅")
             self.checkin_btn.setEnabled(False)
-            total = len(self._pending_cids)
-            done = len(self._checked_cids)
-            self.progress_label.setText(f"进度: {done}/{total}")
+            self._update_progress_label()
+            # 再发射信号刷新今日任务和文章列表（单行刷新，不阻塞）
+            self.checkin_done.emit(client_id)
             # 自动跳转下一篇未打卡文章
             QTimer.singleShot(800, self._pick_and_load)
         else:
@@ -3886,6 +4229,7 @@ class ReaderDialog(QDialog):
             QMessageBox.warning(self, "打卡失败", msg)
 
     def closeEvent(self, event):
+        self._closed = True
         self._stop_audio()
         super().closeEvent(event)
 
@@ -3898,9 +4242,9 @@ class MainWindow(QMainWindow):
     # 后台拉取完成 → 主线程合并，避免后台线程修改 articles 与异步 save 竞态
     _articles_pulled_signal = pyqtSignal(list, str)
 
-    def __init__(self):
+    def __init__(self, preloaded_data=None):
         super().__init__()
-        self.data_model = DataModel()
+        self.data_model = DataModel(preloaded_data=preloaded_data)
         self.setup_ui()
         self.restore_window_geometry()
         self.auto_save_timer()
@@ -3921,7 +4265,7 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
 
-        self.article_page = ArticlePage(self.data_model, self)
+        self.article_page = ArticlePage(self.data_model, self, defer_refresh=True)
         self.today_task_page = TodayTaskPage(self.data_model, self)
         self.settings_page = SettingsPage(self.data_model, self)
 
@@ -3987,9 +4331,14 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_reader_checkin_done(self, client_id):
-        """阅读器打卡完成后刷新今日任务进度"""
+        """阅读器打卡完成后刷新今日任务进度 + 文章列表完成率"""
         try:
             self.today_task_page._refresh_tasks()
+        except Exception:
+            pass
+        # 只刷新打卡文章所在行，避免全表重建阻塞 UI
+        try:
+            self.article_page.refresh_article_by_client_id(client_id)
         except Exception:
             pass
 
@@ -4015,26 +4364,30 @@ class MainWindow(QMainWindow):
 
     def _on_logout(self):
         from PyQt6.QtWidgets import QMessageBox
-        reply = QMessageBox.question(self, "退出登录", "确定要退出登录吗？\n退出后将清除本地数据并停止同步。")
+        reply = QMessageBox.question(
+            self, "退出登录",
+            "确定要退出登录吗？\n本地数据将按账号保留，切换账号后自动加载对应数据。"
+        )
         if reply == QMessageBox.StandardButton.Yes:
             api_client.logout()
             sync_service.stop()
-            # 清空本地数据 + 重置同步状态
-            self.data_model.clear_local_data()
+            # 不清除本地数据：数据按账号分文件持久化（app_data_{uid}.json）
             sync_service.reset_sync_state()
             self._refresh_account_menu()
-            self.refresh_all()
             # 弹出登录对话框，允许立即重新登录
             logged_in = show_login_or_register()
             if logged_in:
                 self._refresh_account_menu()
+                # 切换到新用户的数据文件
+                self.data_model.switch_user()
                 sync_service.start()
-                # 全量拉取：重置 since 后后台拉取服务端全部文章（含音频图片，因本地已清空）
                 sync_service.reset_sync_state()
+                self.refresh_all()
+                # 后台增量拉取新账号的服务端文章
                 import threading
                 def _bg_full_pull():
                     try:
-                        sync_service.pull_articles(self._emit_articles_pulled, meta=False)
+                        sync_service.pull_articles(self._emit_articles_pulled, meta=True)
                     except Exception as e:
                         print(f"[Sync] 重新登录后拉取失败: {e}")
                 threading.Thread(target=_bg_full_pull, daemon=True).start()
@@ -4072,6 +4425,8 @@ class MainWindow(QMainWindow):
 
     def _on_articles_pulled_full(self, remote_articles, next_since):
         """合并服务端增量文章到本地（保留本地 audiobase64/imagewebp）。在主线程执行。"""
+        import time as _time
+        _t0 = _time.time()
         _debug_log(f"_on_articles_pulled_full ENTER remote_count={len(remote_articles)} local_before={len(self.data_model.articles)}")
         # 构建本地 clientId → 本地文章映射，合并时保留本地 audiobase64/imagewebp
         local_by_cid: dict = {}
@@ -4106,11 +4461,12 @@ class MainWindow(QMainWindow):
             changed = True
         if changed:
             self.data_model.next_article_id = len(self.data_model.articles) + 1
-            self.data_model.save_sync()
+            # 用异步 save 而非 save_sync：后者在主线程同步写 80MB 会导致界面卡死数十秒
+            self.data_model.save()
             # UI 刷新切回主线程
             from PyQt6.QtCore import QTimer
             QTimer.singleShot(0, self.refresh_all)
-        _debug_log(f"_on_articles_pulled_full DONE local_after={len(self.data_model.articles)}")
+        _debug_log(f"_on_articles_pulled_full DONE local_after={len(self.data_model.articles)} elapsed={(_time.time()-_t0)*1000:.0f}ms")
 
     def auto_save_timer(self):
         """自动保存定时器"""
@@ -4193,6 +4549,153 @@ def activate_existing_window():
         return False
 
 
+class StartupLoader(QDialog):
+    """启动加载窗口：显示 logo + 加载进度，后台线程加载本地数据
+
+    用法：
+        loader = StartupLoader()
+        data = loader.exec_and_get_data()  # 阻塞直到加载完成，返回数据 dict
+    """
+    _progress_signal = pyqtSignal(int, str)  # (percent, message)
+    _finished_signal = pyqtSignal(object)     # 加载完成，携带数据 dict
+
+    def __init__(self):
+        super().__init__()
+        self._data = None
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Dialog
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setFixedSize(360, 280)
+        self.setModal(True)
+
+        # 居中显示
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width() - self.width()) // 2,
+            (screen.height() - self.height()) // 2
+        )
+
+        # 外框容器（带圆角和阴影）
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        card = QWidget()
+        card.setObjectName("loaderCard")
+        card.setStyleSheet("""
+            #loaderCard {
+                background-color: #ffffff;
+                border-radius: 16px;
+                border: 1px solid #e0e0e0;
+            }
+        """)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(30, 30, 30, 24)
+        card_layout.setSpacing(12)
+
+        # Logo
+        logo_label = QLabel()
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_pix = QPixmap(resource_path('logo.png'))
+        if not logo_pix.isNull():
+            logo_label.setPixmap(
+                logo_pix.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation)
+            )
+        else:
+            logo_label.setText("📖")
+            logo_label.setStyleSheet("font-size: 48px;")
+        card_layout.addWidget(logo_label)
+
+        # 标题
+        title = QLabel("每日阅读")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #1a1a1a;")
+        card_layout.addWidget(title)
+
+        # 状态文字
+        self.status_label = QLabel("正在加载...")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setStyleSheet("font-size: 12px; color: #666;")
+        card_layout.addWidget(self.status_label)
+
+        # 进度条
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: none;
+                background-color: #f0f0f0;
+                border-radius: 6px;
+                height: 10px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #0078d4;
+                border-radius: 6px;
+            }
+        """)
+        card_layout.addWidget(self.progress_bar)
+
+        # 提示
+        hint = QLabel("首次加载可能需要数秒，请稍候")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hint.setStyleSheet("font-size: 10px; color: #999;")
+        card_layout.addWidget(hint)
+
+        outer.addWidget(card)
+
+        # 信号连接
+        self._progress_signal.connect(self._on_progress)
+        self._finished_signal.connect(self._on_finished)
+
+    def _on_progress(self, percent, msg):
+        self.progress_bar.setValue(percent)
+        self.status_label.setText(msg)
+
+    def show_message(self, msg, percent=None):
+        """外部调用：更新过渡页状态文字和进度"""
+        if percent is not None:
+            self.progress_bar.setValue(percent)
+        self.status_label.setText(msg)
+
+    def _on_finished(self, data):
+        self._data = data
+        self.progress_bar.setValue(100)
+        self.status_label.setText("加载完成")
+        # 退出事件循环但不关闭对话框（由 main() 在主界面就绪后关闭）
+        if hasattr(self, '_loop') and self._loop:
+            self._loop.quit()
+
+    def exec_and_get_data(self):
+        """启动后台加载并阻塞，返回加载的数据 dict（对话框保持可见，由调用方关闭）"""
+        from PyQt6.QtCore import QEventLoop
+        self._loop = QEventLoop()
+
+        def _progress_cb(percent, msg):
+            # 从后台线程通过信号回主线程
+            self._progress_signal.emit(percent, msg)
+
+        def _bg_load():
+            try:
+                uid = api_client.user.get('id') if api_client.user else None
+                data = DataModel.load_data_file(uid, progress_cb=_progress_cb)
+            except Exception as e:
+                print(f"[Startup] 数据加载失败: {e}")
+                data = {'articles': [], 'concepts': [], 'clinical_notes': []}
+            self._finished_signal.emit(data)
+
+        threading.Thread(target=_bg_load, daemon=True).start()
+        self.show()
+        self._loop.exec()  # 阻塞直到数据加载完成
+        return self._data
+
+
 def check_single_instance():
     """检查是否已有实例运行，若有则返回 False 并激活已有窗口"""
     global _singleton_mutex
@@ -4251,8 +4754,31 @@ def main():
         if not logged_in:
             sys.exit(0)  # 用户取消登录，退出程序
 
-    window = MainWindow()
+    # === 启动过渡页：后台加载本地数据，显示进度，加载完成后才进入主界面 ===
+    import time as _time
+    _t_start = _time.time()
+    loader = StartupLoader()
+    preloaded_data = loader.exec_and_get_data()  # 阻塞直到数据加载完成
+    _debug_log(f"[Startup] data loaded elapsed={(_time.time()-_t_start)*1000:.0f}ms")
+
+    # 用预加载的数据创建主窗口（文章列表延迟构建，避免阻塞过渡页）
+    _t_mw = _time.time()
+    window = MainWindow(preloaded_data=preloaded_data)
+    _debug_log(f"[Startup] MainWindow created elapsed={(_time.time()-_t_mw)*1000:.0f}ms")
+
+    # 过渡页继续逗留：构建文章列表（315行 × 13列，需在主线程完成）
+    loader.show_message("正在构建文章列表...", 96)
+    app.processEvents()
+    _t_rt = _time.time()
+    window.article_page.refresh_table()
+    _debug_log(f"[Startup] refresh_table elapsed={(_time.time()-_t_rt)*1000:.0f}ms")
+    loader.show_message("初始化完成", 100)
+    app.processEvents()
+
+    # 全部就绪后才显示主窗口
     window.show()
+    loader.close()
+    _debug_log(f"[Startup] total elapsed={(_time.time()-_t_start)*1000:.0f}ms")
 
     sys.exit(app.exec())
 

@@ -168,10 +168,25 @@ class SyncService:
         self.queue.enqueue('delete', 'article', str(client_id), {'clientId': str(client_id)})
 
     def _normalize_article(self, article):
-        """把本地文章字段转为服务端格式（clientId 为全局唯一标识）"""
+        """把本地文章字段转为服务端格式（clientId 为全局唯一标识）
+
+        重要：启动时音频/图片未全量加载到内存，若直接推送会用空媒体覆盖服务端数据。
+        因此推送前需从独立媒体文件加载音频/图片，确保服务端数据完整。
+        """
         a = dict(article)
         a['clientId'] = str(a.get('clientId') or a.get('id') or '')
         a['lastModified'] = a.get('lastModified') or datetime.now().isoformat()
+        # 按需加载媒体：内存中为空时从 media 目录读取，避免推送空媒体覆盖服务端
+        cid = a.get('clientId')
+        if cid:
+            try:
+                from article_concept_manager import DataModel
+                if not a.get('audiobase64'):
+                    a['audiobase64'] = DataModel._read_media(str(cid), 'audio') or ''
+                if not a.get('imagewebp'):
+                    a['imagewebp'] = DataModel._read_media(str(cid), 'image') or ''
+            except Exception as e:
+                print(f"[Sync] 推送前加载媒体失败 cid={cid}: {e}")
         return a
 
     # ---------- 消费队列 ----------
