@@ -1,0 +1,49 @@
+{
+  "name": "yixue-zonghe-workbench",
+  "productName": "医学综合工作台",
+  "version": "1.0.0",
+  "description": "yixue-zonghe 个人工作台（Electron 壳：自动拉起 Python 后端，在原生窗口打开界面）",
+  "main": "main.js",
+  "author": "SomnusWei",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --win dir",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "44.1.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "top.sonnusww.yixue.zonghe.workbench",
+    "productName": "医学综合工作台",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "loading.html",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "YixueWorkbench-${version}-x64.exe"
+    },
+    "portable": {
+      "artifactName": "YixueWorkbench-${version}-x64.exe",
+      "requestExecutionLevel": "user"
+    },
+    "compression": "maximum"
+  }
+}

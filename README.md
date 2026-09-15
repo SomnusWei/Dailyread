@@ -144,12 +144,26 @@ DailyRead/
 ├── 鸿蒙 (HarmonyOS) Base64 m4a 音频自动播放开发指南.txt
 ├── SKILL/                                   # 医学综合 skill（yixue-zonghe）
 │   ├── SKILL.md                            # skill 路由与通用规则
-│   ├── 中医教材/                           # 712 部中医知识库（10 现代教材 + 702 古籍）
+│   ├── 中医教材/                           # 711 部中医知识库（10 现代教材 + 701 古籍）
 │   ├── 西医教材/                           # 西医教材（用户自行添加，支持 PDF/DOCX/DOC/TXT 自动 OCR）
+│   ├── 倪海厦体系/                         # 倪海厦经方体系（14 模块 + 1257 医案 + 蒸馏速查）
+│   ├── 石学敏体系/                         # 石学敏针灸体系（醒脑开窍/手法量学/十二经病候）
+│   ├── 仓颉/                               # 蒸馏工具（教材→专家 Skill 认知蒸馏）
+│   ├── 蒸馏产出/                           # 仓颉蒸馏生成的专家 perspective Skill（含 _inbox 工作区）
 │   ├── scripts/                            # 检索/提取/出题/同步脚本（--track 中医/西医 切换）
 │   ├── references/                         # 教材索引、关键词映射、病案/处方/出题规范
 │   ├── templates/                          # 讲义 HTML 模板与样式
-│   └── 试卷输出/                           # 出题生成的交互式试卷
+│   └── platform/                           # ★ 个人工作平台（本地 Web UI，零依赖）
+│       ├── start.py                        # 后端服务（http.server + 20+ API）
+│       ├── index.html                      # 单文件 SPA（概览/教材库/跨库检索/技能产物/专家体系/功能导航）
+│       ├── start.bat                       # 双击启动器（浏览器版，默认 127.0.0.1:8770）
+│       ├── desktop/                        # ★ Electron 壳（原生窗口版，免开浏览器）
+│       │   ├── main.js                     # 主进程：定位技能根/Python → 拉起后端 → 开窗
+│       │   ├── loading.html                # 启动动画
+│       │   ├── package.json                # electron-builder 配置（portable 单文件）
+│       │   └── build/icon.ico              # 应用图标
+│       ├── extract_shixuemin.py            # 石师针灸全集 PDF 抽取（幂等）
+│       └── verify_platform.py              # 端到端自检（43 项）
 └── .gitignore
 ```
 
@@ -345,6 +359,37 @@ Win 端录入            后端存储                鸿蒙端播放
 ---
 
 ## 📝 更新日志
+
+### 2026-09-15
+
+**医学综合 skill 工作台新增「Electron 桌面版」单文件 exe：**
+- 🖥 **`platform/desktop/` Electron 壳**：单文件 portable exe（**95.1MB**），双击即用，**不再需要手动开浏览器**。启动时自动定位技能目录与 Python、选空闲端口拉起 `platform/start.py` 后端，待 `/api/overview` 就绪后在原生窗口加载界面（启动期显示内嵌 loading 动画）
+- 🧭 **零配置自动探测**：技能目录按 `YIXUE_SKILL_ROOT` → `config.json` 记录 → `~/.workbuddy/skills/yixue-zonghe` → `~/.trae-cn/skills/yixue-zonghe` → 可执行文件上级逐层查找，命中即用并写入 `%APPDATA%\医学综合工作台\config.json`；全部未命中才弹窗选择（选一次即记住）
+- 🐍 **Python 探测**：`YIXUE_PYTHON` → `config.json` → workbuddy 默认解释器 → 技能包内 `.venv` → PATH
+- 🔒 **退出即回收**：关闭窗口以 `taskkill /T /F` 结束后端进程树；异常退出写 `backend.log` 便于排查
+- 📋 **精简菜单**（Alt 唤出）：视图（重新加载/开发者工具/缩放/全屏）、帮助（打开技能目录/打开数据目录/关于）
+- 🎨 **应用图标**：墨绿圆角 + 「医」字，多尺寸 ICO（16→256）
+- 🐛 **修复 `start.bat` 双击闪退**：根因是 LF 换行 + 中文多字节字符导致 cmd.exe 解析时字节偏移错位，启动行被截断成 `'HON~dp0start.py"...'` 而从未执行 Python。改为 **CRLF + 纯 ASCII** 并加 `.gitattributes`（`*.bat text eol=crlf`）；同时加固为三级 Python 探测 + 任何分支都 `pause` 停留
+- ✅ **实测**：exe 双击启动 → 6s 后端就绪、窗口标题为应用界面、六库统计正确；关闭后 python 与 Electron 残留均为 0；无环境变量/无配置的首次启动可自动探测技能目录
+
+**医学综合 skill 新增「个人工作平台」（本地 Web UI）：**
+- 🖥 **新增 `SKILL/platform/` 零依赖本地工作台**：`start.bat` 双击启动（默认 `127.0.0.1:8770`），仅用 Python 标准库 `http.server`，不装 Flask/FastAPI；后端 `start.py` 提供 20+ API，前端 `index.html` 为单文件 SPA（6 个页面）
+- 📚 **教材库管理页**：中医/西医体系切换、类目筛选、文件名搜索、分页浏览；拖拽上传 `.pdf/.docx/.doc/.txt`（≤500MB）；一键「同步解析」（PDF 文本层 + 扫描页 OCR + 内嵌图片 OCR，长任务后台执行并轮询进度）；「重建索引」刷新 `textbook-index*.md`；文本预览（自动识别 GB18030）与软删除（回收至 `platform/.trash/`）
+- 🔍 **跨库检索页**：关键词（支持逗号分隔多词）+ 体系 + 来源（跨库/仅教材/倪师/石师/蒸馏产出）+ 类目 + 上下文行数 → 文件卡片按命中数降序、命中处高亮；命中文件过多时默认展开前 50 个
+- ★ **蒸馏入口（专家体系页）**：填蒸馏类型（A 人物 / B 教材）、对象名、聚焦方向，拖拽上传素材 → 平台落盘 `蒸馏产出/_inbox/<对象名>/` 并自动生成 `DISTILL_PROMPT.md` **指令卡**（含仓颉 7 步流程、产出路径、质检要求，文本素材 ≤50KB 自动内联原文）
+- 🧠 **蒸馏闭环（技能产物页）**：一键「查看/复制指令卡」→ TRAE 执行蒸馏 → 「检测产物」→「质检」（`quality_check.py` 11 项，未达 11/11 拒绝安装）→「安装到蒸馏产出」（自动重命名 `<对象名>-perspective/` 并清理指令卡与素材）；任务状态机 `pending → produced → quality_ok → 已安装`
+- 📦 **导入已完成归档**：已有 perspective 的 `.zip` 经「导入已完成归档」解压到 `_inbox/_import/`（含 zip-slip 防护）供质检与安装
+- 🪡 **石学敏针灸全集抽取**：`extract_shixuemin.py`（幂等）按 100 页分卷输出 11 卷 + `全文.txt` + `00-目录.md`，专家体系页在未抽取时显示「抽取全文」按钮
+- 🔒 **安全约束**：路径穿越防护（`safe_join`）、上传/删除白名单根目录、文件名清理与 Windows 保留名检查、扩展名白名单、大小上限、受保护文件（`SKILL.md` 等）禁删、删除类操作二次确认
+- ✅ **验证**：`verify_platform.py` 端到端自检 **43/43 通过**（环境/依赖/路径/纯函数/9 个 API/蒸馏任务闭环）；浏览器实测 6 个页面渲染正常、无控制台错误，跨库检索「桂枝汤」命中 388 个文件、5271 处高亮
+
+**医学综合 skill（yixue-zonghe）再次升级——四层知识库 + 专家体系：**
+- 🔄 **skill 整合**：合并旧的 `zhongyi-zonghe` 和 `yixue-zonghe` 两个 skill 为单一 `yixue-zonghe` skill，清除旧 skill 安装
+- 📚 **四层知识库架构**：教材基线库（711 部中医教材 + 西医教材）→ 专家特化库固定（倪海厦经方体系 14 模块 + 1257 医案 / 石学敏针灸体系醒脑开窍 + 手法量学）→ 专家特化库动态（仓颉蒸馏产出）→ 工具层（仓颉蒸馏工具）
+- 🧠 **倪海厦经方体系**：14 模块 + 1257 例结构化医案 + 6 蒸馏速查 + 表达 DNA，默认融入五大中医功能（学习/讲义/病案/针灸/处方），可选启用倪师医案命题规范
+- 🌿 **石学敏针灸体系**：《石学敏针灸全集》1071 页 + 醒脑开窍/手法量学/十二经病候新解认知上下文
+- 🔧 **仓颉蒸馏工具**：7 步蒸馏流程，对教材进行认知蒸馏生成可复用专家 Skill，持续扩展知识库
+- ✅ **PWA 考试适配验证**：出题脚本 `build_exam_html.py` 与 PWA 考试系统完整对接验证通过——成绩上报（`/api/exam/submit` + sendBeacon/fetch keepalive/localStorage 三重保障）、学习中心账号识别（`?student=`/`lc_user`）、成绩回显（`?r=1` + `lc_exam_review:` localStorage）、exam_id 三级写入与服务器三级提取匹配
 
 ### 2026-09-14
 

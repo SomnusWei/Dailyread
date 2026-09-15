@@ -77,6 +77,31 @@ dailyread-server/public/downloads/
 *.exe
 dist/
 build/
+# 例外：Electron 壳的应用图标需要入库
+!SKILL/platform/desktop/build/
+!SKILL/platform/desktop/build/**
 
 __pycache__/
 *.pyc
+
+# ==================
+# SKILL 知识库（大文件与临时产物）
+# ==================
+# PDF 源文件不入库（体积大、可重新获取）；只保留可检索的 txt
+SKILL/中医教材/*.pdf
+SKILL/西医教材/*.pdf
+SKILL/石学敏体系/*.pdf
+# 临时提取产物
+SKILL/中医教材/_herbs_extract*.txt
+
+# ==================
+# 运行期产物与敏感文件
+# ==================
+.trae/
+Dailyread_win_article_concept_manager/auth_token.json
+Dailyread_win_article_concept_manager/offline_queue.json
+Dailyread_win_article_concept_manager/sync_state.json
+Dailyread_win_article_concept_manager/_bench_table.py
+Dailyread_win_article_concept_manager/_diag*.py
+Dailyread_win_backup_assistant/backup/
+

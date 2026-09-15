@@ -1,0 +1,4 @@
+# 批处理必须用 CRLF：cmd.exe 解析 LF-only 批处理时会字节偏移错位，
+# 导致命令被截断、python 启动行失效、窗口一闪即退（闪退）。
+*.bat text eol=crlf
+*.cmd text eol=crlf

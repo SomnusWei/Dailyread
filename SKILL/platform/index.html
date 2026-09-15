@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>医学综合 · 个人工作台</title>
+<style>
+:root{
+  --primary:#1a4a3a; --primary-l:#2a6e52; --primary-ll:#e8f2ee;
+  --bg:#f5f7f6; --card:#fff; --line:#e2e8e5; --text:#1f2d28; --muted:#6b7d76;
+  --danger:#c62828; --warn:#b8860b; --ok:#2e7d32; --info:#1565c0;
+  --radius:10px; --shadow:0 1px 3px rgba(26,74,58,.08),0 4px 16px rgba(26,74,58,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei","PingFang SC","Hiragino Sans GB",sans-serif;
+  background:var(--bg);color:var(--text);font-size:14px;line-height:1.6;
+}
+/* ---------- 顶栏 ---------- */
+.topbar{
+  position:fixed;top:0;left:0;right:0;height:58px;z-index:100;
+  background:var(--primary);color:#fff;display:flex;align-items:center;
+  padding:0 20px;gap:20px;box-shadow:0 2px 8px rgba(0,0,0,.12);
+}
+.brand{font-size:16px;font-weight:600;letter-spacing:.5px;white-space:nowrap}
+.brand small{font-weight:400;opacity:.7;font-size:12px;margin-left:6px}
+.tabs{display:flex;gap:2px;flex:1;overflow-x:auto}
+.tabs button{
+  background:transparent;border:0;color:rgba(255,255,255,.78);
+  padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13.5px;
+  white-space:nowrap;font-family:inherit;transition:.15s;
+}
+.tabs button:hover{background:rgba(255,255,255,.12);color:#fff}
+.tabs button.active{background:rgba(255,255,255,.2);color:#fff;font-weight:600}
+.status-pill{
+  font-size:12px;padding:5px 12px;border-radius:20px;
+  background:rgba(255,255,255,.15);white-space:nowrap;cursor:pointer;
+}
+.status-pill.ok{background:rgba(76,175,80,.3)}
+.status-pill.bad{background:rgba(198,40,40,.45)}
+/* ---------- 布局 ---------- */
+main{max-width:1280px;margin:58px auto 60px;padding:22px 20px}
+.tab{display:none}
+.tab.active{display:block;animation:fade .18s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+h2.sec{font-size:16px;margin:0 0 12px;color:var(--primary);font-weight:600;
+  display:flex;align-items:center;gap:8px}
+h2.sec .sub{font-size:12px;color:var(--muted);font-weight:400}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px;box-shadow:var(--shadow);margin-bottom:18px}
+.grid{display:grid;gap:14px}
+.grid.c3{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.grid.c2{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+/* ---------- 库卡片 ---------- */
+.lib{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px}
+.lib h3{font-size:14.5px;color:var(--primary);font-weight:600}
+.lib .num{font-size:24px;font-weight:700;color:var(--primary-l);line-height:1.1}
+.lib .num span{font-size:12px;font-weight:400;color:var(--muted);margin-left:4px}
+.lib .meta{font-size:12px;color:var(--muted)}
+.lib .acts{margin-top:auto;display:flex;flex-wrap:wrap;gap:6px}
+/* ---------- 按钮 ---------- */
+button.btn{
+  font-family:inherit;font-size:12.5px;padding:6px 13px;border-radius:7px;
+  border:1px solid var(--line);background:#fff;color:var(--text);cursor:pointer;
+  transition:.15s;white-space:nowrap;
+}
+button.btn:hover{border-color:var(--primary-l);color:var(--primary-l);background:var(--primary-ll)}
+button.btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+button.btn.pri:hover{background:var(--primary-l);border-color:var(--primary-l);color:#fff}
+button.btn.dan{color:var(--danger);border-color:#f0c8c8}
+button.btn.dan:hover{background:#fdeaea;border-color:var(--danger)}
+button.btn:disabled{opacity:.45;cursor:not-allowed}
+button.btn.sm{padding:3px 9px;font-size:12px}
+/* ---------- 表单 ---------- */
+input[type=text],input[type=search],select,textarea{
+  font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--line);
+  border-radius:7px;background:#fff;color:var(--text);outline:none;transition:.15s;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--primary-l);box-shadow:0 0 0 3px rgba(42,110,82,.1)}
+label.f{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px;font-weight:500}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row>div{display:flex;flex-direction:column}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+/* ---------- 表格 ---------- */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line)}
+th{background:var(--primary-ll);color:var(--primary);font-weight:600;
+  position:sticky;top:0;font-size:12.5px;z-index:1}
+tbody tr:hover{background:#fafcfb}
+td.mono{font-family:Consolas,Monaco,monospace;font-size:12px;color:var(--muted)}
+.table-wrap{max-height:560px;overflow:auto;border:1px solid var(--line);border-radius:var(--radius);background:#fff}
+/* ---------- 徽章 ---------- */
+.badge{display:inline-block;font-size:11.5px;padding:2px 9px;border-radius:20px;
+  background:#eef2f1;color:var(--muted);white-space:nowrap}
+.badge.ok{background:#e6f4ea;color:var(--ok)}
+.badge.warn{background:#fdf3e0;color:var(--warn)}
+.badge.bad{background:#fdeaea;color:var(--danger)}
+.badge.info{background:#e6f0fa;color:var(--info)}
+/* ---------- 检索结果 ---------- */
+.res{border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;background:#fff}
+.res .rh{padding:9px 14px;background:var(--primary-ll);display:flex;
+  justify-content:space-between;align-items:center;cursor:pointer;gap:10px}
+.res .rh b{font-size:13px;color:var(--primary);word-break:break-all}
+.res .rb{padding:12px 14px;display:none}
+.res.open .rb{display:block}
+.hit{margin-bottom:12px;padding-left:10px;border-left:3px solid var(--primary-ll)}
+.hit .hl{font-size:11.5px;color:var(--muted);margin-bottom:4px}
+.hit pre{font-family:Consolas,Monaco,"Microsoft YaHei",monospace;font-size:12.5px;
+  white-space:pre-wrap;word-break:break-word;line-height:1.65;color:#2a3a34;
+  background:#fafcfb;padding:8px 10px;border-radius:6px;margin:0}
+mark{background:#fff3a8;padding:0 2px;border-radius:2px}
+/* ---------- 任务卡 ---------- */
+.task{border:1px solid var(--line);border-radius:var(--radius);padding:14px;
+  background:#fff;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:9px}
+.task .th{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.task .th b{font-size:14.5px;color:var(--primary)}
+.task .tmeta{font-size:12px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.task .tacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+/* ---------- 拖拽区 ---------- */
+.drop{border:2px dashed var(--line);border-radius:var(--radius);padding:26px;
+  text-align:center;color:var(--muted);cursor:pointer;transition:.18s;background:#fbfdfc}
+.drop:hover,.drop.over{border-color:var(--primary-l);background:var(--primary-ll);color:var(--primary)}
+.drop b{display:block;font-size:14px;margin-bottom:5px;color:var(--text)}
+.drop .files{font-size:12px;margin-top:10px;text-align:left;color:var(--primary)}
+/* ---------- 弹窗 ---------- */
+.modal{position:fixed;inset:0;background:rgba(20,35,30,.5);z-index:200;
+  display:none;align-items:center;justify-content:center;padding:20px}
+.modal.show{display:flex}
+.modal .box{background:#fff;border-radius:12px;max-width:860px;width:100%;
+  max-height:88vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.28)}
+.modal .mh{padding:15px 20px;border-bottom:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center}
+.modal .mh b{font-size:15px;color:var(--primary)}
+.modal .mb{padding:18px 20px;overflow:auto;flex:1}
+.modal .mf{padding:13px 20px;border-top:1px solid var(--line);display:flex;
+  justify-content:flex-end;gap:9px;flex-wrap:wrap}
+pre.code{font-family:Consolas,Monaco,monospace;font-size:12.5px;background:#f7f9f8;
+  border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+  white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto;line-height:1.6}
+pre.log{font-family:Consolas,Monaco,monospace;font-size:12px;background:#1e2a26;color:#c8e6c9;
+  border-radius:8px;padding:12px;white-space:pre-wrap;max-height:44vh;overflow:auto}
+/* ---------- toast ---------- */
+#toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:var(--primary);color:#fff;padding:11px 22px;border-radius:24px;
+  font-size:13.5px;box-shadow:0 6px 24px rgba(0,0,0,.24);z-index:300;
+  opacity:0;transition:.28s;max-width:80vw;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.err{background:var(--danger)}
+#toast.ok{background:var(--ok)}
+/* ---------- 其他 ---------- */
+.empty{text-align:center;color:var(--muted);padding:34px;font-size:13px}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.7}
+.hint code{background:#eef2f1;padding:1px 5px;border-radius:4px;font-size:12px;
+  font-family:Consolas,Monaco,monospace}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.pager{display:flex;gap:7px;align-items:center;justify-content:center;margin-top:13px;font-size:12.5px;color:var(--muted)}
+.guide-item{border:1px solid var(--line);border-radius:var(--radius);padding:15px;
+  background:#fff;box-shadow:var(--shadow)}
+.guide-item h4{font-size:14px;color:var(--primary);margin-bottom:7px}
+.guide-item .eg{font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.guide-item .eg em{color:var(--primary-l);font-style:normal;background:var(--primary-ll);
+  padding:1px 6px;border-radius:4px;display:inline-block;margin:2px 3px 2px 0}
+.warnbox{background:#fdf3e0;border-left:4px solid var(--warn);padding:11px 14px;
+  border-radius:6px;font-size:12.5px;color:#7a5c0a;margin-bottom:14px}
+@media(max-width:720px){
+  .topbar{height:auto;flex-wrap:wrap;padding:9px 12px;gap:9px}
+  main{margin-top:104px;padding:14px}
+  .tabs button{padding:6px 10px;font-size:12.5px}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">医学综合 · 工作台<small>yixue-zonghe</small></div>
+  <nav class="tabs">
+    <button data-tab="overview" class="active">概览</button>
+    <button data-tab="textbooks">教材库</button>
+    <button data-tab="search">跨库检索</button>
+    <button data-tab="outputs">技能产物</button>
+    <button data-tab="experts">专家体系</button>
+    <button data-tab="guide">功能导航</button>
+  </nav>
+  <div class="status-pill" id="statusPill" onclick="refreshStatus(true)">检查中…</div>
+</header>
+
+<main>
+  <section id="tab-overview" class="tab active"></section>
+  <section id="tab-textbooks" class="tab"></section>
+  <section id="tab-search" class="tab"></section>
+  <section id="tab-outputs" class="tab"></section>
+  <section id="tab-experts" class="tab"></section>
+  <section id="tab-guide" class="tab"></section>
+</main>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()">
+  <div class="box">
+    <div class="mh"><b id="modalTitle">标题</b>
+      <button class="btn sm" onclick="closeModal()">关闭</button></div>
+    <div class="mb" id="modalBody"></div>
+    <div class="mf" id="modalFoot"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   基础工具
+   ============================================================ */
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+function toast(msg, type='') {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => { t.className = type; }, 3200);
+}
+
+function esc(s) {
+  return String(s==null?'':s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtSize(n) {
+  n = Number(n||0);
+  if (n < 1024) return n + 'B';
+  if (n < 1048576) return (n/1024).toFixed(1) + 'KB';
+  if (n < 1073741824) return (n/1048576).toFixed(1) + 'MB';
+  return (n/1073741824).toFixed(2) + 'GB';
+}
+
+async function api(path, opts={}) {
+  const r = await fetch(path, opts);
+  let j;
+  try { j = await r.json(); }
+  catch(e) { throw new Error('响应解析失败 HTTP ' + r.status); }
+  if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j.data;
+}
+
+const API = {
+  overview:   ()        => api('/api/overview'),
+  status:     ()        => api('/api/status'),
+  textbooks:  (p)       => api('/api/textbooks?' + new URLSearchParams(p)),
+  search:     (p)       => api('/api/search?' + new URLSearchParams(p)),
+  experts:    ()        => api('/api/experts'),
+  file:       (p)       => api('/api/file?' + new URLSearchParams(p)),
+  task:       (id)      => api('/api/task?id=' + encodeURIComponent(id)),
+  dTasks:     ()        => api('/api/distill/tasks'),
+  dPrompt:    (slug)    => api('/api/distill/prompt?task=' + encodeURIComponent(slug)),
+  dCheck:     (slug)    => api('/api/distill/check', {method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({slug})}),
+  dQuality:   (slug)    => api('/api/distill/quality', {method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({slug})}),
+  dInstall:   (slug)    => api('/api/distill/install', {method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({slug})}),
+  rebuild:    (track)   => api('/api/rebuild-index', {method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify({track})}),
+  sync:       (body)    => api('/api/sync', {method:'POST',
+                            headers:{'Content-Type':'application/json'},
+                            body: JSON.stringify(body)}),
+  extractSXM: ()        => api('/api/extract-shixuemin', {method:'POST'}),
+  del:        (path)    => api('/api/delete?path=' + encodeURIComponent(path) + '&confirm=1',
+                            {method:'DELETE'}),
+  delTask:    (slug)    => api('/api/distill/task?task=' + encodeURIComponent(slug) + '&confirm=1',
+                            {method:'DELETE'}),
+};
+
+function openModal(title, bodyHtml, footHtml='') {
+  $('#modalTitle').textContent = title;
+  $('#modalBody').innerHTML = bodyHtml;
+  $('#modalFoot').innerHTML = footHtml;
+  $('#modal').classList.add('show');
+}
+function closeModal() { $('#modal').classList.remove('show'); }
+
+/* ============================================================
+   顶栏状态
+   ============================================================ */
+let STATUS = null;
+
+async function refreshStatus(showDetail) {
+  const pill = $('#statusPill');
+  try {
+    STATUS = await API.status();
+    if (STATUS.all_ok) {
+      pill.className = 'status-pill ok';
+      pill.textContent = '✅ 就绪';
+    } else {
+      pill.className = 'status-pill bad';
+      pill.textContent = '⚠️ ' + STATUS.issues.length + ' 项待处理';
+    }
+    if (showDetail) showStatusModal();
+  } catch(e) {
+    pill.className = 'status-pill bad';
+    pill.textContent = '❌ 服务异常';
+    if (showDetail) toast(e.message, 'err');
+  }
+}
+
+function showStatusModal() {
+  if (!STATUS) return;
+  const s = STATUS;
+  const pathRows = Object.entries(s.paths||{})
+    .map(([k,v]) => `<tr><td>${esc(k)}</td><td>${v?'<span class="badge ok">存在</span>':'<span class="badge bad">缺失</span>'}</td></tr>`)
+    .join('');
+  const issueHtml = (s.issues||[]).length
+    ? `<div class="warnbox"><b>待处理项：</b><br>${s.issues.map(esc).join('<br>')}</div>` : '';
+  openModal('环境自检', `
+    ${issueHtml}
+    <table>
+      <tr><th>项目</th><th>值</th></tr>
+      <tr><td>技能根目录</td><td class="mono">${esc(s.skill_root)}</td></tr>
+      <tr><td>Python 解释器</td><td class="mono">${esc(s.python_exe)}</td></tr>
+      <tr><td>Python 版本</td><td>${esc(s.python_version)}</td></tr>
+      <tr><td>中医索引导入时间</td><td>${s.index_age_hours==null?'—':s.index_age_hours+' 小时前'}</td></tr>
+      <tr><td>石师全文已抽取</td><td>${s.shixuemin_extracted?'<span class="badge ok">是</span>':'<span class="badge warn">否</span>'}</td></tr>
+    </table>
+    <h2 class="sec" style="margin-top:18px">目录检查</h2>
+    <table>${pathRows}</table>
+    <h2 class="sec" style="margin-top:18px">依赖自检输出</h2>
+    <pre class="log">${esc(s.deps_output || '（无输出）')}</pre>
+  `, `<button class="btn" onclick="closeModal()">关闭</button>`);
+}
+
+/* ============================================================
+   页面 1 · 概览
+   ============================================================ */
+async function loadOverview() {
+  const el = $('#tab-overview');
+  el.innerHTML = '<div class="card"><div class="empty">加载中…</div></div>';
+  let d;
+  try { d = await API.overview(); }
+  catch(e) { el.innerHTML = `<div class="card"><div class="empty">加载失败：${esc(e.message)}</div></div>`; return; }
+
+  const order = ['中医教材','西医教材','倪海厦体系','石学敏体系','仓颉','蒸馏产出'];
+  const cards = order.filter(k => d.libraries[k]).map(k => {
+    const L = d.libraries[k];
+    let extra = '';
+    let acts = '';
+    if (k === '中医教材' || k === '西医教材') {
+      const track = k.replace('教材','');
+      const catN = Object.keys(L.categories||{}).length;
+      extra = `<div class="meta">类目 ${catN} 个 ｜ 索引 ${L.index_mtime || '无'}</div>`;
+      acts = `<button class="btn sm" onclick="goTextbooks('${track}')">管理</button>
+              <button class="btn sm" onclick="doRebuild('${track}')">重建索引</button>`;
+    } else if (k === '石学敏体系') {
+      extra = `<div class="meta">针灸全集已抽取：${L.extracted?'<span class="badge ok">是</span>':'<span class="badge warn">否</span>'}</div>`;
+      acts = L.extracted ? '' : `<button class="btn sm pri" onclick="doExtractSXM()">抽取全文</button>`;
+    } else if (k === '蒸馏产出') {
+      extra = `<div class="meta">已安装 ${ (L.installed||[]).length } 个 ｜ 待蒸馏 ${ L.pending_tasks||0 } 个</div>`;
+      acts = `<button class="btn sm pri" onclick="goTab('experts')">新建蒸馏任务</button>
+              <button class="btn sm" onclick="goTab('outputs')">管理产物</button>`;
+    } else {
+      extra = `<div class="meta">${esc(L.path||'')}</div>`;
+      acts = `<button class="btn sm" onclick="goTab('experts')">查看</button>`;
+    }
+    return `<div class="lib">
+      <h3>${esc(k)}</h3>
+      <div class="num">${L.files}<span>个文件</span></div>
+      <div class="meta">${fmtSize(L.size)}</div>
+      ${extra}
+      <div class="acts">${acts}</div>
+    </div>`;
+  }).join('');
+
+  const inst = (d.libraries['蒸馏产出']?.installed || []);
+  const instHtml = inst.length ? `
+    <h2 class="sec" style="margin-top:22px">已安装的专家体系
+      <span class="sub">蒸馏产出 ${inst.length} 个</span></h2>
+    <div class="grid c3">${inst.map(e => `
+      <div class="lib">
+        <h3>${esc(e.name)}</h3>
+        <div class="meta">${e.files} 个文件 ｜ ${fmtSize(e.size)}</div>
+        <div class="meta">${esc((e.desc||'').slice(0,80))}</div>
+        <div class="acts">
+          ${e.quality ? `<span class="badge ok">质检 ${e.quality.passed}/${e.quality.total}</span>` : ''}
+          <button class="btn sm" onclick="viewFile('${esc(e.path)}\\SKILL.md')">查看 SKILL.md</button>
+        </div>
+      </div>`).join('')}</div>` : '';
+
+  el.innerHTML = `
+    <h2 class="sec">知识库概览 <span class="sub">技能根目录：${esc(d.skill_root)}</span></h2>
+    <div class="grid c3">${cards}</div>
+    ${instHtml}
+    <h2 class="sec" style="margin-top:24px">快捷操作</h2>
+    <div class="card">
+      <div class="row">
+        <button class="btn pri" onclick="goTab('experts')">＋ 新建蒸馏任务（上传素材）</button>
+        <button class="btn" onclick="goTextbooks('中医')">上传中医教材</button>
+        <button class="btn" onclick="goTextbooks('西医')">上传西医教材</button>
+        <button class="btn" onclick="doRebuild('中医')">重建中医索引</button>
+        <button class="btn" onclick="doRebuild('西医')">重建西医索引</button>
+        <button class="btn" onclick="syncBook('西医')">同步西医（PDF 解析）</button>
+        <button class="btn" onclick="goTab('search')">跨库检索</button>
+      </div>
+      <div class="hint" style="margin-top:12px">
+        说明：教材库支持 <code>.pdf/.docx/.doc/.txt</code>；上传 PDF 后需点「同步」执行文本解析（OCR），
+        完成后建议「重建索引」。蒸馏任务在「专家体系」页创建。
+      </div>
+    </div>`;
+}
+
+async function doRebuild(track) {
+  toast(`正在重建 ${track} 索引…`);
+  try {
+    const r = await API.rebuild(track);
+    toast(`${track} 索引已重建`, 'ok');
+    openModal(`重建索引 · ${track}`, `<pre class="log">${esc(r.stdout||'完成')}</pre>`,
+      `<button class="btn pri" onclick="closeModal()">知道了</button>`);
+    loadOverview();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function doExtractSXM() {
+  try {
+    const r = await API.extractSXM();
+    toast('已启动抽取任务…');
+    pollTask(r.task_id, (t) => {
+      toast(t.status === 'done' ? '石师全文抽取完成' : '抽取失败', t.status === 'done' ? 'ok' : 'err');
+      loadOverview();
+    });
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+/* ============================================================
+   长任务轮询
+   ============================================================ */
+function pollTask(taskId, onDone) {
+  const tick = async () => {
+    try {
+      const t = await API.task(taskId);
+      if (t.status === 'running') {
+        setTimeout(tick, 1600);
+      } else {
+        onDone(t);
+        showTaskLog(t);
+      }
+    } catch(e) { onDone({status:'failed', stderr: e.message}); }
+  };
+  tick();
+}
+
+function showTaskLog(t) {
+  openModal(`任务输出 · ${t.title || t.id}`, `
+    <div class="row" style="margin-bottom:12px">
+      <span class="badge ${t.status==='done'?'ok':'bad'}">${esc(t.status)}</span>
+      <span class="badge">返回码 ${esc(t.returncode)}</span>
+      <span class="badge">${esc(t.started_at)} → ${esc(t.ended_at||'')}</span>
+    </div>
+    <pre class="log">${esc(t.stdout || '（无标准输出）')}${t.stderr ? '\n\n[stderr]\n' + esc(t.stderr) : ''}</pre>
+  `, `<button class="btn pri" onclick="closeModal()">关闭</button>`);
+}
+
+/* ============================================================
+   页面 2 · 教材库
+   ============================================================ */
+const TB = { track:'中医', category:'', q:'', page:1, page_size:100, total:0 };
+
+function goTextbooks(track) {
+  TB.track = track; TB.category = ''; TB.q = ''; TB.page = 1;
+  goTab('textbooks');
+}
+
+async function loadTextbooks() {
+  const el = $('#tab-textbooks');
+  let ov = {};
+  try { ov = (await API.overview()).libraries || {}; } catch(e) {}
+
+  const cats = Object.keys((ov[TB.track + '教材']||{}).categories || {});
+  const catOpts = ['<option value="">全部类目</option>']
+    .concat(cats.map(c => `<option value="${esc(c)}" ${TB.category===c?'selected':''}>${esc(c)}</option>`))
+    .join('');
+
+  el.innerHTML = `
+    <h2 class="sec">教材库管理
+      <span class="sub">上传 → 同步解析 → 重建索引</span></h2>
+    <div class="card">
+      <div class="toolbar">
+        <button class="btn ${TB.track==='中医'?'pri':''}" onclick="switchTrack('中医')">中医教材</button>
+        <button class="btn ${TB.track==='西医'?'pri':''}" onclick="switchTrack('西医')">西医教材</button>
+        <span style="flex:1"></span>
+        <select id="tbCat" onchange="TB.category=this.value;TB.page=1;loadTextbooks()">${catOpts}</select>
+        <input type="search" id="tbQ" placeholder="搜索文件名…" style="width:200px"
+               value="${esc(TB.q)}" onkeydown="if(event.key==='Enter'){TB.q=this.value;TB.page=1;loadTextbooks()}">
+        <button class="btn" onclick="TB.q=document.getElementById('tbQ').value;TB.page=1;loadTextbooks()">搜索</button>
+        <button class="btn pri" onclick="openUpload()">＋ 上传文件</button>
+        <button class="btn" onclick="syncBook('${TB.track}')">同步解析</button>
+        <button class="btn" onclick="doRebuild('${TB.track}')">重建索引</button>
+      </div>
+      <div id="tbBody"><div class="empty">加载中…</div></div>
+    </div>`;
+
+  try {
+    const d = await API.textbooks({
+      track: TB.track, category: TB.category, q: TB.q,
+      page: TB.page, page_size: TB.page_size,
+    });
+    TB.total = d.total;
+    renderTextbookTable(d);
+  } catch(e) {
+    $('#tbBody').innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`;
+  }
+}
+
+function renderTextbookTable(d) {
+  if (!d.items.length) {
+    $('#tbBody').innerHTML = '<div class="empty">暂无文件，点「上传文件」添加</div>';
+    return;
+  }
+  const rows = d.items.map(it => `
+    <tr>
+      <td>${esc(it.name)}</td>
+      <td><span class="badge">${esc(it.ext)}</span></td>
+      <td>${fmtSize(it.size)}</td>
+      <td>${it.category ? `<span class="badge info">${esc(it.category)}</span>` : ''}
+          ${it.from_pdf ? '<span class="badge ok">PDF转写</span>' : ''}</td>
+      <td class="mono">${esc(it.mtime)}</td>
+      <td>
+        ${['txt','md','csv'].includes(it.ext)
+          ? `<button class="btn sm" onclick="viewFile('${esc(it.path)}')">预览</button>` : ''}
+        <button class="btn sm dan" onclick="delFile('${esc(it.path)}','${esc(it.name)}')">删除</button>
+      </td>
+    </tr>`).join('');
+  const pages = Math.max(1, Math.ceil(d.total / d.page_size));
+  $('#tbBody').innerHTML = `
+    <div class="hint" style="margin-bottom:9px">
+      共 <b>${d.total}</b> 个文件 ｜ 第 ${d.page}/${pages} 页 ｜ 目录
+      <code>${esc(d.dir)}</code>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr>
+        <th>文件名</th><th>类型</th><th>大小</th><th>来源/类目</th><th>修改时间</th><th>操作</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+    </div>
+    <div class="pager">
+      <button class="btn sm" ${d.page<=1?'disabled':''} onclick="TB.page=${d.page-1};loadTextbooks()">上一页</button>
+      <span>${d.page} / ${pages}</span>
+      <button class="btn sm" ${d.page>=pages?'disabled':''} onclick="TB.page=${d.page+1};loadTextbooks()">下一页</button>
+      <select onchange="TB.page_size=+this.value;TB.page=1;loadTextbooks()">
+        ${[50,100,200,500].map(n=>`<option value="${n}" ${TB.page_size===n?'selected':''}>每页 ${n}</option>`).join('')}
+      </select>
+    </div>`;
+}
+
+function switchTrack(t) { TB.track = t; TB.category = ''; TB.page = 1; loadTextbooks(); }
+
+function delFile(path, name) {
+  openModal('确认删除', `
+    <div class="warnbox">将删除文件：<b>${esc(name)}</b><br>
+      文件会先移入 <code>platform/.trash/</code>（可手工恢复），不会立即物理销毁。</div>
+  `, `<button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn dan" id="delOk">确认删除</button>`);
+  $('#delOk').onclick = async () => {
+    try { await API.del(path); closeModal(); toast('已删除（移入回收站）','ok'); loadTextbooks(); }
+    catch(e) { toast(e.message, 'err'); }
+  };
+}
+
+/* ---------- 上传 ---------- */
+let UPLOAD_FILES = [];
+
+function openUpload() {
+  UPLOAD_FILES = [];
+  openModal(`上传教材 · ${TB.track}`, `
+    <div class="row" style="margin-bottom:14px">
+      <div><label class="f">目标体系</label>
+        <select id="upTrack">
+          <option value="中医" ${TB.track==='中医'?'selected':''}>中医教材</option>
+          <option value="西医" ${TB.track==='西医'?'selected':''}>西医教材</option>
+        </select></div>
+    </div>
+    <div class="drop" id="dropZone">
+      <b>拖拽文件到此处，或点击选择</b>
+      支持 .pdf / .docx / .doc / .txt（单文件上限 500MB，可多选）
+      <div class="files" id="fileList"></div>
+    </div>
+    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.doc,.txt" style="display:none">
+    <label class="hint" style="display:block;margin-top:12px">
+      <input type="checkbox" id="chkSync"> 上传后立即执行「同步解析」（PDF → txt，可能较慢，OCR 需数分钟）
+    </label>
+  `, `<button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn pri" id="upOk">开始上传</button>`);
+
+  const dz = $('#dropZone'), fi = $('#fileInput');
+  dz.onclick = () => fi.click();
+  fi.onchange = () => { addFiles(fi.files); fi.value = ''; };
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+  dz.ondragleave = () => dz.classList.remove('over');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); addFiles(e.dataTransfer.files); };
+  $('#upOk').onclick = doUpload;
+}
+
+function addFiles(fl) {
+  for (const f of fl) {
+    if (!/\.(pdf|docx|doc|txt)$/i.test(f.name)) { toast(`跳过不支持的文件：${f.name}`, 'err'); continue; }
+    if (!UPLOAD_FILES.some(x => x.name === f.name && x.size === f.size)) UPLOAD_FILES.push(f);
+  }
+  $('#fileList').innerHTML = UPLOAD_FILES.length
+    ? UPLOAD_FILES.map(f => `· ${esc(f.name)}（${fmtSize(f.size)}）`).join('<br>') : '';
+}
+
+async function doUpload() {
+  if (!UPLOAD_FILES.length) { toast('请先选择文件', 'err'); return; }
+  const track = $('#upTrack').value;
+  const fd = new FormData();
+  fd.append('track', track);
+  UPLOAD_FILES.forEach(f => fd.append('file', f, f.name));
+  const btn = $('#upOk');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>上传中…';
+  try {
+    const r = await fetch('/api/upload', {method:'POST', body: fd}).then(x => x.json());
+    if (!r.ok) throw new Error(r.error);
+    const d = r.data;
+    closeModal();
+    toast(`成功上传 ${d.uploaded.length} 个文件` +
+          (d.failed.length ? `，${d.failed.length} 个失败` : ''), 'ok');
+    TB.track = track; TB.page = 1;
+    loadTextbooks(); loadOverview();
+    if ($('#chkSync') && $('#chkSync').checked) syncBook(track);
+  } catch(e) {
+    toast(e.message, 'err');
+    btn.disabled = false; btn.textContent = '开始上传';
+  }
+}
+
+async function syncBook(track) {
+  try {
+    const r = await API.sync({ track });
+    toast(`已启动 ${track} 同步解析任务…`);
+    pollTask(r.task_id, (t) => {
+      toast(t.status === 'done' ? `${track} 同步完成` : '同步失败',
+            t.status === 'done' ? 'ok' : 'err');
+      loadOverview();
+      if ($('#tab-textbooks').classList.contains('active')) loadTextbooks();
+    });
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+/* ---------- 文件预览 ---------- */
+async function viewFile(path) {
+  openModal('文件预览', '<div class="empty">加载中…</div>');
+  try {
+    const d = await API.file({ path, lines: 400 });
+    openModal('文件预览 · ' + path.split(/[\\/]/).pop(), `
+      <div class="hint" style="margin-bottom:10px">
+        编码 <code>${esc(d.encoding)}</code> ｜ ${fmtSize(d.size)} ｜
+        共 ${d.total_lines} 行${d.truncated ? '（仅显示前 400 行）' : ''}
+      </div>
+      <pre class="code">${esc(d.content)}</pre>
+    `, `<button class="btn pri" onclick="closeModal()">关闭</button>`);
+  } catch(e) {
+    openModal('文件预览', `<div class="empty">${esc(e.message)}</div>`,
+      `<button class="btn" onclick="closeModal()">关闭</button>`);
+  }
+}
+
+/* ============================================================
+   页面 3 · 跨库检索
+   ============================================================ */
+const SE = { keyword:'', track:'中医', source:'all', category:'', context:6, max_hits:20 };
+let SE_SHOW_ALL = false;
+
+function loadSearch() {
+  $('#tab-search').innerHTML = `
+    <h2 class="sec">跨库检索 <span class="sub">教材库 + 倪海厦体系 + 石学敏体系 + 蒸馏产出</span></h2>
+    <div class="card">
+      <div class="row">
+        <div style="flex:2;min-width:220px"><label class="f">关键词（多个用逗号分隔）</label>
+          <input type="text" id="seKw" value="${esc(SE.keyword)}"
+                 placeholder="如：桂枝汤 或 桂枝汤,麻黄汤" style="width:100%"
+                 onkeydown="if(event.key==='Enter')runSearch()"></div>
+        <div><label class="f">体系</label>
+          <select id="seTrack" onchange="syncSourceOptions()">
+            <option value="中医">中医</option><option value="西医">西医</option>
+          </select></div>
+        <div><label class="f">来源</label>
+          <select id="seSource"></select></div>
+        <div><label class="f">类目</label>
+          <input type="text" id="seCat" value="${esc(SE.category)}" placeholder="可选" style="width:120px"></div>
+        <div><label class="f">上下文行数</label>
+          <input type="text" id="seCtx" value="${SE.context}" style="width:70px"></div>
+        <div><label class="f">最大命中</label>
+          <input type="text" id="seMax" value="${SE.max_hits}" style="width:70px"></div>
+        <div><button class="btn pri" onclick="runSearch()">🔍 检索</button></div>
+      </div>
+    </div>
+    <div id="seResult"><div class="empty">输入关键词后点击「检索」</div></div>`;
+  $('#seTrack').value = SE.track;
+  syncSourceOptions();
+  if (SE.keyword) runSearch();
+}
+
+function syncSourceOptions() {
+  const track = $('#seTrack').value;
+  const opts = track === '西医'
+    ? [['textbook','仅教材']]
+    : [['all','跨库（教材+倪师+石师+蒸馏产出）'],['textbook','仅教材'],
+       ['nihaixia','仅倪海厦体系'],['shixuemin','仅石学敏体系'],['distilled','仅蒸馏产出']];
+  $('#seSource').innerHTML = opts.map(([v,l]) =>
+    `<option value="${v}">${l}</option>`).join('');
+  $('#seSource').value = opts.some(o => o[0] === SE.source) ? SE.source : opts[0][0];
+}
+
+async function runSearch() {
+  const kw = $('#seKw').value.trim();
+  if (!kw) { toast('请输入关键词', 'err'); return; }
+  SE.keyword = kw;
+  SE_SHOW_ALL = false;
+  SE.track = $('#seTrack').value;
+  SE.source = $('#seSource').value;
+  SE.category = $('#seCat').value.trim();
+  SE.context = $('#seCtx').value.trim() || '6';
+  SE.max_hits = $('#seMax').value.trim() || '20';
+
+  const el = $('#seResult');
+  el.innerHTML = '<div class="card"><div class="empty"><span class="spin" style="border-color:rgba(26,74,58,.3);border-top-color:#1a4a3a"></span>检索中，跨库检索可能需要数秒…</div></div>';
+  try {
+    const d = await API.search({
+      keyword: SE.keyword, track: SE.track, source: SE.source,
+      category: SE.category, context: SE.context, max_hits: SE.max_hits,
+    });
+    renderSearch(d);
+  } catch(e) {
+    el.innerHTML = `<div class="card"><div class="empty">检索失败：${esc(e.message)}</div></div>`;
+  }
+}
+
+function renderSearch(d) {
+  const rs = d.results || [];
+  if (!rs.length) {
+    $('#seResult').innerHTML = `<div class="card"><div class="empty">
+      未命中「${esc((d.keywords||[]).join('、'))}」，可换个关键词或调整「来源」</div></div>`;
+    return;
+  }
+  const kws = d.keywords || [];
+  const hi = s => {
+    let out = esc(s);
+    kws.forEach(k => {
+      if (!k) return;
+      const re = new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'g');
+      out = out.replace(re, m => `<mark>${m}</mark>`);
+    });
+    return out;
+  };
+  // 命中文件可能上千，默认只渲染前 50 个，其余按需展开（避免 DOM 过重）
+  const RENDER_LIMIT = 50;
+  const shown = SE_SHOW_ALL ? rs : rs.slice(0, RENDER_LIMIT);
+  window.__SE_DATA = d;
+  const cards = shown.map((r, i) => {
+    const hits = (r.hits||[]).map(h => `
+      <div class="hit">
+        <div class="hl">[${esc(h.keyword)} · 第 ${esc(h.line)} 行]</div>
+        <pre>${hi(h.snippet)}</pre>
+      </div>`).join('');
+    return `<div class="res ${i===0?'open':''}">
+      <div class="rh" onclick="this.parentNode.classList.toggle('open')">
+        <b>📄 ${esc(r.file)}${r.source ? ` <span class="badge">${esc(r.source)}</span>` : ''}</b>
+        <span class="badge info">${(r.hits||[]).length} 处命中</span>
+      </div>
+      <div class="rb">${hits||'<div class="empty">无</div>'}</div>
+    </div>`;
+  }).join('');
+
+  // stats 为 [[文件名, 命中数, 来源], ...]
+  const statList = Array.isArray(d.stats) ? d.stats : [];
+  const more = (rs.length > RENDER_LIMIT && !SE_SHOW_ALL)
+    ? `<div style="text-align:center;margin-top:14px">
+         <button class="btn pri" onclick="SE_SHOW_ALL=true;renderSearch(window.__SE_DATA)">
+           显示其余 ${rs.length - RENDER_LIMIT} 个文件</button>
+       </div>` : '';
+  $('#seResult').innerHTML = `
+    <div class="hint" style="margin-bottom:11px">
+      关键词 <b>${esc(kws.join('、'))}</b> ｜ 来源 <code>${esc(d.source)}</code> ｜
+      命中 <b>${statList.length}</b> 个文件${rs.length > RENDER_LIMIT && !SE_SHOW_ALL
+        ? `（默认展开前 ${RENDER_LIMIT} 个）` : ''}
+    </div>
+    ${cards}${more}`;
+}
+
+/* ============================================================
+   页面 4 · 技能产物
+   ============================================================ */
+async function loadOutputs() {
+  const el = $('#tab-outputs');
+  el.innerHTML = '<div class="card"><div class="empty">加载中…</div></div>';
+  let d;
+  try { d = await API.dTasks(); }
+  catch(e) { el.innerHTML = `<div class="card"><div class="empty">加载失败：${esc(e.message)}</div></div>`; return; }
+
+  const stMap = {
+    pending:      ['待蒸馏','warn','尚未产出 SKILL.md，请复制指令卡到 TRAE 执行'],
+    produced:     ['已产出','info','已检测到 SKILL.md，可进行质检'],
+    quality_ok:   ['质检通过','ok','11/11 通过，可安装到蒸馏产出'],
+    quality_fail: ['质检未过','bad','请查看质检详情并修复'],
+  };
+
+  const tasks = (d.tasks||[]).map(t => {
+    const [label, cls, tip] = stMap[t.status] || ['未知','',''];
+    const q = t.quality;
+    return `<div class="task">
+      <div class="th">
+        <div>
+          <b>${esc(t.person)}</b>
+          <span class="badge">${t.distill_type === 'B' ? 'B 类教材蒸馏' : 'A 类人物蒸馏'}</span>
+        </div>
+        <span class="badge ${cls}">${label}</span>
+      </div>
+      <div class="tmeta">
+        <span>标识 <code>${esc(t.slug)}</code></span>
+        <span>创建 ${esc(t.created_at||'—')}</span>
+        <span>素材 ${(t.materials||[]).length} 个</span>
+        ${q ? `<span>质检 ${q.passed}/${q.total}</span>` : ''}
+      </div>
+      ${t.focus ? `<div class="tmeta">聚焦：${esc(t.focus)}</div>` : ''}
+      <div class="tmeta">${tip}</div>
+      <div class="tacts">
+        ${t.has_prompt ? `<button class="btn sm pri" onclick="showPrompt('${esc(t.slug)}')">查看/复制指令卡</button>` : ''}
+        <button class="btn sm" onclick="checkTask('${esc(t.slug)}')">检测产物</button>
+        <button class="btn sm" onclick="qualityTask('${esc(t.slug)}')">质检</button>
+        ${t.status === 'quality_ok'
+          ? `<button class="btn sm pri" onclick="installTask('${esc(t.slug)}')">安装到蒸馏产出</button>`
+          : ''}
+        ${q ? `<button class="btn sm" onclick="showQuality('${esc(t.slug)}')">质检详情</button>` : ''}
+        <button class="btn sm dan" onclick="delTask('${esc(t.slug)}','${esc(t.person)}')">删除任务</button>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty">暂无蒸馏任务，请到「专家体系」页新建</div>';
+
+  const installed = (d.installed||[]).map(e => `
+    <div class="lib">
+      <h3>${esc(e.name)}</h3>
+      <div class="meta">${e.files} 个文件 ｜ ${fmtSize(e.size)}</div>
+      <div class="meta">${esc((e.desc||'').slice(0,90))}</div>
+      <div class="acts">
+        ${e.quality ? `<span class="badge ok">质检 ${e.quality.passed}/${e.quality.total}</span>` : '<span class="badge">未质检</span>'}
+        <button class="btn sm" onclick="viewFile('${esc(e.path)}\\SKILL.md')">查看 SKILL.md</button>
+      </div>
+    </div>`).join('') || '<div class="empty">暂无已安装的蒸馏专家</div>';
+
+  el.innerHTML = `
+    <h2 class="sec">技能产物 · 蒸馏任务队列
+      <span class="sub">上传素材 → 生成指令卡 → TRAE 蒸馏 → 质检 → 安装</span></h2>
+    <div class="card">
+      <div class="toolbar">
+        <button class="btn pri" onclick="goTab('experts')">＋ 新建蒸馏任务</button>
+        <button class="btn" onclick="openImport()">导入已完成归档 (.zip)</button>
+        <button class="btn" onclick="loadOutputs()">刷新</button>
+      </div>
+      <div class="hint">
+        工作台目录：<code>${esc(d.inbox_dir)}</code> ｜ 正式产出目录：<code>${esc(d.produce_dir)}</code>
+      </div>
+    </div>
+    <div class="grid c2" style="margin-bottom:20px">${tasks}</div>
+    <h2 class="sec">已安装的蒸馏专家</h2>
+    <div class="grid c3">${installed}</div>`;
+}
+
+async function showPrompt(slug) {
+  try {
+    const d = await API.dPrompt(slug);
+    openModal('蒸馏指令卡 · ' + slug, `
+      <div class="warnbox">
+        点「复制全部」把以下内容整段贴给 TRAE（已加载 yixue-zonghe 技能），
+        它会按仓颉 7 步流程完成蒸馏并写入 <code>${esc(slug)}</code> 产出目录。
+      </div>
+      <pre class="code" id="promptText">${esc(d.prompt)}</pre>
+    `, `<button class="btn" onclick="closeModal()">关闭</button>
+        <button class="btn pri" id="cpBtn">复制全部</button>`);
+    $('#cpBtn').onclick = async () => {
+      const txt = $('#promptText').textContent;
+      try { await navigator.clipboard.writeText(txt); toast('指令卡已复制，去 TRAE 粘贴执行','ok'); }
+      catch(e) {
+        const ta = document.createElement('textarea');
+        ta.value = txt; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+        toast('指令卡已复制','ok');
+      }
+    };
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function checkTask(slug) {
+  try {
+    const d = await API.dCheck(slug);
+    toast(d.message || '已检测', d.status === 'pending' ? '' : 'ok');
+    loadOutputs();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function qualityTask(slug) {
+  toast('正在运行仓颉质检（11 项）…');
+  try {
+    const r = await API.dQuality(slug);
+    toast(`质检结果：${r.passed}/${r.total}`, r.ok ? 'ok' : 'err');
+    showQualityRaw(slug, r);
+    loadOutputs();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+function showQualityRaw(slug, r) {
+  openModal(`质检详情 · ${slug}`, `
+    <div class="row" style="margin-bottom:12px">
+      <span class="badge ${r.ok?'ok':'bad'}">${r.passed} / ${r.total}</span>
+      <span class="badge">${r.ok ? '通过，可安装' : '未通过，需修复'}</span>
+      <span class="badge">${esc(r.checked_at||'')}</span>
+    </div>
+    <pre class="log">${esc(r.raw || '（无输出）')}</pre>
+  `, `<button class="btn pri" onclick="closeModal()">关闭</button>`);
+}
+
+async function showQuality(slug) {
+  try {
+    const d = await API.dTasks();
+    const t = (d.tasks||[]).find(x => x.slug === slug);
+    if (t && t.quality) showQualityRaw(slug, t.quality);
+    else toast('暂无质检记录', 'err');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function installTask(slug) {
+  try {
+    const r = await API.dInstall(slug);
+    toast(`已安装：${r.name}`, 'ok');
+    loadOutputs(); loadOverview();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+function delTask(slug, person) {
+  openModal('确认删除蒸馏任务', `
+    <div class="warnbox">将删除任务 <b>${esc(person)}</b>（含素材与产出），
+      移入 <code>platform/.trash/</code>，可手工恢复。</div>
+  `, `<button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn dan" id="dtOk">确认删除</button>`);
+  $('#dtOk').onclick = async () => {
+    try { await API.delTask(slug); closeModal(); toast('任务已删除','ok'); loadOutputs(); }
+    catch(e) { toast(e.message, 'err'); }
+  };
+}
+
+function openImport() {
+  openModal('导入已完成归档', `
+    <div class="warnbox">导入一个已蒸馏完成的 <code>.zip</code>（内含 <code>SKILL.md</code> 的
+      perspective 目录），解压到工作台 <code>_inbox/_import/</code> 供质检与安装。</div>
+    <div class="drop" id="impDrop">
+      <b>拖拽 .zip 文件到此处，或点击选择</b>
+      <div class="files" id="impFile"></div>
+    </div>
+    <input type="file" id="impInput" accept=".zip" style="display:none">
+  `, `<button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn pri" id="impOk">上传并解压</button>`);
+  const dz = $('#impDrop'), fi = $('#impInput');
+  let chosen = null;
+  dz.onclick = () => fi.click();
+  fi.onchange = () => { chosen = fi.files[0]; if (chosen) $('#impFile').textContent = '· ' + chosen.name; };
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+  dz.ondragleave = () => dz.classList.remove('over');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over');
+    chosen = e.dataTransfer.files[0]; if (chosen) $('#impFile').textContent = '· ' + chosen.name; };
+  $('#impOk').onclick = async () => {
+    if (!chosen) { toast('请先选择 .zip 文件', 'err'); return; }
+    const fd = new FormData(); fd.append('file', chosen, chosen.name);
+    try {
+      const r = await fetch('/api/distill/import', {method:'POST', body: fd}).then(x => x.json());
+      if (!r.ok) throw new Error(r.error);
+      const d = r.data;
+      toast('已解压到工作台，可在文件系统中查看候选目录', 'ok');
+      openModal('导入结果', `
+        <div class="hint">解压位置：<code>${esc(d.extracted_to)}</code></div>
+        <h2 class="sec" style="margin-top:14px">顶层条目</h2>
+        <pre class="code">${esc((d.tops||[]).join('\n') || '（无）')}</pre>
+        <h2 class="sec" style="margin-top:14px">检测到 SKILL.md 的目录（候选）</h2>
+        <pre class="code">${esc((d.candidates||[]).join('\n') || '（未找到 SKILL.md）')}</pre>
+        <div class="hint" style="margin-top:10px">
+          提示：把候选目录手工移入 <code>蒸馏产出/</code> 并重命名为 <code>名称-perspective</code> 即完成安装。
+        </div>
+      `, `<button class="btn pri" onclick="closeModal()">关闭</button>`);
+      loadOutputs();
+    } catch(e) { toast(e.message, 'err'); }
+  };
+}
+
+/* ============================================================
+   页面 5 · 专家体系（含蒸馏入口）
+   ============================================================ */
+async function loadExperts() {
+  const el = $('#tab-experts');
+  el.innerHTML = '<div class="card"><div class="empty">加载中…</div></div>';
+  let d;
+  try { d = await API.experts(); }
+  catch(e) { el.innerHTML = `<div class="card"><div class="empty">加载失败：${esc(e.message)}</div></div>`; return; }
+
+  const card = (key, icon, desc, extra='') => {
+    const E = d[key] || {};
+    return `<div class="lib">
+      <h3>${icon} ${esc(E.name||key)}</h3>
+      <div class="num">${(E.files||[]).length}<span>个文件</span></div>
+      <div class="meta">${esc(desc)}</div>
+      ${extra}
+      <div class="acts">
+        ${E.skill_md ? `<button class="btn sm" onclick="viewFile('${esc(E.skill_md)}')">查看 SKILL.md</button>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const inst = (d.distilled||{}).installed || [];
+  const pend = (d.distilled||{}).pending_tasks || [];
+
+  el.innerHTML = `
+    <h2 class="sec">专家体系</h2>
+    <div class="grid c3">
+      ${card('nihaixia','🀄','经方体系：14 模块 + 1257 医案 + 蒸馏速查')}
+      ${card('shixuemin','🪡','针灸体系：醒脑开窍 / 手法量学 / 十二经病候',
+        (d.shixuemin||{}).extracted
+          ? '<div class="meta"><span class="badge ok">针灸全集已抽取</span></div>'
+          : '<div class="meta"><span class="badge warn">针灸全集未抽取</span></div>'+
+            '<div class="acts"><button class="btn sm pri" onclick="doExtractSXM()">抽取全文</button></div>')}
+      ${card('cangjie','⚙️','元 Skill：7 步蒸馏流程 + 质检 + prompt 编译器')}
+    </div>
+
+    <h2 class="sec" style="margin-top:26px">★ 新建蒸馏任务
+      <span class="sub">上传素材 → 自动生成指令卡 → 复制到 TRAE 执行</span></h2>
+    <div class="card">
+      <div class="warnbox">
+        仓颉蒸馏必须由 AI 参与：工作台负责「上传素材 + 生成指令卡 + 检测产物 + 质检 + 安装」，
+        真正的 7 步蒸馏在 TRAE 中执行（复制指令卡粘贴即可）。
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <div><label class="f">蒸馏类型</label>
+          <select id="dtType">
+            <option value="A">A 类 · 人物蒸馏（某位医家/学者）</option>
+            <option value="B">B 类 · 教材蒸馏（某本教材/讲稿）</option>
+          </select></div>
+        <div style="flex:1;min-width:200px"><label class="f">对象名（必填，将作为产出目录名）</label>
+          <input type="text" id="dtPerson" placeholder="如：张三丰 或 中医内科学讲稿" style="width:100%"></div>
+        <div style="flex:1;min-width:200px"><label class="f">聚焦方向（可选）</label>
+          <input type="text" id="dtFocus" placeholder="如：经方运用与六经辨证" style="width:100%"></div>
+      </div>
+      <div class="drop" id="dtDrop">
+        <b>拖拽素材到此处，或点击选择</b>
+        支持 .pdf / .docx / .doc / .txt / .md / .epub（可多文件，单文件上限 200MB）
+        <div class="files" id="dtFiles"></div>
+      </div>
+      <input type="file" id="dtInput" multiple accept=".pdf,.docx,.doc,.txt,.md,.epub" style="display:none">
+      <div class="row" style="margin-top:14px">
+        <button class="btn pri" id="dtOk">创建蒸馏任务</button>
+      </div>
+    </div>
+
+    <h2 class="sec" style="margin-top:26px">蒸馏产出（动态专家库）
+      <span class="sub">已安装 ${inst.length} 个 ｜ 待蒸馏 ${pend.length} 个</span></h2>
+    <div class="grid c3">
+      ${inst.length ? inst.map(e => `
+        <div class="lib">
+          <h3>${esc(e.name)}</h3>
+          <div class="meta">${e.files} 个文件 ｜ ${fmtSize(e.size)}</div>
+          <div class="meta">${esc((e.desc||'').slice(0,80))}</div>
+          <div class="acts">
+            ${e.quality ? `<span class="badge ok">质检 ${e.quality.passed}/${e.quality.total}</span>` : ''}
+            <button class="btn sm" onclick="viewFile('${esc(e.path)}\\SKILL.md')">SKILL.md</button>
+          </div>
+        </div>`).join('') : '<div class="empty">暂无已安装的蒸馏专家</div>'}
+    </div>
+    ${pend.length ? `
+      <h2 class="sec" style="margin-top:22px">进行中的蒸馏任务</h2>
+      <div class="card">
+        ${pend.map(t => `<div class="tmeta" style="margin-bottom:7px">
+          <span class="badge info">${esc(t.person)}</span>
+          <span class="badge">${esc(t.status)}</span>
+          <span>${esc(t.created_at)}</span>
+          <button class="btn sm" onclick="goTab('outputs')">前往处理</button>
+        </div>`).join('')}
+      </div>` : ''}`;
+
+  // 绑定上传交互
+  let files = [];
+  const dz = $('#dtDrop'), fi = $('#dtInput');
+  dz.onclick = () => fi.click();
+  fi.onchange = () => { addDT(fi.files); fi.value = ''; };
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+  dz.ondragleave = () => dz.classList.remove('over');
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); addDT(e.dataTransfer.files); };
+  function addDT(fl) {
+    for (const f of fl) {
+      if (!/\.(pdf|docx|doc|txt|md|epub)$/i.test(f.name)) { toast(`跳过不支持：${f.name}`, 'err'); continue; }
+      if (!files.some(x => x.name === f.name && x.size === f.size)) files.push(f);
+    }
+    window.__DT_FILES = files;
+    $('#dtFiles').innerHTML = files.length
+      ? files.map(f => `· ${esc(f.name)}（${fmtSize(f.size)}）`).join('<br>') : '';
+  }
+  $('#dtOk').onclick = createDistillTask;
+}
+
+async function createDistillTask() {
+  const person = $('#dtPerson').value.trim();
+  if (!person) { toast('请填写对象名', 'err'); return; }
+  const files = window.__DT_FILES || [];
+  if (!files.length) { toast('请至少上传一个素材文件', 'err'); return; }
+
+  const fd = new FormData();
+  fd.append('person', person);
+  fd.append('distill_type', $('#dtType').value);
+  fd.append('focus', $('#dtFocus').value.trim());
+  files.forEach(f => fd.append('file', f, f.name));
+
+  const btn = $('#dtOk');
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span>处理中…';
+  try {
+    const r = await fetch('/api/distill/task', {method:'POST', body: fd}).then(x => x.json());
+    if (!r.ok) throw new Error(r.error);
+    const d = r.data;
+    toast('蒸馏任务已创建，指令卡已生成', 'ok');
+    showPromptData(d.slug, d.prompt);
+    window.__DT_FILES = [];
+    $('#dtFiles').innerHTML = '';
+    loadExperts();
+  } catch(e) {
+    toast(e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '创建蒸馏任务';
+  }
+}
+
+function showPromptData(slug, prompt) {
+  openModal('蒸馏指令卡已生成 · ' + slug, `
+    <div class="warnbox">
+      <b>下一步：</b>点「复制全部」→ 打开 TRAE → 粘贴发送。
+      AI 会按仓颉 7 步流程读取素材并完成蒸馏，产出后回到「技能产物」页点「检测产物」→「质检」→「安装」。
+    </div>
+    <pre class="code" id="promptText">${esc(prompt)}</pre>
+  `, `<button class="btn" onclick="closeModal()">关闭</button>
+      <button class="btn pri" id="cpBtn">复制全部</button>`);
+  $('#cpBtn').onclick = async () => {
+    const txt = $('#promptText').textContent;
+    try { await navigator.clipboard.writeText(txt); toast('已复制到剪贴板','ok'); }
+    catch(e) {
+      const ta = document.createElement('textarea');
+      ta.value = txt; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+      toast('已复制到剪贴板','ok');
+    }
+  };
+}
+
+/* ============================================================
+   页面 6 · 功能导航
+   ============================================================ */
+const GUIDE = [
+  ['① 医学学习','讲概念、讲方剂、讲疾病，中西医双轨',
+   ['讲一下中医的桂枝汤','西医的高血压怎么治疗','倪师怎么讲小柴胡汤']],
+  ['② 讲义制作','按理法方药体系生成结构化 HTML 讲义并导出 PDF',
+   ['做一份中医肺系讲义','做个脾胃系疾病专题讲义','把这份讲义导出 PDF']],
+  ['③ 病案 / 病例分析','中医六步辨证 / 西医诊断思路',
+   ['分析这个病案（中医辨证）','分析这个病例（西医诊断）']],
+  ['④ 针灸（中医专属）','腧穴定位、配伍、手法量学、醒脑开窍',
+   ['足三里怎么定位','石学敏醒脑开窍针法','针灸治疗面瘫取穴']],
+  ['⑤ 中药 / 西药处方讲解','性味归经、方解、用法用量、注意事项',
+   ['讲讲麻黄汤的方解','这个处方怎么讲','阿司匹林的作用机制']],
+  ['⑥ 模拟题出题','生成交互式 HTML 试卷，自动适配 PWA 考试中心',
+   ['出 20 道中医内科单选题','出 10 道西医心内科题','用倪师医案出题']],
+  ['⑦ 仓颉蒸馏（工具层）','从素材蒸馏出可复用专家认知 Skill',
+   ['蒸馏这本讲稿','做个 XX 的思维 Skill','用仓颉提取']],
+];
+
+function loadGuide() {
+  const cards = GUIDE.map(([t, d, eg]) => `
+    <div class="guide-item">
+      <h4>${esc(t)}</h4>
+      <div class="eg">${esc(d)}</div>
+      <div class="eg">${eg.map(e => `<em>${esc(e)}</em>`).join('')}</div>
+      <button class="btn sm" onclick="cpEg('${esc(eg[0])}')">复制触发词</button>
+    </div>`).join('');
+
+  $('#tab-guide').innerHTML = `
+    <h2 class="sec">功能导航 <span class="sub">在 TRAE 中直接用自然语言触发</span></h2>
+    <div class="grid c2">${cards}</div>
+    <h2 class="sec" style="margin-top:26px">关键约束速查</h2>
+    <div class="card">
+      <div class="hint">
+        · <b>Python 解释器</b>：<code>${esc((STATUS&&STATUS.python_exe)||'C:\\Users\\somnu\\.workbuddy\\binaries\\python\\envs\\default\\Scripts\\python.exe')}</code><br>
+        · <b>中医教材</b>：711 部（10 现代 UTF-8 + 701 古籍 GB18030）；<b>西医教材</b>：用户上传后同步解析<br>
+        · <b>检索默认跨库</b>：教材 + 倪海厦体系 + 石学敏体系 + 蒸馏产出<br>
+        · <b>毒性药物</b>必出 ⚠️ 警示框；<b>处方药</b>注明「须在医师指导下使用」<br>
+        · <b>蒸馏产出</b>需质检 11/11 通过后方可安装，安装后自动接入跨库检索
+      </div>
+    </div>
+    <h2 class="sec" style="margin-top:22px">试卷与 PWA 考试中心</h2>
+    <div class="card">
+      <div class="hint">
+        出题生成的交互式 HTML 试卷已内置 PWA 适配：<br>
+        · 成绩上报 <code>POST /api/exam/submit</code>（sendBeacon → fetch keepalive → localStorage 三级兜底）<br>
+        · 学习中心账号识别 <code>?student=&lt;username&gt;</code> / <code>localStorage['lc_user']</code><br>
+        · 成绩回显 <code>?r=1</code> + <code>lc_exam_review:&lt;exam_id&gt;</code><br>
+        · 考卷与答案卷成对上传到学习中心「发起考试」即可对学生分发
+      </div>
+    </div>`;
+}
+
+function cpEg(text) {
+  navigator.clipboard.writeText(text)
+    .then(() => toast('已复制：' + text, 'ok'))
+    .catch(() => toast('复制失败，请手工选取', 'err'));
+}
+
+/* ============================================================
+   Tab 切换
+   ============================================================ */
+function goTab(name) {
+  $$('.tab').forEach(t => t.classList.remove('active'));
+  $$('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  const sec = $('#tab-' + name);
+  if (sec) sec.classList.add('active');
+  const loaders = {
+    overview: loadOverview, textbooks: loadTextbooks, search: loadSearch,
+    outputs: loadOutputs, experts: loadExperts, guide: loadGuide,
+  };
+  (loaders[name] || (()=>{}))();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+$$('.tabs button').forEach(b => b.onclick = () => goTab(b.dataset.tab));
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await refreshStatus(false);
+  await loadOverview();
+});
+</script>
+</body>
+</html>

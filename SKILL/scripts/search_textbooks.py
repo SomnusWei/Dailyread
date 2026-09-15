@@ -28,6 +28,62 @@ def _default_textbook_dir(track="中医"):
 
 TRACK_CHOICES = ["中医", "西医"]
 
+# ---------- 跨库检索：专家特化库 / 蒸馏产出 ----------
+# 相对 skill 根目录的固定专家库路径
+_SKILL_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+SOURCE_CHOICES = ["all", "textbook", "nihaixia", "shixuemin", "distilled"]
+
+# 专家库/蒸馏库中参与检索的文件扩展名（SKILL.md 与 references 均为文本素材）
+EXPERT_EXTS = (".md", ".txt")
+
+# 单文件扫描上限，避免超大文件（如 134KB 的 SKILL.md 尚可，数百 MB 的极端文件跳过）
+_MAX_FILE_BYTES = 20 * 1024 * 1024
+
+
+def _iter_expert_files(source):
+    """收集专家特化库 / 蒸馏产出 下参与检索的文本文件。
+
+    返回 [(显示名, 绝对路径, 来源标签), ...]
+    """
+    entries = []
+    if source in ("all", "nihaixia"):
+        root = os.path.join(_SKILL_ROOT, "倪海厦体系")
+        for name, path in _walk(root):
+            entries.append((f"倪师/{name}", path, "nihaixia"))
+    if source in ("all", "shixuemin"):
+        root = os.path.join(_SKILL_ROOT, "石学敏体系")
+        for name, path in _walk(root):
+            entries.append((f"石师/{name}", path, "shixuemin"))
+    if source in ("all", "distilled"):
+        root = os.path.join(_SKILL_ROOT, "蒸馏产出")
+        for name, path in _walk(root):
+            entries.append((f"蒸馏/{name}", path, "distilled"))
+    return entries
+
+
+def _walk(root):
+    """递归遍历 root 下的文本文件，返回 [(相对路径, 绝对路径), ...]，按路径排序。"""
+    if not os.path.isdir(root):
+        return []
+    out = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in (".git", "__pycache__")]
+        for fn in filenames:
+            if not fn.lower().endswith(EXPERT_EXTS):
+                continue
+            full = os.path.join(dirpath, fn)
+            try:
+                if os.path.getsize(full) > _MAX_FILE_BYTES:
+                    continue
+            except OSError:
+                continue
+            rel = os.path.relpath(full, root).replace("\\", "/")
+            out.append((rel, full))
+    out.sort(key=lambda x: x[0])
+    return out
+
+
 # 类目 -> 文件名关键词（与 build_textbook_index.py 保持一致，简化版）
 CATEGORY_HINTS = {
     "现代教材": ["中医基础理论", "中医诊断学", "中药学", "方剂学", "中医内科学", "经络腧穴学",
@@ -97,7 +153,17 @@ def main():
     parser.add_argument("--min-hits", type=int, default=1, help="文件至少命中次数才输出（默认1）")
     parser.add_argument("--quiet", action="store_true", help="只输出文件统计，不输出摘录")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出结果")
+    parser.add_argument("--source", choices=SOURCE_CHOICES, default=None,
+                        help="检索来源：all（中医默认，教材+倪师+石师+蒸馏产出）/ "
+                             "textbook（仅教材）/ nihaixia（仅倪海厦体系）/ "
+                             "shixuemin（仅石学敏体系）/ distilled（仅蒸馏产出）。"
+                             "未指定时：中医=all，西医=textbook")
     args = parser.parse_args()
+
+    # 默认来源：中医跨库，西医仅教材
+    if args.source is None:
+        args.source = "all" if args.track == "中医" else "textbook"
+
     if args.textbook_dir is None:
         args.textbook_dir = _default_textbook_dir(args.track)
 
@@ -105,41 +171,65 @@ def main():
     categories = [c.strip() for c in args.category.split(",") if c.strip()]
     specified_files = [f.strip() for f in args.files.split(",") if f.strip()]
 
-    if not os.path.isdir(args.textbook_dir):
+    if not os.path.isdir(args.textbook_dir) and args.source != "distilled":
         print(f"❌ 教材目录不存在: {args.textbook_dir}")
         return
 
-    all_files = sorted(
-        f for f in os.listdir(args.textbook_dir)
-        if f.lower().endswith(".txt")
-    )
-    if specified_files:
-        targets = [f for f in all_files if f in specified_files]
-        missing = set(specified_files) - set(targets)
-        if missing:
-            print(f"⚠️ 未找到文件: {', '.join(missing)}")
-    elif categories:
-        targets = [f for f in all_files if match_category(f, categories)]
-    else:
-        targets = all_files
+    # 教材库目标文件
+    textbook_files = []
+    if os.path.isdir(args.textbook_dir):
+        textbook_files = sorted(
+            f for f in os.listdir(args.textbook_dir)
+            if f.lower().endswith(".txt")
+        )
+
+    # 组装检索目标：[(显示名, 绝对路径, 来源标签), ...]
+    targets = []
+    if args.source in ("all", "textbook"):
+        if specified_files:
+            picked = [f for f in textbook_files if f in specified_files]
+            missing = set(specified_files) - set(picked)
+            if missing:
+                print(f"⚠️ 未找到文件: {', '.join(missing)}")
+        elif categories:
+            picked = [f for f in textbook_files if match_category(f, categories)]
+        else:
+            picked = textbook_files
+        targets.extend(
+            (f, os.path.join(args.textbook_dir, f), "textbook") for f in picked
+        )
+
+    if args.source in ("all", "nihaixia", "shixuemin", "distilled"):
+        targets.extend(_iter_expert_files(args.source))
+
+    src_label = {
+        "all": "跨库（教材+倪师+石师+蒸馏产出）",
+        "textbook": "仅教材",
+        "nihaixia": "仅倪海厦体系",
+        "shixuemin": "仅石学敏体系",
+        "distilled": "仅蒸馏产出",
+    }.get(args.source, args.source)
 
     print(f"🔍 关键词: {args.keyword}")
+    print(f"📚 检索来源: {src_label}")
     print(f"📚 检索范围: {len(targets)} 个文件"
-          + (f"（类目: {args.category}）" if categories else "")
-          + (f"（指定文件）" if specified_files else ""))
+          + (f"（类目: {args.category}）" if categories and args.source in ("all", "textbook") else "")
+          + (f"（指定文件）" if specified_files and args.source in ("all", "textbook") else ""))
     print()
 
     results = []
     file_stats = []
-    for fname in targets:
-        path = os.path.join(args.textbook_dir, fname)
-        if os.path.getsize(path) < 500:  # 跳过近空文件
+    for display_name, path, src_tag in targets:
+        try:
+            if os.path.getsize(path) < 500:  # 跳过近空文件
+                continue
+        except OSError:
             continue
         hits = search_file(path, keywords, args.context, args.context)
         if len(hits) >= max(args.min_hits, 1):
-            file_stats.append((fname, len(hits)))
+            file_stats.append((display_name, len(hits), src_tag))
             if not args.quiet:
-                results.append({"file": fname, "hits": [
+                results.append({"file": display_name, "source": src_tag, "hits": [
                     {"keyword": kw, "line": ln, "snippet": sn}
                     for kw, ln, sn in hits[: args.max_hits]
                 ]})
@@ -148,13 +238,14 @@ def main():
     print("=" * 62)
     print(f"命中文件统计（共 {len(file_stats)} 个文件命中）")
     print("=" * 62)
-    for fname, count in file_stats[:40]:
+    for fname, count, src_tag in file_stats[:40]:
         print(f"  {fname}  [{count}处]")
 
     if args.json:
         print()
         print(json.dumps(
-            {"keywords": keywords, "stats": file_stats, "results": results},
+            {"keywords": keywords, "source": args.source,
+             "stats": file_stats, "results": results},
             ensure_ascii=False, indent=1))
     elif not args.quiet:
         for r in results:
