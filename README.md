@@ -175,6 +175,8 @@ DailyRead/
 │       │   └── build/icon.ico              # 应用图标
 │       ├── extract_shixuemin.py            # 石师针灸全集 PDF 抽取（幂等）
 │       └── verify_platform.py              # 端到端自检（43 项）
+├── docs/                                   # 项目文档与教程
+│   └── 考试作答指引/                        # 学习中心在线考试作答教程（tutorial.html + PDF + 流程截图）
 └── .gitignore
 ```
 
