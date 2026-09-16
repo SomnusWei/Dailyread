@@ -1,6 +1,8 @@
 # 中医讲义质量检查清单
 
 > 分级检查：P0（致命）→ P1（重要）→ P2（一般）
+> **讲义默认交付 OneNote 适配的 HTML（不输出 PDF）**，故除下列通用项外，**必须**通过
+> 第八节「OneNote 版专属检查」全部 12 项。格式规范见 `references/onenote-html-spec.md`。
 
 ---
 
@@ -19,6 +21,7 @@
 - [ ] HTML 标签正确闭合（`</body></html>` 完整）
 - [ ] 无未闭合的 `<div>`、`<table>`、`<ul>` 等标签
 - [ ] 文件编码为 UTF-8，无乱码
+- [ ] **OneNote 版已生成**（`<讲义名>_OneNote版.html` 存在且非空）——缺此文件即 P0
 
 ---
 
@@ -26,7 +29,7 @@
 
 ### 结构完整性
 - [ ] 讲义结构完整：封面 + 目录 + 总论 + 各论 + 附录
-- [ ] 目录锚点 `href` 与正文 `id` 一一对应，无失效链接
+- [ ] 目录条目与正文章节一一对应，无缺漏、无多余
 - [ ] 总论包含：脏腑生理、病因病机总览、辨证治疗原则
 - [ ] 各论每病包含：理（概念+病因病机+诊断鉴别）、法（治则）、方药（证型+方剂+方解+药物）
 - [ ] 附录包含：方剂速查表、药物速查表
@@ -40,17 +43,21 @@
 - [ ] 交叉引用正确（"详见XX病XX证"指向正确位置）
 
 ### 排版规范性
-- [ ] 章节分页正确（每章从新页开始）
 - [ ] 表格内容完整，无错位、无断行
-- [ ] 证型卡片（.zheng-bg）无跨页断裂
-- [ ] 药物详解块（.yao-bg）无跨页断裂
+- [ ] 卡片（教材基线 / 专家 / 记忆框架 / 考点边界 / 临床联系 / 提示）无断裂
 - [ ] 无大块空白区域
+- [ ] **OneNote 版结构统计与网页版一致**：卡片数、引文数、表格数、各级标题数逐项核对
 
 ### 交叉引用
 - [ ] 方剂速查表包含所有正文中出现的方剂
 - [ ] 药物速查表包含所有展开详解的药物
 - [ ] 同一方剂在不同疾病中首次出现完整讲解，后续有引用说明
 - [ ] 跨系统疾病有明确的引用说明
+
+### 专家内容合规
+- [ ] 所有专家引用带 `P## [hh:mm:ss]` 出处
+- [ ] 专家观点以独立卡片与教材并列，标注来源，不替代教材结论
+- [ ] 专家"考不考"类判断附适用边界声明
 
 ---
 
@@ -62,7 +69,7 @@
 - [ ] 颜色使用符合主题色系
 - [ ] 无多余空行和空格
 - [ ] 术语表述统一（如"咳喘"vs"喘咳"、"证候"vs"证型"）
-- [ ] 目录层级缩进正确
+- [ ] 目录层级缩进正确（分组 / 一级 / 二级三级样式区分）
 - [ ] 表格对齐整齐
 - [ ] 序号格式统一
 
@@ -74,34 +81,68 @@
 
 ---
 
+## OneNote 版专属检查（讲义必检）
+
+> 1–7、11 项由 `python scripts/to_onenote.py --src 讲义.html --out 讲义_OneNote版.html --check` 自动完成；
+> 8–10 项需用脚本逐句核对。
+
+- [ ] 1. 无 `class` 属性残留（`class="` 计数 = 0）
+- [ ] 2. 无 CSS 变量残留（`var(--` 计数 = 0）
+- [ ] 3. 无渐变残留（`linear-gradient` 计数 = 0）
+- [ ] 4. 无浮动 / 粘性定位（`position:sticky`、`position:fixed` 计数 = 0）
+- [ ] 5. 无伪元素残留（`::before`、`::after` 计数 = 0）
+- [ ] 6. 无 px 字号残留（`px"` 计数 = 0）
+- [ ] 7. 标签配对平衡（`table/tr/td/th/p/span/ul/ol/li/h2/h3/h4` 开闭计数相等）
+- [ ] 8. 结构统计与网页版一致（卡片 / 引文 / 表格 / 标题数逐项核对）
+- [ ] 9. 内容零丢失：源文逐句在产出中可检索到（唯一允许差异＝被替换掉的侧栏目录）
+- [ ] 10. 无新增内容：产出中无源文没有的实质内容
+- [ ] 11. 文内目录非空（脚本未报"未解析到目录条目"）
+- [ ] 12. 封面主标题、章节标题的**全角空格（U+3000）未被折叠**
+
+### 内容零丢失核对法
+
+```python
+# 源文按中文句读切分，逐句在产出中检索；再反向检查产出有无新增句
+DROP = r'[［］「」·▍\s]'
+# 正句：源句子（去 DROP）必须出现在产出（去 DROP）中
+# 反句：产出中长度 ≥30 的句子（去 DROP）必须出现在源文中
+# 首页的侧栏目录整体被文内目录替换，属预期差异，单独豁免
+```
+
+---
+
 ## 快速验证命令（PowerShell）
 
 ```powershell
 # ========== 格式检查 ==========
 
 # 1. 检查HTML标签闭合
-$htmlPath = "讲义.html"
+$htmlPath = "讲义_OneNote版.html"
 
 # 检查结束标签
 $bodyClose = Select-String -Path $htmlPath -Pattern "</body>"
 $htmlClose = Select-String -Path $htmlPath -Pattern "</html>"
 Write-Output "body闭合: $($bodyClose.Count), html闭合: $($htmlClose.Count)"
 
-# 检查div配对
-$openDiv = (Select-String -Path $htmlPath -Pattern '<div ').Count
-$closeDiv = (Select-String -Path $htmlPath -Pattern '</div>').Count
-Write-Output "div开始: $openDiv, div结束: $closeDiv (差值应接近0)"
+# 2. OneNote 版残留物检查（7 项应全为 0）
+$forbidden = @('class="', 'var(--', 'linear-gradient', 'position:sticky', '::before', '::after', 'px"')
+foreach ($pat in $forbidden) {
+    $c = (Select-String -Path $htmlPath -Pattern ([regex]::Escape($pat))).Count
+    Write-Output "$(if ($c -eq 0) {'OK '} else {'!! '})残留 '$pat': $c"
+}
 
-# 2. 检查锚点匹配
-$hrefs = (Select-String -Path $htmlPath -Pattern 'href="#[a-z]').Count
-$ids = (Select-String -Path $htmlPath -Pattern 'id="chap-|id="sec-|id="app-').Count
-Write-Output "目录链接: $hrefs, 章节锚点: $ids"
+# 3. 标签配对
+foreach ($tag in @('table','tr','td','th','p','span','ul','ol','li','h2','h3','h4')) {
+    $o = (Select-String -Path $htmlPath -Pattern "<$tag[ >]").Count
+    $c = (Select-String -Path $htmlPath -Pattern "</$tag>").Count
+    if ($o -ne $c) { Write-Output "!! $tag 不匹配: open=$o close=$c" }
+}
 
-# 3. 检查文件末尾
+# 4. 检查文件末尾
 Write-Output "=== 文件末尾5行 ==="
 Get-Content $htmlPath -Tail 5
 
-# 4. 检查常见OCR错字
+# 5. 检查常见OCR错字
 $typos = @("黄苓", "白木", "灸甘草", "羌话", "蒿本", "伏苓", "半厦", "构杞", "黄茋")
 foreach ($typo in $typos) {
     $matches = Select-String -Path $htmlPath -Pattern $typo
@@ -110,7 +151,7 @@ foreach ($typo in $typos) {
     }
 }
 
-# 5. 检查毒性药物是否标注使用注意
+# 6. 检查毒性药物是否标注使用注意
 $toxicHerbs = @("附子", "川乌", "草乌", "朱砂", "雄黄", "细辛", "马钱子")
 foreach ($herb in $toxicHerbs) {
     $count = (Select-String -Path $htmlPath -Pattern $herb).Count
@@ -119,20 +160,23 @@ foreach ($herb in $toxicHerbs) {
     }
 }
 
-# 6. 检查文件大小
+# 7. 检查文件大小
 $file = Get-Item $htmlPath
 Write-Output "`n文件大小: $([math]::Round($file.Length/1KB, 1)) KB"
 ```
+
+> 更省事的做法：直接跑 `python scripts/to_onenote.py ... --check`，第 1–3 项它一次全查完。
 
 ---
 
 ## 人工检查要点
 
 ### 快速通读（10分钟）
-1. 翻一遍目录，确认章节完整
+1. 翻一遍文内目录，确认章节完整、三级层级正确
 2. 随机打开3-5个章节，检查结构是否完整
 3. 查看附录速查表，确认无明显遗漏
-4. 检查PDF分页是否正常
+4. 用浏览器打开 OneNote 版，确认卡片底色、表格隔行底色、时间戳高亮均正常
+5. 在 OneNote 里粘贴一小段试一下，确认表格与配色能保留
 
 ### 重点抽查（20分钟）
 1. 选1个疾病，通读全章，检查"理-法-方-药"逻辑是否通顺
@@ -151,5 +195,7 @@ Write-Output "`n文件大小: $([math]::Round($file.Length/1KB, 1)) KB"
 | 性味归经错误 | 性寒写成性温 | 对照中药学教材核对 |
 | 证型张冠李戴 | 把A病的证型写到B病 | 对照中医内科学核对 |
 | 治法与证型不对应 | 阴虚证用温阳法 | 通读每证"症状→治法→方剂"逻辑链 |
-| 锚点失效 | href与id不匹配 | 统计数量+抽查几个 |
-| 标签未闭合 | 缺少 </div> 或 </table> | PowerShell统计开闭标签数 |
+| 标签未闭合 | 缺少 `</table>` | PowerShell 统计开闭标签数 / `to_onenote.py --check` |
+| **OneNote 版漏转** | 手写 OneNote 版导致格式不一致 | 必须用 `scripts/to_onenote.py`，禁止手写 |
+| **全角空格被吞** | 标题"第一章　绪论"变成半角 | 转后检查 U+3000 是否仍在 |
+| **目录层级错位** | 二级条目未缩进、分组标题带了项目符号 | 对照 `onenote-html-spec.md` 第五节 |

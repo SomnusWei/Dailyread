@@ -41,36 +41,85 @@ EXPERT_EXTS = (".md", ".txt")
 _MAX_FILE_BYTES = 20 * 1024 * 1024
 
 
-def _iter_expert_files(source):
+def _iter_expert_files(source, track="中医"):
     """收集专家特化库 / 蒸馏产出 下参与检索的文本文件。
+
+    ★ 中西医分流规则：
+      - 中医 track：倪师 + 石师 + 蒸馏产出（蒸馏产出中含中医专家）
+      - 西医 track：仅蒸馏产出（避免倪师/石师的经方、针灸内容混入西医问答）
+      - 显式指定 --source nihaixia / shixuemin 时仍按用户意愿检索（兼容旧命令）
 
     返回 [(显示名, 绝对路径, 来源标签), ...]
     """
     entries = []
-    if source in ("all", "nihaixia"):
+    want_ni = source in ("all", "nihaixia") and (track == "中医" or source == "nihaixia")
+    want_shi = source in ("all", "shixuemin") and (track == "中医" or source == "shixuemin")
+    if want_ni:
         root = os.path.join(_SKILL_ROOT, "倪海厦体系")
         for name, path in _walk(root):
             entries.append((f"倪师/{name}", path, "nihaixia"))
-    if source in ("all", "shixuemin"):
+    if want_shi:
         root = os.path.join(_SKILL_ROOT, "石学敏体系")
         for name, path in _walk(root):
             entries.append((f"石师/{name}", path, "shixuemin"))
     if source in ("all", "distilled"):
         root = os.path.join(_SKILL_ROOT, "蒸馏产出")
-        for name, path in _walk(root):
-            entries.append((f"蒸馏/{name}", path, "distilled"))
+        for sub in (sorted(os.listdir(root)) if os.path.isdir(root) else []):
+            if sub.startswith("_"):
+                continue
+            d = os.path.join(root, sub)
+            if not os.path.isdir(d):
+                continue
+            # 蒸馏专家按体系分流：仅在默认跨库（all）时过滤；
+            # 显式 --source distilled 表示用户要看全部蒸馏专家，不做体系过滤
+            if source == "all":
+                et = _expert_track(d)
+                if et != "通用" and et != track:
+                    continue
+            for name, path in _walk(d):
+                entries.append((f"蒸馏/{sub}/{name}", path, "distilled"))
     return entries
 
 
+# 蒸馏专家体系判定关键词
+_WESTERN_KW = ("生理学", "病理生理", "解剖学", "生物化学", "药理学", "西医",
+               "诊断学", "组织学", "胚胎学", "病理学", "内科学", "外科学")
+_EASTERN_KW = ("中医", "经方", "伤寒", "金匮", "方剂", "中药", "针灸",
+               "经络", "辨证", "本草", "腧穴")
+
+
+def _expert_track(dirpath):
+    """按 SKILL.md 内容判定蒸馏专家所属体系，返回 中医 / 西医 / 通用。"""
+    skill = os.path.join(dirpath, "SKILL.md")
+    if not os.path.isfile(skill):
+        return "通用"
+    try:
+        txt = open(skill, encoding="utf-8", errors="ignore").read()[:8000]
+    except OSError:
+        return "通用"
+    w = sum(txt.count(k) for k in _WESTERN_KW)
+    e = sum(txt.count(k) for k in _EASTERN_KW)
+    if w > e:
+        return "西医"
+    if e > w:
+        return "中医"
+    return "通用"
+
+
 def _walk(root):
-    """递归遍历 root 下的文本文件，返回 [(相对路径, 绝对路径), ...]，按路径排序。"""
+    """递归遍历 root 下的文本文件，返回 [(相对路径, 绝对路径), ...]，按路径排序。
+
+    跳过 `_inbox`（蒸馏工作区，含大量中间转写稿）与以下划线开头的临时文件，
+    以免稀释正式专家库的检索结果。
+    """
     if not os.path.isdir(root):
         return []
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in (".git", "__pycache__")]
+        dirnames[:] = [d for d in dirnames
+                       if d not in (".git", "__pycache__") and not d.startswith("_")]
         for fn in filenames:
-            if not fn.lower().endswith(EXPERT_EXTS):
+            if not fn.lower().endswith(EXPERT_EXTS) or fn.startswith("_"):
                 continue
             full = os.path.join(dirpath, fn)
             try:
@@ -154,15 +203,16 @@ def main():
     parser.add_argument("--quiet", action="store_true", help="只输出文件统计，不输出摘录")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     parser.add_argument("--source", choices=SOURCE_CHOICES, default=None,
-                        help="检索来源：all（中医默认，教材+倪师+石师+蒸馏产出）/ "
-                             "textbook（仅教材）/ nihaixia（仅倪海厦体系）/ "
-                             "shixuemin（仅石学敏体系）/ distilled（仅蒸馏产出）。"
-                             "未指定时：中医=all，西医=textbook")
+                        help="检索来源：all（默认跨库）/ textbook（仅教材）/ "
+                             "nihaixia（仅倪海厦体系，中医）/ shixuemin（仅石学敏体系，中医）/ "
+                             "distilled（仅蒸馏产出）。"
+                             "未指定时一律 all：中医=教材+倪师+石师+蒸馏产出，"
+                             "西医=西医教材+蒸馏产出（不混入中医专家库）")
     args = parser.parse_args()
 
-    # 默认来源：中医跨库，西医仅教材
+    # 默认来源：两个 track 均为 all；具体范围由 _iter_expert_files 按 track 分流
     if args.source is None:
-        args.source = "all" if args.track == "中医" else "textbook"
+        args.source = "all"
 
     if args.textbook_dir is None:
         args.textbook_dir = _default_textbook_dir(args.track)
@@ -200,15 +250,18 @@ def main():
         )
 
     if args.source in ("all", "nihaixia", "shixuemin", "distilled"):
-        targets.extend(_iter_expert_files(args.source))
+        targets.extend(_iter_expert_files(args.source, args.track))
 
-    src_label = {
-        "all": "跨库（教材+倪师+石师+蒸馏产出）",
-        "textbook": "仅教材",
-        "nihaixia": "仅倪海厦体系",
-        "shixuemin": "仅石学敏体系",
-        "distilled": "仅蒸馏产出",
-    }.get(args.source, args.source)
+    if args.source == "all":
+        src_label = ("跨库（教材+倪师+石师+蒸馏产出）" if args.track == "中医"
+                     else "跨库（西医教材+蒸馏产出）")
+    else:
+        src_label = {
+            "textbook": "仅教材",
+            "nihaixia": "仅倪海厦体系",
+            "shixuemin": "仅石学敏体系",
+            "distilled": "仅蒸馏产出",
+        }.get(args.source, args.source)
 
     print(f"🔍 关键词: {args.keyword}")
     print(f"📚 检索来源: {src_label}")

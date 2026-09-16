@@ -115,23 +115,29 @@ python sync_new_materials.py --track 西医 --from "D:/待导入教材"
 
 ---
 
-## ★ 中医功能执行前置：动态专家发现
+## ★ 功能执行前置：动态专家发现
 
-**每次执行中医功能（学习/讲义/病案/针灸/处方）前，先执行以下步骤：**
+**每次执行医学功能（中医或西医的学习/讲义/病案/针灸/处方）前，先执行以下步骤：**
 
 ```
 Step 0（前置）：动态发现可用专家
-  1. 扫描 `蒸馏产出/` 目录下的子目录列表
+  1. 扫描 `蒸馏产出/` 目录下的子目录列表（跳过 `_inbox` 等以下划线开头的目录）
   2. 对每个 `[专家名]-perspective/` 子目录，读取其 SKILL.md 的 description 字段
-  3. 提取专家名、专长领域关键词、核心信念
+  3. 提取专家名、专长领域关键词、核心信念，并判定其所属体系（中医 / 西医 / 通用）
   4. 按专长领域匹配规则确定该专家适用于哪些功能：
+     【中医专家】
      - 经方/伤寒/金匮/方剂 → 学习、讲义、病案、处方
      - 针灸/经络/腧穴 → 学习、讲义、病案、针灸
      - 本草/中药 → 学习、讲义、处方
      - 内科/妇科/儿科等专科 → 学习、讲义、病案
      - 医案/医话 → 病案、出题（可选）
-     - 通用/综合 → 全部中医功能
-  5. 将匹配结果与固定专家库（倪师/石师）合并为"本次专家池"
+     【西医专家】
+     - 生理学/病理生理学/生物化学/解剖学/组织学等基础医学 → 西医学习、讲义、出题
+     - 内科学/外科学/诊断学/药理学等临床与药学 → 西医学习、病案分析（西医）、西药讲解、出题
+     【通用/综合】 → 全部功能（中西医皆可）
+  5. 将匹配结果与固定专家库（中医：倪师/石师）合并为"本次专家池"
+     ★ 体系不混用：中医专家不进西医功能，西医专家不进中医功能
+       （检索层由 search_textbooks.py 的 _expert_track 自动分流）
 
 如果 `蒸馏产出/` 为空或不存在，跳过此步骤，不影响原有三库检索。
 ```
@@ -140,6 +146,7 @@ Step 0（前置）：动态发现可用专家
 - 无目录时优雅降级，不影响原有功能
 - 新蒸馏的专家无需修改 SKILL.md 即可被下次功能调用自动发现
 - 蒸馏专家与倪师/石师同级别并列，标注来源"蒸馏Skill·[专家名]"
+- **西医专家由西医功能调用**（西医学习/讲义/病案分析/西药讲解/出题），与中医专家并列呈现，不替代教材
 
 ---
 
@@ -148,7 +155,7 @@ Step 0（前置）：动态发现可用专家
 | 用户意图 | 功能 | 体系支持 | 默认融入专家 | 详细规范 |
 |---------|------|---------|------------|---------|
 | 「讲解 X 概念」「X 是什么」 | ① 医学学习 | 中医+西医 | 倪师（默认） | 本文件功能一 |
-| 「做一份 X 讲义」「导出 PDF」 | ② 讲义制作 | 中医+西医 | 倪师（默认） | 本文件功能二 + references/quality-checklist.md |
+| 「做一份 X 讲义」「做个讲义」 | ② 讲义制作 | 中医+西医 | 倪师（默认） | 本文件功能二 + references/onenote-html-spec.md + references/quality-checklist.md |
 | 「分析这个病案/病例」 | ③ 病案/病例分析 | 中医+西医 | 倪师（默认） | references/case-analysis.md |
 | 「足三里在哪」「针刺治疗 X」 | ④ 针灸 | 中医 | 倪师+石师（默认） | 本文件功能四 |
 | 「桂枝汤讲一下」「处方分析」 | ⑤ 中药处方讲解 | 中医 | 倪师（默认） | references/prescription-guide.md |
@@ -181,18 +188,32 @@ python search_textbooks.py --track 中医 --keyword "醒脑开窍" --source shix
 # 只搜教材库（回退原行为）
 python search_textbooks.py --track 中医 --keyword "桂枝汤" --source textbook
 
-# 西医检索（不变）
+# 西医检索（默认亦为跨库：西医教材 + 蒸馏产出中的西医专家）
 python search_textbooks.py --track 西医 --keyword "高血压" --context 6
+
+# 只搜教材库（回退原行为）
+python search_textbooks.py --track 西医 --keyword "动作电位" --source textbook
+
+# 只搜蒸馏产出（全部蒸馏专家）
+python search_textbooks.py --track 西医 --keyword "动作电位" --source distilled
 
 # 按类目过滤（中医类目: 伤寒论,金匮要略,本草,针灸推拿,医经,温病瘟疫,医案医话,方书...）
 python search_textbooks.py --track 中医 --keyword "栝蒌薤白" --category 金匮要略
 ```
 
 **`--source` 参数取值**：
-- `all`（**中医默认**）：教材 + 倪师 + 石师 + 蒸馏产出
+- `all`（**默认，中西医皆同**）：
+  - 中医 → 中医教材 + 倪师 + 石师 + 蒸馏产出（中医专家）
+  - 西医 → 西医教材 + 蒸馏产出（西医专家）
 - `textbook`：仅教材
-- `nihaixia`：仅倪海厦体系
-- `shixuemin`：仅石学敏体系
+- `nihaixia`：仅倪海厦体系（中医）
+- `shixuemin`：仅石学敏体系（中医）
+- `distilled`：仅蒸馏产出
+
+**★ 中西医分流（`search_textbooks.py` 自动执行）**：
+1. 蒸馏专家按其 SKILL.md 内容自动判定体系（`_expert_track`），**中医专家不进西医检索、西医专家不进中医检索**
+2. 蒸馏工作区 `蒸馏产出/_inbox/` 与以下划线开头的临时文件不参与检索，避免中间稿稀释结果
+3. 检索结果显示名带来源前缀：`倪师/`、`石师/`、`蒸馏/<专家名>/`、教材直接显示文件名，便于溯源标注
 
 **检索策略**：
 1. **先教材定基线，再专家补充深度**：概念/治法/方义以教材为准，经方思维查倪师库，针灸查石师库
@@ -252,6 +273,7 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 ## 功能二：讲义制作
 
 **默认行为：中医讲义制作自动融入倪海厦经方视角，无需用户选择风格。**
+**★ 交付格式：默认交付 OneNote 适配的 HTML，不输出 PDF。必读 `references/onenote-html-spec.md`。**
 
 ```
 ① 需求确认（体系/主题/深度/篇幅）
@@ -261,10 +283,24 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
    - 法（治法治则）→ 教材治则 + 倪师"先辨阴阳再选方"原则
    - 方（方剂详解）→ 教材方义 + 经方条文卡片 + 倪师临床剂量
    - 药（中药详解）→ 教材功效 + 倪师药性认识（modules/09）
-④ 讲义生成（HTML）
-⑤ PDF 导出
-⑥ 质量检查
+④ 编写讲义 HTML（网页版底稿，class 驱动）
+⑤ OneNote 适配转换（默认交付物）
+   python scripts/to_onenote.py --src 讲义.html --out 讲义_OneNote版.html \
+       --primary "#0f6b6b" --toc-meta "…" --check
+⑥ 质量检查（validate_html.py + to_onenote.py --check + 逐句内容核对）
 ```
+
+### 交付格式铁律
+
+| 规则 | 说明 |
+|------|------|
+| **默认 = OneNote 适配 HTML** | 交付 `<讲义名>_OneNote版.html`，并在回复中给出链接 |
+| **不输出 PDF** | 全流程无 PDF 导出步骤；不再使用 Chrome 无头模式转 PDF |
+| 网页版底稿保留 | `<讲义名>.html` 作为编写底稿与浏览器阅读版，一并保留但不作为主交付物 |
+| 转换必须走脚本 | 禁止手写 OneNote 版；一律用 `scripts/to_onenote.py`，保证格式一致且可复现 |
+| 转换后必检 | 脚本 `--check`（class/变量/渐变/px/标签配对）+ 逐句内容零丢失核对 |
+
+**为什么**：讲义的落地场景是导入 OneNote 做长期批注笔记。OneNote 粘贴网页内容时会优化掉样式表声明与布局属性（浮动、粘性、定位），网页版的 `position:sticky` 侧栏与外部 CSS 会失效；必须先把样式全部内联化、把封面与卡片改成嵌套表格，粘贴进 OneNote 才能保住表格结构与分色标注（详见规范文件"为什么默认 OneNote 适配"）。
 
 **经方主题讲义自动追加模块**：
 - 六经辨证定位（引用 distilled/01 诊断公式）
@@ -272,7 +308,7 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 - 倪师临床医案佐证（cases/ 检索）
 - 类方鉴别（倪师观点，标注"倪海厦观点"）
 
-**模板**：复用 `templates/lecture-template.html`，倪师内容以独立章节/卡片形式嵌入。PDF 导出用 Chrome 无头模式。质量检查执行 `python scripts/validate_html.py`。
+**模板**：网页版底稿复用 `templates/lecture-template.html` + `templates/lecture-style.css`，倪师内容以独立章节/卡片形式嵌入。OneNote 版由 `scripts/to_onenote.py` 生成，规范见 `references/onenote-html-spec.md`。质量检查执行 `python scripts/validate_html.py`（通用项）+ `python scripts/to_onenote.py --check`（OneNote 专属项）。
 
 ---
 
@@ -560,6 +596,7 @@ yixue-zonghe/
 │   ├── search_textbooks.py           # 全库检索（--track + --source）
 │   ├── extract_content.py            # 素材批量提取（--track + --source）
 │   ├── build_exam_html.py            # 交互式试卷生成器
+│   ├── to_onenote.py                 # ★ 讲义 HTML → OneNote 适配版（默认交付格式）
 │   ├── build_textbook_index.py       # 索引重建
 │   ├── sync_new_materials.py         # PDF 增量同步
 │   └── validate_html.py              # 讲义 HTML 质检
@@ -569,6 +606,7 @@ yixue-zonghe/
 │   ├── keyword-mapping.md            # 8 大系统关键词全表
 │   ├── case-analysis.md              # 病案分析六步法（含六经辨证）
 │   ├── prescription-guide.md         # 中药处方讲解规范（含经方卡片+三列剂量）
+│   ├── onenote-html-spec.md          # ★ 讲义 OneNote 适配 HTML 规范（默认交付格式）
 │   ├── quiz-guide.md                 # 出题指南（含倪师医案题可选）
 │   ├── quality-checklist.md          # 讲义质检清单
 │   ├── nihaixia-integration.md        # 倪师库运行时摘要

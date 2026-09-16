@@ -143,15 +143,26 @@ DailyRead/
 ├── 音频功能方案.md                          # 音频全链路设计文档
 ├── 鸿蒙 (HarmonyOS) Base64 m4a 音频自动播放开发指南.txt
 ├── SKILL/                                   # 医学综合 skill（yixue-zonghe）
-│   ├── SKILL.md                            # skill 路由与通用规则
+│   ├── SKILL.md                            # skill 路由与通用规则（含中西医双轨分流、讲义交付铁律）
+│   ├── yixue-zonghe-skill.zip              # ★ 技能分发包（完整包，含教材与 PDF，约 821MB）
 │   ├── 中医教材/                           # 711 部中医知识库（10 现代教材 + 701 古籍）
-│   ├── 西医教材/                           # 西医教材（用户自行添加，支持 PDF/DOCX/DOC/TXT 自动 OCR）
+│   ├── 西医教材/                           # 西医教材（PDF 源 + 转写 txt，支持 PDF/DOCX/DOC/TXT 自动 OCR）
 │   ├── 倪海厦体系/                         # 倪海厦经方体系（14 模块 + 1257 医案 + 蒸馏速查）
-│   ├── 石学敏体系/                         # 石学敏针灸体系（醒脑开窍/手法量学/十二经病候）
-│   ├── 仓颉/                               # 蒸馏工具（教材→专家 Skill 认知蒸馏）
-│   ├── 蒸馏产出/                           # 仓颉蒸馏生成的专家 perspective Skill（含 _inbox 工作区）
-│   ├── scripts/                            # 检索/提取/出题/同步脚本（--track 中医/西医 切换）
+│   ├── 石学敏体系/                         # 石学敏针灸体系（醒脑开窍/手法量学/十二经病候 + 针灸全集分卷）
+│   ├── 仓颉/                               # 蒸馏工具（教材/人物/视频课程 → 专家 Skill 认知蒸馏）
+│   ├── 蒸馏产出/                           # 蒸馏生成的专家 perspective Skill（含 _inbox 工作区）
+│   │   ├── 刘忠保-生理学-perspective/      #   C 类视频课程蒸馏（西医·生理学）
+│   │   ├── 邓中甲-perspective/             #   B 类教材蒸馏
+│   │   └── 示范医家-perspective/           #   A 类人物蒸馏
+│   ├── scripts/                            # 检索/提取/出题/同步/讲义转换脚本（--track 中医/西医 切换）
+│   │   ├── search_textbooks.py             #   全库检索（中西医分流，按体系过滤蒸馏专家）
+│   │   ├── build_exam_html.py              #   交互式试卷生成器（含 PWA 考试端适配）
+│   │   ├── to_onenote.py                   #   ★ 讲义 HTML → OneNote 适配版（默认交付格式）
+│   │   └── ...
 │   ├── references/                         # 教材索引、关键词映射、病案/处方/出题规范
+│   │   ├── onenote-html-spec.md            #   ★ 讲义 OneNote 适配 HTML 规范
+│   │   ├── liuzhongbao-integration.md      #   刘忠保生理学体系运行时摘要
+│   │   └── ...
 │   ├── templates/                          # 讲义 HTML 模板与样式
 │   └── platform/                           # ★ 个人工作平台（本地 Web UI，零依赖）
 │       ├── start.py                        # 后端服务（http.server + 20+ API）
@@ -359,6 +370,16 @@ Win 端录入            后端存储                鸿蒙端播放
 ---
 
 ## 📝 更新日志
+
+### 2026-09-17
+
+**医学综合 skill：新增第三位蒸馏专家 + 讲义交付改为 OneNote + 中西医双轨分流：**
+- 🧠 **新增「刘忠保·生理学」专家体系**（`蒸馏产出/刘忠保-生理学-perspective/`）：仓颉在 A 类人物、B 类教材之外新开的 **C 类 · 视频课程蒸馏**——从课程视频转写稿中提炼认知上下文（体系定位、跨章串联框架、"不考/不要求"边界、先记后理解的教学法）。素材工作区 `蒸馏产出/_inbox/刘忠保-生理学/`（转写稿 raw/fixed、术语表、日志、manifest 等 391 文件，音频已剔除）
+- 📄 **讲义交付格式由 PDF 改为 OneNote 适配 HTML**：新增 `scripts/to_onenote.py`（class 驱动网页版 → 零 class、字号一律 pt、侧栏目录转文内目录表格、渐变封面转 bgcolor 表格、卡片转双格表格、`::before/::after` 引号转实体字符；带 `--check` 自检）与 `references/onenote-html-spec.md`（规范：为什么 / 转成什么样 / 怎么验收）；SKILL.md 新增「**交付格式铁律**」（默认 OneNote HTML、**不输出 PDF**、网页底稿保留、转换必须走脚本、转换后必检）；讲义流程第 ⑤ 步由「PDF 导出」改为「OneNote 适配转换」；`quality-checklist.md` 新增「OneNote 版专属检查」12 项（无 class／无 CSS 变量／无渐变／无 sticky-fixed／无伪元素／无 px 字号／标签配对／结构统计一致／内容零丢失／无新增内容／文内目录非空／全角空格 U+3000 未折叠）
+- 🔀 **专家体系统一为中西医双轨分流**：`SKILL.md` 的「中医功能执行前置」升级为「**功能执行前置**」，专家池分【中医专家】/【西医专家】/【通用·综合】，并明确「**体系不混用**」；`search_textbooks.py` 新增 `_expert_track()` 按 SKILL.md 内容判定蒸馏专家体系，**西医检索默认也跨库**（西医教材 + 蒸馏产出中的西医专家，不再混入倪师/石师经方与针灸内容）；`_inbox/` 与下划线临时文件不参与检索；检索结果显示名带来源前缀（`倪师/`、`石师/`、`蒸馏/<专家名>/`）便于溯源标注
+- 📚 **新增题库** `scripts/exam_jiewen.json`：《方剂学·辛温解表剂及相关中药 专题试卷》
+- 🔗 **新增专家接入摘要** `references/liuzhongbao-integration.md`（刘忠保生理学体系运行时索引）
+- 📦 **新增技能完整分发包** `SKILL/yixue-zonghe-skill.zip`（1280 文件 / 821MB，UTF-8 文件名，解压根目录 `yixue-zonghe/`）
 
 ### 2026-09-15
 
