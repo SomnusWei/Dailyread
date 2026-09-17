@@ -619,10 +619,33 @@ DEFAULT_NOTE = ('说明：本文件为 OneNote 导入优化版（原网页的固
                 '浮动/动画效果移除，其余内容与原讲义一致）。')
 
 
+def run_check(out, label='输出'):
+    """OneNote 形态自检：6 项残留 + 标签配对。返回异常项数。"""
+    print(f'\n== 自检 {label} ==')
+    bad = 0
+    for pat, desc in [('class="', 'class 属性残留'), ('var(--', 'CSS 变量残留'),
+                      ('linear-gradient', '渐变残留'), ('position:sticky', 'sticky 残留'),
+                      ('::before', '伪元素残留'), ('px"', 'px 字号残留')]:
+        n = out.count(pat)
+        print(f'  {"OK " if n == 0 else "!! "}{desc}: {n}')
+        bad += n
+    for tag in ('table', 'tr', 'td', 'th', 'p', 'span', 'ul', 'ol', 'li', 'h2', 'h3', 'h4'):
+        o = len(re.findall(rf'<{tag}[ >]', out))
+        c = len(re.findall(rf'</{tag}>', out))
+        if o != c:
+            print(f'  !! {tag} 标签不匹配: open={o} close={c}')
+            bad += 1
+    if bad == 0:
+        print('  OK 全部检查通过（0 class / 0 残留 / 标签全平衡）')
+    else:
+        print(f'  !! 共 {bad} 项异常')
+    return bad
+
+
 def main():
     ap = argparse.ArgumentParser(description='讲义 HTML → OneNote 导入适配版')
-    ap.add_argument('--src', required=True, help='输入：网页版讲义 HTML')
-    ap.add_argument('--out', required=True, help='输出：OneNote 适配版 HTML')
+    ap.add_argument('--src', help='输入：网页版讲义 HTML')
+    ap.add_argument('--out', help='输出：OneNote 适配版 HTML')
     ap.add_argument('--primary', default='#0f6b6b', help='主题色，其余色自动派生')
     ap.add_argument('--primary-dark', default=None, help='主题深色（默认自动派生）')
     ap.add_argument('--accent', default='#b8860b', help='章节编号 ［x］ 前缀色')
@@ -631,7 +654,20 @@ def main():
                     help='文内目录的说明行（<br> 分隔，可多行）；默认从源侧栏 .meta 自动提取')
     ap.add_argument('--note', default=DEFAULT_NOTE, help='封面下方的说明行；传空串可去掉')
     ap.add_argument('--check', action='store_true', help='转换后执行自检并打印报告')
+    ap.add_argument('--check-only', metavar='FILE', default=None,
+                    help='仅自检：对已成型的 OneNote 形态 HTML（如 references/examples/ 下的体例蓝本）'
+                         '执行同样的自检，不做转换')
     a = ap.parse_args()
+
+    if a.check_only:
+        p = a.check_only
+        if not os.path.isfile(p):
+            sys.exit(f'!! 文件不存在：{p}')
+        run_check(open(p, encoding='utf-8').read(), os.path.basename(p))
+        return
+
+    if not a.src or not a.out:
+        ap.error('--src 与 --out 为必填（或改用 --check-only FILE）')
 
     raw = open(a.src, encoding='utf-8').read()
     src_title = re.search(r'<title>(.*?)</title>', raw, re.S)
@@ -674,24 +710,7 @@ def main():
         print('  !! 警告：未从源文件侧栏解析到目录条目，文内目录为空')
 
     if a.check:
-        print('\n== 自检 ==')
-        bad = 0
-        for pat, desc in [('class="', 'class 属性残留'), ('var(--', 'CSS 变量残留'),
-                          ('linear-gradient', '渐变残留'), ('position:sticky', 'sticky 残留'),
-                          ('::before', '伪元素残留'), ('px"', 'px 字号残留')]:
-            n = out.count(pat)
-            print(f'  {"OK " if n == 0 else "!! "}{desc}: {n}')
-            bad += n
-        for tag in ('table', 'tr', 'td', 'th', 'p', 'span', 'ul', 'ol', 'li', 'h2', 'h3', 'h4'):
-            o = len(re.findall(rf'<{tag}[ >]', out))
-            c = len(re.findall(rf'</{tag}>', out))
-            if o != c:
-                print(f'  !! {tag} 标签不匹配: open={o} close={c}')
-                bad += 1
-        if bad == 0:
-            print('  OK 全部检查通过（0 class / 0 残留 / 标签全平衡）')
-        else:
-            print(f'  !! 共 {bad} 项异常')
+        run_check(out, os.path.basename(a.out))
 
 
 if __name__ == '__main__':

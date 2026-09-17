@@ -301,11 +301,37 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 |------|------|
 | **默认 = OneNote 适配 HTML** | 交付 `<讲义名>_OneNote版.html`，并在回复中给出链接 |
 | **不输出 PDF** | 全流程无 PDF 导出步骤；不再使用 Chrome 无头模式转 PDF |
-| 网页版底稿保留 | `<讲义名>.html` 作为编写底稿与浏览器阅读版，一并保留但不作为主交付物 |
-| 转换必须走脚本 | 禁止手写 OneNote 版；一律用 `scripts/to_onenote.py`，保证格式一致且可复现 |
-| 转换后必检 | 脚本 `--check`（class/变量/渐变/px/标签配对）+ 逐句内容零丢失核对 |
+| **先定体例** | 动手前按下方「讲义体例路由」判定体例，照体例蓝本写，不得临时发挥 |
+| 网页版底稿保留 | 通用体例保留 `<讲义名>.html` 作为编写底稿与浏览器阅读版（不作为主交付物） |
+| 转换必须走脚本 | **通用体例**一律用 `scripts/to_onenote.py` 转换，禁止手写；**方剂学／生理学体例**直接按体例蓝本的原生形态编写 |
+| 交付前必检 | 通用体例走 `--check`；方剂学／生理学体例走 `--check-only`（同一套 6 项残留 + 标签配对）+ 逐句内容零丢失核对 |
 
 **为什么**：讲义的落地场景是导入 OneNote 做长期批注笔记。OneNote 粘贴网页内容时会优化掉样式表声明与布局属性（浮动、粘性、定位），网页版的 `position:sticky` 侧栏与外部 CSS 会失效；必须先把样式全部内联化、把封面与卡片改成嵌套表格，粘贴进 OneNote 才能保住表格结构与分色标注（详见规范文件"为什么默认 OneNote 适配"）。
+
+### 讲义体例路由（先定体例，再动手）
+
+**动手前必须先判定体例**。不同主题各有**默认体例**，体例决定整体骨架、栏目层次与配色，不得临时发挥：
+
+| 主题判据 | 默认体例 | 体例规范（必读） | 体例蓝本（成品，照它写） |
+|---|---|---|---|
+| **方剂学**：按「剂」成章——泻下剂／解表剂／和解剂／清热剂／温里剂／补益剂／理气剂／理血剂／祛湿剂／祛痰剂／消食剂／驱虫剂… | **方剂学体例** | `references/lecture-format-fangjixue.md` | `references/examples/方剂学-泻下剂讲义_OneNote版样板.html` |
+| **生理学**：按教材章——细胞的基本功能／血液／血液循环／呼吸／消化与吸收／能量代谢与体温／尿的生成与排出／感觉器官／神经系统… | **生理学体例** | `references/lecture-format-physiology.md` | `references/examples/生理学-细胞的基本功能讲义_OneNote版样板.html` |
+| 其他（中医各科、中药学专题、跨主题综合等） | 通用体例 | `references/onenote-html-spec.md` | `templates/lecture-template.html` |
+
+**命中「方剂学体例」或「生理学体例」时**：
+
+1. **通读体例蓝本**（`references/examples/` 下的成品），逐段对照其骨架、栏目、表格 schema 与配色。
+2. **直接按蓝本的 OneNote 原生形态编写交付物**：全表格布局、样式全内联（同时写 `bgcolor` 属性）、
+   零 `class`、零 CSS 变量、零渐变、零 `position:sticky`、字号一律 `pt`。
+3. **不再走 `to_onenote.py` 转换**——蓝本本身就是该脚本的产出形态，再转一次会破坏版式。
+   实测（对泻下剂蓝本再跑一次转换）：`background-color` 从 840 处降至 462 处（**底纹丢失约 45%**）、
+   `▍` 前缀被重复叠加（21 处 → 138 处，出现 `▍▍一、…`）、并插入一张**空目录表**。
+4. **格式把关改用**：`python scripts/to_onenote.py --check-only <交付物>`（与 `--check` 完全同一套检查：
+   6 项残留 + 12 类标签配对），再按 `references/quality-checklist.md` 的体例检查项逐条核对。
+5. 体例规范里写明的栏目**一条都不能少**（如方剂学「每方七层」、生理学「［目标］／［第N节］／［速查］」三段式）。
+
+> 两份蓝本入库时已按「交付正文不得出现时间戳」的规则处理：所有 `P## [hh:mm:ss]` 改写为
+> 「刘忠保·第 N 讲」可读形式，`HSP90` 等正常文本未受影响。新讲义一律照此写法。
 
 **经方主题讲义自动追加模块**：
 - 六经辨证定位（引用 distilled/01 诊断公式）
@@ -313,7 +339,12 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 - 倪师临床医案佐证（cases/ 检索）
 - 类方鉴别（倪师观点，标注"倪海厦观点"）
 
-**模板**：网页版底稿复用 `templates/lecture-template.html` + `templates/lecture-style.css`，倪师内容以独立章节/卡片形式嵌入。OneNote 版由 `scripts/to_onenote.py` 生成，规范见 `references/onenote-html-spec.md`。质量检查执行 `python scripts/validate_html.py`（通用项）+ `python scripts/to_onenote.py --check`（OneNote 专属项）。
+**模板与规范**（按上述体例路由择一）：
+- **方剂学体例**——照 `references/examples/方剂学-泻下剂讲义_OneNote版样板.html` 写，规范见 `references/lecture-format-fangjixue.md`
+- **生理学体例**——照 `references/examples/生理学-细胞的基本功能讲义_OneNote版样板.html` 写，规范见 `references/lecture-format-physiology.md`
+- **通用体例**（其他主题）——网页版底稿复用 `templates/lecture-template.html` + `templates/lecture-style.css`，倪师内容以独立章节/卡片形式嵌入，再经 `scripts/to_onenote.py` 转为 OneNote 版，规范见 `references/onenote-html-spec.md`
+
+**质量检查**：`python scripts/validate_html.py`（通用项）+ `python scripts/to_onenote.py --check`（通用体例）或 `--check-only`（方剂学／生理学体例）。
 
 ---
 
