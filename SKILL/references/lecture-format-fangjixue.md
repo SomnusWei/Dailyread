@@ -130,7 +130,21 @@
 
 ## 七、硬性格式规则（质检会逐条查）
 
-1. **不得出现时间戳**：全文不得有 `P## [hh:mm:ss]` 及其区间形式（如 `P09 [00:12:28–00:12:45]`）。专家出处一律用可读形式（如「邓中甲·泻下剂讲」「倪海厦·阳明篇」）。
+1. **不得出现时间戳**：全文不得有 `P## [hh:mm:ss]`、其区间形式（如 `P09 [00:12:28–00:12:45]`）、
+   **以及无讲次前缀的续段**——这类最易漏删：
+   `刘忠保·第 9 讲 / [00:39:38–00:42:15]` 中的 `[00:39:38–00:42:15]` 同样必须清除。
+   专家出处一律用可读形式（如「邓中甲·泻下剂讲」「倪海厦·阳明篇」）。
+   `P## [hh:mm:ss]` 这类**记法示例**（写在使用说明里解释引用格式的）也在禁止之列。
+   **清洗工具**（底稿或既有讲义含时间戳时，先清洗后交付）：
+
+   ```
+   python scripts/strip_timestamps.py --in <讲义>.html --dry-run --check   # 先预演看命中数
+   python scripts/strip_timestamps.py --in <讲义>.html --inplace --check   # 确认后原地清洗
+   ```
+
+   该脚本兼容三种形态（网页版 `span.ts`、OneNote 版内联样式 span、裸文本），同时清掉删除后
+   遗留的多余空白，并会改写「所有引用均带 … 出处」这类随之变成残句的说明文字。**清洗后须复跑一次
+   `--check`，残留应为 0**（幂等：已清洁的文件再跑不产生任何改动）。
 2. `class="` 出现次数 = 0；`var(--` = 0；`linear-gradient` = 0；`position:sticky|fixed` = 0；`::before|::after` = 0；`px"` = 0。
 3. 标签开闭配对：`table / tr / td / th / p / span / ul / ol / li / h2 / h3 / h4`。
 4. 内容零丢失：正文内容不得因排版而增删（唯一允许差异＝被改写的侧栏目录）。
@@ -141,8 +155,9 @@
 ## 八、质检
 
 ```
-python scripts/validate_html.py <讲义_OneNote版.html>        # 通用项（内容准确性 P0/P1/P2）
-python scripts/to_onenote.py --check-only <讲义_OneNote版.html>   # OneNote 形态 6 项残留 + 标签配对
+python scripts/validate_html.py <讲义_OneNote版.html>              # 通用项（内容准确性 P0/P1/P2）
+python scripts/to_onenote.py --check-only <讲义_OneNote版.html>     # OneNote 形态 6 项残留 + 标签配对
+python scripts/strip_timestamps.py --in <讲义_OneNote版.html> --dry-run --check   # 时间戳零残留
 ```
 
 另需逐项自查 `references/quality-checklist.md` 的「OneNote 版专属检查」与「方剂学讲义体例检查」。

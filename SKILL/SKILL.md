@@ -152,6 +152,11 @@ Step 0（前置）：动态发现可用专家
   处方讲解、题目题干与解析等全部交付内容。需要标注来源时用可读形式
   （如「蒸馏Skill·刘忠保·第 9 讲」）。时间戳只保留在 `蒸馏产出/` 内的内部文件与检索工具输出中。
   本规则对**所有蒸馏专家通用**，不限于某一位。
+  **易漏的两种形态**：① 时间戳「续段」——如 `刘忠保·第 9 讲 / [00:39:38–00:42:15]` 的后半段
+  （无讲次前缀）同样必须清除；② `P## [hh:mm:ss]` 这类**记法示例**（写在说明里解释引用格式的）也在禁止之列。
+  **清洗工具**：底稿或既有讲义含时间戳时，先清洗再交付（幂等，可重复跑）——
+  `python scripts/strip_timestamps.py --in <文件>.html --inplace --check`，
+  预演用 `--dry-run`；`--check` 应报残留 0。
 
 ---
 
@@ -632,7 +637,8 @@ yixue-zonghe/
 │   ├── search_textbooks.py           # 全库检索（--track + --source）
 │   ├── extract_content.py            # 素材批量提取（--track + --source）
 │   ├── build_exam_html.py            # 交互式试卷生成器
-│   ├── to_onenote.py                 # ★ 讲义 HTML → OneNote 适配版（默认交付格式）
+│   ├── to_onenote.py                 # ★ 讲义 HTML → OneNote 适配版（通用体例）
+│   ├── strip_timestamps.py           # ★ 讲义时间戳清洗器（交付前必跑；兼容 span.ts／OneNote span／裸文本）
 │   ├── build_textbook_index.py       # 索引重建
 │   ├── sync_new_materials.py         # PDF 增量同步
 │   └── validate_html.py              # 讲义 HTML 质检
