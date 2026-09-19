@@ -251,6 +251,8 @@ class Converter:
                     f'background-color:#eef3f4;color:#0b4a4a;">{self.kids(n)}</span>')
         if t == 'br':
             return '<br>'
+        if t == 'img':
+            return self.img_tag(n)
         if t == 'span':
             return self.span(n)
         if t == 'a':
@@ -260,6 +262,30 @@ class Converter:
         if t in ('sub', 'sup'):
             return f'<{t} style="font-size:80%;">{self.kids(n)}</{t}>'
         return self.kids(n)
+
+    def img_tag(self, n):
+        """<img> 直通：保留 src/alt/width，可选 data-caption 生成图注。
+
+        原版 node() 无 img 分支，图片会被静默丢弃；此处补齐，供"配图"讲义使用。
+        """
+        src = n.attrs.get('src', '')
+        alt = n.attrs.get('alt', '')
+        w = n.attrs.get('width', '')
+        cap = n.attrs.get('data-caption', '')
+        self.bump('img')
+        parts = [f'src="{src}"', f'alt="{alt}"']
+        if w:
+            parts.append(f'width="{w}"')
+        img = '<img ' + ' '.join(parts) + ' style="max-width:100%;height:auto;">'
+        if not cap:
+            return img
+        return ('<table width="100%" cellspacing="0" cellpadding="0" '
+                'style="border-collapse:collapse;width:100%;margin:8px 0;"><tr>'
+                '<td bgcolor="#ffffff" style="background-color:#ffffff;'
+                'border:1px solid #dde5e8;padding:8px 10px;text-align:center;">'
+                + img
+                + '<p style="margin:6px 0 0 0;color:#7a8b96;font-size:9pt;">'
+                + cap + '</p></td></tr></table>')
 
     def span(self, n):
         if n.has('ts'):
@@ -345,7 +371,7 @@ class Converter:
         rule = ('<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;'
                 f'width:100%;margin:0 0 10px 0;"><tr><td bgcolor="{self.T.P}" '
                 f'style="background-color:{self.T.P};height:3px;line-height:3px;'
-                'font-size:1px;">&nbsp;</td></tr></table>')
+                'font-size:1pt;">&nbsp;</td></tr></table>')
         self.bump('h2')
         return (f'<h2 style="font-size:17pt;color:{self.T.PD};margin:22px 0 4px 0;'
                 f'font-weight:bold;">{head}{title}</h2>{rule}')
@@ -398,7 +424,7 @@ class Converter:
         return ('<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;'
                 'width:100%;margin:9px 0;"><tr>'
                 f'<td width="6" bgcolor="{accent}" style="background-color:{accent};width:6px;'
-                'font-size:1px;">&nbsp;</td>'
+                'font-size:1pt;">&nbsp;</td>'
                 f'<td bgcolor="{bg}" style="background-color:{bg};border:1px solid {bd};'
                 f'padding:11px 15px;">{head_html}{rest}</td></tr></table>')
 
@@ -553,7 +579,7 @@ class Converter:
         return ('<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;'
                 'width:100%;margin:0 0 14px 0;"><tr>'
                 f'<td bgcolor="{PD}" style="background-color:{PD};padding:22px 24px;">'
-                f'<p style="margin:0 0 10px 0;color:#e6f0f0;font-size:10pt;letter-spacing:2px;">'
+                f'<p style="margin:0 0 10px 0;color:#e6f0f0;font-size:10pt;letter-spacing:2pt;">'
                 f'{kick_txt}</p>'
                 f'<p style="margin:0;color:#ffffff;font-size:23pt;font-weight:bold;">{title}</p>'
                 f'<p style="margin:6px 0 0 0;color:#e2eaea;font-size:12.5pt;">{sub}</p>'
@@ -582,7 +608,7 @@ class Converter:
                 f'<td bgcolor="{self.T.CARD_BG}" style="background-color:{self.T.CARD_BG};'
                 'border:1px solid #dde5e8;padding:12px 16px;">'
                 f'<p style="margin:0 0 6px 0;color:{self.T.PD};font-weight:bold;font-size:11pt;'
-                f'letter-spacing:2px;">{self.toc_title}</p>'
+                f'letter-spacing:2pt;">{self.toc_title}</p>'
                 '<p style="margin:0 0 8px 0;color:#4a5764;font-size:9pt;line-height:1.6;">'
                 f'{meta}</p>{items}</td></tr></table>')
 

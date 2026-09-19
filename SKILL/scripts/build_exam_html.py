@@ -12,7 +12,7 @@
 JSON 题目 schema（exam.json）：
 {
   "title": "中医基础理论模拟试卷",
-  "outline": "覆盖：阴阳五行、脏腑、气血津液",   // 出题大纲（显示在卷头）
+  "outline": "覆盖：阴阳五行、脏腑、气血津液",   // 出题大纲（仅供内部命题取材，不上卷面）
   "total_score": 100,
   "duration": "60分钟",                        // 可选
   "questions": [
@@ -75,6 +75,30 @@ TYPE_META = {
     "fill":     {"label": "填空题",   "hint": "填空（____ 处填写答案）"},
     "short":    {"label": "简答题",   "hint": "简答（文字作答，提交后对照参考答案自评）"},
 }
+
+# ---------- 题干清洗 ----------
+# 卷面不得出现难度/场景标记（如【执医】【考研】【简单】等），生成时统一清除题干开头的此类标记
+_DIFFICULTY_MARKER_RE = re.compile(
+    r"^\s*[【\[（(]\s*(?:"
+    r"执医|执业医师|执业助理医师|助理医师|助理|中医执业医师|西医执业医师|"
+    r"考研|研究生|学硕|专硕|规培|住院医师|"
+    r"期末|期中|毕业|升学|结业|"
+    r"自测|跟读|磨耳|模拟|练习|"
+    r"简单|较易|容易|易|中等|中等难度|较难|困难|难|高难度|"
+    r"难度[:：]?\s*[易中难]?"
+    r")\s*[】\]）)]\s*"
+)
+
+
+def clean_stem(stem):
+    """移除题干开头的难度/场景标记（如【执医】【考研】），卷面不体现难度与场景"""
+    s = stem or ""
+    while True:
+        new = _DIFFICULTY_MARKER_RE.sub("", s, count=1)
+        if new == s:
+            return s
+        s = new
+
 
 # ---------- 选择题选项随机打乱 ----------
 # 默认在生成试卷时打乱选择题选项顺序，避免“正确答案大概率固定在某一位（如几乎全为 A）”
@@ -774,8 +798,6 @@ body {{ font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: v
                padding: 28px 32px; margin-bottom: 20px; border-top: 4px solid var(--c-primary); }}
 .paper-head h1 {{ font-size: 22px; color: var(--c-primary); margin-bottom: 8px; }}
 .paper-meta {{ color: var(--c-muted); font-size: 14px; }}
-.paper-outline {{ margin-top: 10px; font-size: 14px; background: var(--c-primary-light);
-                  border-radius: 8px; padding: 10px 14px; }}
 .name-row {{ margin-top: 16px; display: flex; align-items: center; gap: 10px; }}
 .name-row label {{ font-weight: bold; white-space: nowrap; }}
 #student-name {{ flex: 1; max-width: 280px; padding: 9px 12px; font-size: 15px;
@@ -850,7 +872,6 @@ body {{ font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: v
   <div class="paper-head">
     <h1>{esc(data['title'])}</h1>
     <div class="paper-meta">{' · '.join(esc(b) for b in info_bits)}</div>
-    {'<div class="paper-outline"><b>出题大纲：</b>' + esc(data['outline']) + '</div>' if data.get('outline') else ''}
     <div class="name-row">
       <label for="student-name">👤 学生姓名：</label>
       <input type="text" id="student-name" placeholder="请输入姓名后开始作答">
@@ -945,7 +966,7 @@ h1 {{ text-align: center; color: var(--c-primary); font-size: 20px; }}
 </head>
 <body>
 <h1>{esc(data['title'])}（答案卷）</h1>
-<div class="sub">共 {len(data['questions'])} 题 · 满分 {total} 分{' · 大纲：' + esc(data['outline']) if data.get('outline') else ''} · 生成于 {date.today().strftime('%Y-%m-%d')}</div>
+<div class="sub">共 {len(data['questions'])} 题 · 满分 {total} 分 · 生成于 {date.today().strftime('%Y-%m-%d')}</div>
 {''.join(parts)}
 <div class="sub" style="border:none; margin-top:24px;">本卷仅供学习自测，不构成医疗建议</div>
 </body>
@@ -967,6 +988,12 @@ def main():
 
     with open(args.exam, "r", encoding="utf-8") as f:
         data = json.load(f)
+
+    # 卷面洁净：统一清除题干开头的难度/场景标记（如【执医】【考研】），
+    # 供试卷 HTML、答案卷 HTML 及内嵌 JS 共用，确保任何呈现位置都不出现
+    for q in data.get("questions", []):
+        if isinstance(q, dict) and q.get("stem"):
+            q["stem"] = clean_stem(q["stem"])
 
     errors = validate_exam(data)
     if errors:

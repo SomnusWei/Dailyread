@@ -252,9 +252,6 @@ def extract_doc_text(doc_path):
         # 16 = wdFormatDocumentDefault (.docx)
         doc.SaveAs(os.path.abspath(tmp_docx), FileFormat=16)
         doc.Close(False)
-        word.Quit()
-        word = None
-        return extract_docx_text(tmp_docx)
     except Exception as e:
         if word is not None:
             try:
@@ -262,6 +259,13 @@ def extract_doc_text(doc_path):
             except Exception:
                 pass
         return "", {"source": "doc", "error": str(e)}
+    else:
+        # Word 退出时偶发 RPC 失败（0x800706BE），不应丢弃已成功转存的内容
+        try:
+            word.Quit()
+        except Exception:
+            pass
+        return extract_docx_text(tmp_docx)
     finally:
         if tmp_docx and os.path.exists(tmp_docx):
             try:
