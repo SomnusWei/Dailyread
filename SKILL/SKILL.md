@@ -63,28 +63,6 @@ description: |
 3. 所有脚本默认 `--track 中医`，加 `--track 西医` 切换到西医教材目录
 4. 若教材移往别处，可用 `--textbook-dir "路径"` 显式指定
 
-### ★ Python 运行环境（本机已配置）
-
-本机 Python 环境已装齐全部依赖，**调用脚本时必须使用该解释器**：
-
-```
-C:\Users\somnu\.workbuddy\binaries\python\envs\default\Scripts\python.exe
-```
-
-| 依赖 | 版本 | 用途 | 必需性 |
-|------|------|------|--------|
-| PyMuPDF | 1.28.2 | PDF 文本层提取 | 必需 |
-| Pillow | 12.3.0 | 图片解码（OCR 前置） | OCR 用 |
-| NumPy | 2.5.3 | 图像数组（OCR 前置） | OCR 用 |
-| RapidOCR | 3.9.2 | 扫描页 / 内嵌图片 OCR | OCR 用 |
-| onnxruntime | 1.30.0 | RapidOCR 推理后端 | OCR 用 |
-| python-docx | 1.2.0 | DOCX 教材读取 | 导入用 |
-| pywin32 | 312 | DOC 转换（需本机装 Word） | 导入用 |
-
-- 依赖自检：`python scripts/check_deps.py`（逐项报告可用性与版本，并做端到端功能探测）
-- pip 已配置国内镜像（清华 TUNA），后续补装包无需额外指定 `-i`
-- 脚本中所有 `python xxx.py` 均应替换为上述完整解释器路径
-
 ---
 
 ## 多格式教材导入
@@ -115,29 +93,23 @@ python sync_new_materials.py --track 西医 --from "D:/待导入教材"
 
 ---
 
-## ★ 功能执行前置：动态专家发现
+## ★ 中医功能执行前置：动态专家发现
 
-**每次执行医学功能（中医或西医的学习/讲义/病案/针灸/处方）前，先执行以下步骤：**
+**每次执行中医功能（学习/讲义/病案/针灸/处方）前，先执行以下步骤：**
 
 ```
 Step 0（前置）：动态发现可用专家
-  1. 扫描 `蒸馏产出/` 目录下的子目录列表（跳过 `_inbox` 等以下划线开头的目录）
+  1. 扫描 `蒸馏产出/` 目录下的子目录列表
   2. 对每个 `[专家名]-perspective/` 子目录，读取其 SKILL.md 的 description 字段
-  3. 提取专家名、专长领域关键词、核心信念，并判定其所属体系（中医 / 西医 / 通用）
+  3. 提取专家名、专长领域关键词、核心信念
   4. 按专长领域匹配规则确定该专家适用于哪些功能：
-     【中医专家】
      - 经方/伤寒/金匮/方剂 → 学习、讲义、病案、处方
      - 针灸/经络/腧穴 → 学习、讲义、病案、针灸
      - 本草/中药 → 学习、讲义、处方
      - 内科/妇科/儿科等专科 → 学习、讲义、病案
      - 医案/医话 → 病案、出题（可选）
-     【西医专家】
-     - 生理学/病理生理学/生物化学/解剖学/组织学等基础医学 → 西医学习、讲义、出题
-     - 内科学/外科学/诊断学/药理学等临床与药学 → 西医学习、病案分析（西医）、西药讲解、出题
-     【通用/综合】 → 全部功能（中西医皆可）
-  5. 将匹配结果与固定专家库（中医：倪师/石师）合并为"本次专家池"
-     ★ 体系不混用：中医专家不进西医功能，西医专家不进中医功能
-       （检索层由 search_textbooks.py 的 _expert_track 自动分流）
+     - 通用/综合 → 全部中医功能
+  5. 将匹配结果与固定专家库（倪师/石师）合并为"本次专家池"
 
 如果 `蒸馏产出/` 为空或不存在，跳过此步骤，不影响原有三库检索。
 ```
@@ -146,17 +118,6 @@ Step 0（前置）：动态发现可用专家
 - 无目录时优雅降级，不影响原有功能
 - 新蒸馏的专家无需修改 SKILL.md 即可被下次功能调用自动发现
 - 蒸馏专家与倪师/石师同级别并列，标注来源"蒸馏Skill·[专家名]"
-- **西医专家由西医功能调用**（西医学习/讲义/病案分析/西药讲解/出题），与中医专家并列呈现，不替代教材
-- **★ 交付正文不带时间戳**：蒸馏专家的素材多为视频/音频课程，其溯源时间戳（如 `P09 [00:12:28–00:12:45]`）
-  **仅用于内部核对，任何交付给用户的正文一律不得出现**——包括笔记、学习讲解、讲义、病案分析、
-  处方讲解、题目题干与解析等全部交付内容。需要标注来源时用可读形式
-  （如「蒸馏Skill·刘忠保·第 9 讲」）。时间戳只保留在 `蒸馏产出/` 内的内部文件与检索工具输出中。
-  本规则对**所有蒸馏专家通用**，不限于某一位。
-  **易漏的两种形态**：① 时间戳「续段」——如 `刘忠保·第 9 讲 / [00:39:38–00:42:15]` 的后半段
-  （无讲次前缀）同样必须清除；② `P## [hh:mm:ss]` 这类**记法示例**（写在说明里解释引用格式的）也在禁止之列。
-  **清洗工具**：底稿或既有讲义含时间戳时，先清洗再交付（幂等，可重复跑）——
-  `python scripts/strip_timestamps.py --in <文件>.html --inplace --check`，
-  预演用 `--dry-run`；`--check` 应报残留 0。
 
 ---
 
@@ -165,7 +126,7 @@ Step 0（前置）：动态发现可用专家
 | 用户意图 | 功能 | 体系支持 | 默认融入专家 | 详细规范 |
 |---------|------|---------|------------|---------|
 | 「讲解 X 概念」「X 是什么」 | ① 医学学习 | 中医+西医 | 倪师（默认） | 本文件功能一 |
-| 「做一份 X 讲义」「做个讲义」 | ② 讲义制作 | 中医+西医 | 倪师（默认） | 本文件功能二 + references/onenote-html-spec.md + references/quality-checklist.md |
+| 「做一份 X 讲义」「导出 PDF」 | ② 讲义制作 | 中医+西医 | 倪师（默认） | 本文件功能二 + references/quality-checklist.md |
 | 「分析这个病案/病例」 | ③ 病案/病例分析 | 中医+西医 | 倪师（默认） | references/case-analysis.md |
 | 「足三里在哪」「针刺治疗 X」 | ④ 针灸 | 中医 | 倪师+石师（默认） | 本文件功能四 |
 | 「桂枝汤讲一下」「处方分析」 | ⑤ 中药处方讲解 | 中医 | 倪师（默认） | references/prescription-guide.md |
@@ -198,32 +159,18 @@ python search_textbooks.py --track 中医 --keyword "醒脑开窍" --source shix
 # 只搜教材库（回退原行为）
 python search_textbooks.py --track 中医 --keyword "桂枝汤" --source textbook
 
-# 西医检索（默认亦为跨库：西医教材 + 蒸馏产出中的西医专家）
+# 西医检索（不变）
 python search_textbooks.py --track 西医 --keyword "高血压" --context 6
-
-# 只搜教材库（回退原行为）
-python search_textbooks.py --track 西医 --keyword "动作电位" --source textbook
-
-# 只搜蒸馏产出（全部蒸馏专家）
-python search_textbooks.py --track 西医 --keyword "动作电位" --source distilled
 
 # 按类目过滤（中医类目: 伤寒论,金匮要略,本草,针灸推拿,医经,温病瘟疫,医案医话,方书...）
 python search_textbooks.py --track 中医 --keyword "栝蒌薤白" --category 金匮要略
 ```
 
 **`--source` 参数取值**：
-- `all`（**默认，中西医皆同**）：
-  - 中医 → 中医教材 + 倪师 + 石师 + 蒸馏产出（中医专家）
-  - 西医 → 西医教材 + 蒸馏产出（西医专家）
+- `all`（**中医默认**）：教材 + 倪师 + 石师 + 蒸馏产出
 - `textbook`：仅教材
-- `nihaixia`：仅倪海厦体系（中医）
-- `shixuemin`：仅石学敏体系（中医）
-- `distilled`：仅蒸馏产出
-
-**★ 中西医分流（`search_textbooks.py` 自动执行）**：
-1. 蒸馏专家按其 SKILL.md 内容自动判定体系（`_expert_track`），**中医专家不进西医检索、西医专家不进中医检索**
-2. 蒸馏工作区 `蒸馏产出/_inbox/` 与以下划线开头的临时文件不参与检索，避免中间稿稀释结果
-3. 检索结果显示名带来源前缀：`倪师/`、`石师/`、`蒸馏/<专家名>/`、教材直接显示文件名，便于溯源标注
+- `nihaixia`：仅倪海厦体系
+- `shixuemin`：仅石学敏体系
 
 **检索策略**：
 1. **先教材定基线，再专家补充深度**：概念/治法/方义以教材为准，经方思维查倪师库，针灸查石师库
@@ -282,8 +229,27 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 
 ## 功能二：讲义制作
 
-**默认行为：中医讲义制作自动融入倪海厦经方视角，无需用户选择风格。**
-**★ 交付格式：默认交付 OneNote 适配的 HTML，不输出 PDF。必读 `references/onenote-html-spec.md`。**
+**默认行为：中医讲义制作自动融入专家视角（倪海厦经方体系 + 动态蒸馏专家），无需用户选择风格。**
+
+**交付形态：OneNote 原生 HTML（默认，不导出 PDF）。** 格式规范见 `references/onenote-html-spec.md`。
+
+### ★ 讲义体例路由（动手前先判体例）
+
+| 主题判据 | 体例 | 规范文件 | 蓝本文件（完整成品，先通读） |
+|---|---|---|---|
+| **单味中药**（麻黄、桂枝、石膏…）或**药材类别**（解表药、清热药…） | **中药学体例** | `references/lecture-format-zhongyaoxue.md` | `references/examples/中药学-麻黄讲义_OneNote版样板.html` |
+| **方剂 / 按「剂」成章**（泻下剂、解表剂…） | 方剂学体例 | `references/lecture-format-fangjixue.md` | `references/examples/方剂学-泻下剂讲义_OneNote版样板.html` |
+| **生理学**（按教材章：细胞、血液、循环…） | 生理学体例 | `references/lecture-format-physiology.md` | `references/examples/生理学-细胞的基本功能讲义_OneNote版样板.html` |
+| 其他（中医内科学病证、西医各科等） | 通用体例 | — | `templates/lecture-template.html` |
+
+**路由规则**：
+
+1. 主题是**单味中药**（出现药名，如"做一份麻黄的讲义"）或**药材类别章** → **中药学体例**
+2. 主题是**方剂 / 剂** → 方剂学体例
+3. 主题是**生理学章** → 生理学体例
+4. 歧义时先问用户；用户指定体例时从其指定
+5. **中药学体例的章标题一律不带 ［…］ 标签**——方剂学用 `［目标］`、生理学用 `［第一节］`，
+   中药学体例标题直接是「一、药材与来源」这样的正文序号（质检会查 `［` 计数为 0）
 
 ```
 ① 需求确认（体系/主题/深度/篇幅）
@@ -293,50 +259,10 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
    - 法（治法治则）→ 教材治则 + 倪师"先辨阴阳再选方"原则
    - 方（方剂详解）→ 教材方义 + 经方条文卡片 + 倪师临床剂量
    - 药（中药详解）→ 教材功效 + 倪师药性认识（modules/09）
-④ 编写讲义 HTML（网页版底稿，class 驱动）
-⑤ OneNote 适配转换（默认交付物）
-   python scripts/to_onenote.py --src 讲义.html --out 讲义_OneNote版.html \
-       --primary "#0f6b6b" --toc-meta "…" --check
-⑥ 质量检查（validate_html.py + to_onenote.py --check + 逐句内容核对）
+④ 编写网页版底稿（class 驱动，样式集中在 `<style>`）
+⑤ 转 OneNote 适配版（`scripts/to_onenote.py`，禁止手写）
+⑥ 质量检查（`validate_html.py` + `to_onenote.py --check` + `quality-checklist.md` 分体例检查）
 ```
-
-### 交付格式铁律
-
-| 规则 | 说明 |
-|------|------|
-| **默认 = OneNote 适配 HTML** | 交付 `<讲义名>_OneNote版.html`，并在回复中给出链接 |
-| **不输出 PDF** | 全流程无 PDF 导出步骤；不再使用 Chrome 无头模式转 PDF |
-| **先定体例** | 动手前按下方「讲义体例路由」判定体例，照体例蓝本写，不得临时发挥 |
-| 网页版底稿保留 | 通用体例保留 `<讲义名>.html` 作为编写底稿与浏览器阅读版（不作为主交付物） |
-| 转换必须走脚本 | **通用体例**一律用 `scripts/to_onenote.py` 转换，禁止手写；**方剂学／生理学体例**直接按体例蓝本的原生形态编写 |
-| 交付前必检 | 通用体例走 `--check`；方剂学／生理学体例走 `--check-only`（同一套 6 项残留 + 标签配对）+ 逐句内容零丢失核对 |
-
-**为什么**：讲义的落地场景是导入 OneNote 做长期批注笔记。OneNote 粘贴网页内容时会优化掉样式表声明与布局属性（浮动、粘性、定位），网页版的 `position:sticky` 侧栏与外部 CSS 会失效；必须先把样式全部内联化、把封面与卡片改成嵌套表格，粘贴进 OneNote 才能保住表格结构与分色标注（详见规范文件"为什么默认 OneNote 适配"）。
-
-### 讲义体例路由（先定体例，再动手）
-
-**动手前必须先判定体例**。不同主题各有**默认体例**，体例决定整体骨架、栏目层次与配色，不得临时发挥：
-
-| 主题判据 | 默认体例 | 体例规范（必读） | 体例蓝本（成品，照它写） |
-|---|---|---|---|
-| **方剂学**：按「剂」成章——泻下剂／解表剂／和解剂／清热剂／温里剂／补益剂／理气剂／理血剂／祛湿剂／祛痰剂／消食剂／驱虫剂… | **方剂学体例** | `references/lecture-format-fangjixue.md` | `references/examples/方剂学-泻下剂讲义_OneNote版样板.html` |
-| **生理学**：按教材章——细胞的基本功能／血液／血液循环／呼吸／消化与吸收／能量代谢与体温／尿的生成与排出／感觉器官／神经系统… | **生理学体例** | `references/lecture-format-physiology.md` | `references/examples/生理学-细胞的基本功能讲义_OneNote版样板.html` |
-| 其他（中医各科、中药学专题、跨主题综合等） | 通用体例 | `references/onenote-html-spec.md` | `templates/lecture-template.html` |
-
-**命中「方剂学体例」或「生理学体例」时**：
-
-1. **通读体例蓝本**（`references/examples/` 下的成品），逐段对照其骨架、栏目、表格 schema 与配色。
-2. **直接按蓝本的 OneNote 原生形态编写交付物**：全表格布局、样式全内联（同时写 `bgcolor` 属性）、
-   零 `class`、零 CSS 变量、零渐变、零 `position:sticky`、字号一律 `pt`。
-3. **不再走 `to_onenote.py` 转换**——蓝本本身就是该脚本的产出形态，再转一次会破坏版式。
-   实测（对泻下剂蓝本再跑一次转换）：`background-color` 从 840 处降至 462 处（**底纹丢失约 45%**）、
-   `▍` 前缀被重复叠加（21 处 → 138 处，出现 `▍▍一、…`）、并插入一张**空目录表**。
-4. **格式把关改用**：`python scripts/to_onenote.py --check-only <交付物>`（与 `--check` 完全同一套检查：
-   6 项残留 + 12 类标签配对），再按 `references/quality-checklist.md` 的体例检查项逐条核对。
-5. 体例规范里写明的栏目**一条都不能少**（如方剂学「每方七层」、生理学「［目标］／［第N节］／［速查］」三段式）。
-
-> 两份蓝本入库时已按「交付正文不得出现时间戳」的规则处理：所有 `P## [hh:mm:ss]` 改写为
-> 「刘忠保·第 N 讲」可读形式，`HSP90` 等正常文本未受影响。新讲义一律照此写法。
 
 **经方主题讲义自动追加模块**：
 - 六经辨证定位（引用 distilled/01 诊断公式）
@@ -344,12 +270,15 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 - 倪师临床医案佐证（cases/ 检索）
 - 类方鉴别（倪师观点，标注"倪海厦观点"）
 
-**模板与规范**（按上述体例路由择一）：
-- **方剂学体例**——照 `references/examples/方剂学-泻下剂讲义_OneNote版样板.html` 写，规范见 `references/lecture-format-fangjixue.md`
-- **生理学体例**——照 `references/examples/生理学-细胞的基本功能讲义_OneNote版样板.html` 写，规范见 `references/lecture-format-physiology.md`
-- **通用体例**（其他主题）——网页版底稿复用 `templates/lecture-template.html` + `templates/lecture-style.css`，倪师内容以独立章节/卡片形式嵌入，再经 `scripts/to_onenote.py` 转为 OneNote 版，规范见 `references/onenote-html-spec.md`
+**转换命令**：
 
-**质量检查**：`python scripts/validate_html.py`（通用项）+ `python scripts/to_onenote.py --check`（通用体例）或 `--check-only`（方剂学／生理学体例）。
+```bash
+python scripts/to_onenote.py --src "<讲义名>.html" --out "<讲义名>_OneNote版.html" --primary "<主题色>" --check
+```
+
+主题色按体例取：中药学 `#8a5b00`（棕金）、生理学 `#143561`（深蓝）、方剂学 `#4a1a10`（深棕）、中医青绿 `#0f6b6b`。
+转换器只做格式转换，不改写、不增删正文。**不再有"PDF 导出"这一步**。
+质量检查执行 `scripts/validate_html.py` 与 `references/quality-checklist.md` 的分体例检查。
 
 ---
 
@@ -493,6 +422,8 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 
 确认需求（**体系+大纲+题数+总分四项必问**）→ 知识库取材 → 命题写入 exam.json → 用 `scripts/build_exam_html.py` 生成
 
+> ⚠️ **卷面洁净原则（中医、西医均适用）**：出题大纲、考试场景（执医/考研等）、难度级别**仅供内部命题取材，一律不上卷面**——题干前不加【执医】【考研】【简单】等标记，卷头与答案卷不显示「出题大纲」，卷面不标注单题难度。
+
 **出题素材源**：
 
 | 题型 | 素材源 | 是否默认 |
@@ -509,7 +440,7 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 - 答案附倪师原始用方 + 解析
 - 标注"改编自倪海厦真实医案（编号XXX）"
 
-**标准交付物**：交互式 HTML 试卷 + 答案卷 HTML。质量自检（分值合计、难度分布 3:5:2、答案核对）通过后再交付。
+**标准交付物**：交互式 HTML 试卷 + 答案卷 HTML。质量自检（分值合计、难度分布 3:5:2、卷面洁净、答案核对）通过后再交付。
 
 ---
 
@@ -618,8 +549,7 @@ yixue-zonghe/
 │   └── references/distilled/         # 6 个蒸馏速查（高频调用）
 ├── 石学敏体系/                       # 石师特化库（默认融入针灸）
 │   ├── SKILL.md                      # 石师认知上下文
-│   ├── 石学敏针灸全集 第2版.pdf        # 教材原书（1071页，207MB）
-│   ├── 针灸全集/                      # ★ 已抽取的可检索文本（11卷 + 全文.txt，115万字）
+│   ├── 石学敏针灸全集 第2版.pdf        # 教材原书（1071页）
 │   └── references/research/          # 研究素材（4文件）
 ├── 仓颉/                             # 蒸馏工具（元 Skill）
 │   ├── SKILL.md                      # 仓颉主文件（7步蒸馏流程）
@@ -627,18 +557,14 @@ yixue-zonghe/
 │   ├── scripts/                      # quality_check.py + compile-prompt.py
 │   └── examples/                     # 蒸馏样例（PG + 阿德勒）
 ├── 蒸馏产出/                          # 仓颉蒸馏生成的专家Skill（动态增长）
-│   ├── [专家名]-perspective/
-│   │   ├── SKILL.md
-│   │   └── references/research/
-│   └── _inbox/                       # ★ 蒸馏任务工作区（素材/指令卡/待安装产出）
+│   └── [专家名]-perspective/
+│       ├── SKILL.md
+│       └── references/research/
 ├── scripts/                          # 脚本
-│   ├── check_deps.py                 # 依赖自检（先跑这个）
 │   ├── text_utils.py                 # 编码兼容读取 + PDF 文本提取
 │   ├── search_textbooks.py           # 全库检索（--track + --source）
 │   ├── extract_content.py            # 素材批量提取（--track + --source）
 │   ├── build_exam_html.py            # 交互式试卷生成器
-│   ├── to_onenote.py                 # ★ 讲义 HTML → OneNote 适配版（通用体例）
-│   ├── strip_timestamps.py           # ★ 讲义时间戳清洗器（交付前必跑；兼容 span.ts／OneNote span／裸文本）
 │   ├── build_textbook_index.py       # 索引重建
 │   ├── sync_new_materials.py         # PDF 增量同步
 │   └── validate_html.py              # 讲义 HTML 质检
@@ -648,124 +574,12 @@ yixue-zonghe/
 │   ├── keyword-mapping.md            # 8 大系统关键词全表
 │   ├── case-analysis.md              # 病案分析六步法（含六经辨证）
 │   ├── prescription-guide.md         # 中药处方讲解规范（含经方卡片+三列剂量）
-│   ├── onenote-html-spec.md          # ★ 讲义 OneNote 适配 HTML 规范（默认交付格式）
 │   ├── quiz-guide.md                 # 出题指南（含倪师医案题可选）
 │   ├── quality-checklist.md          # 讲义质检清单
 │   ├── nihaixia-integration.md        # 倪师库运行时摘要
 │   ├── shixuemin-integration.md      # 石师库运行时摘要
 │   └── cangjie-distill-guide.md      # 仓颉蒸馏操作指南（医学适配版）
-├── templates/
-│   ├── lecture-template.html         # 讲义 HTML 模板
-│   └── lecture-style.css             # 讲义样式
-└── platform/                         # ★ 个人工作平台（本地 Web UI，零依赖）
-    ├── start.py                      # 后端服务（http.server + 20+ API）
-    ├── index.html                    # 单文件 SPA（6 个页面）
-    ├── start.bat                     # 双击启动器（浏览器版，CRLF）
-    ├── extract_shixuemin.py          # 石师针灸全集 PDF 抽取（幂等）
-    ├── verify_platform.py            # 端到端自检（43 项）
-    ├── desktop/                      # ★ Electron 壳（原生窗口版）
-    │   ├── main.js                   # 主进程（定位技能根/Python、拉起后端、开窗）
-    │   ├── loading.html              # 启动动画
-    │   ├── package.json              # electron-builder 配置
-    │   └── build/icon.ico            # 应用图标
-    └── .trash/                       # 软删除回收站
+└── templates/
+    ├── lecture-template.html         # 讲义 HTML 模板
+    └── lecture-style.css             # 讲义样式
 ```
-
----
-
-## ★ 个人工作平台（Web UI）
-
-技能包配有一个本地 Web 界面，用于**用技能 · 加教材 · 管产物**。位于技能包同级的
-`platform/` 目录（随技能包分发，也可独立放置）。
-
-**启动**：双击 `platform/desktop/dist/YixueWorkbench-<版本>-x64.exe`（推荐，原生窗口、免开浏览器），
-或双击 `platform/start.bat`（浏览器版），或
-
-```bash
-<python> platform/start.py            # 默认 8770，自动开浏览器
-<python> platform/start.py --check    # 仅环境自检
-```
-
-### 桌面版（Electron 壳 exe）
-
-单文件 portable exe，双击即用，**不需要再手动开浏览器**：
-
-- **自动拉起后端**：启动时自动定位技能目录与 Python，选择一个空闲端口拉起
-  `platform/start.py`，待 `/api/overview` 就绪后在原生窗口加载界面；
-  启动页为内嵌 loading 动画，就绪后自动切换。
-- **技能目录定位顺序**：`YIXUE_SKILL_ROOT` 环境变量 → 上次记录（`config.json`）→
-  `~/.workbuddy/skills/yixue-zonghe` → `~/.trae-cn/skills/yixue-zonghe` → 可执行文件向上若干层 →
-  手动选择（弹窗选择一次即写入 `config.json`，之后免选）。
-- **Python 定位顺序**：`YIXUE_PYTHON` → `config.json` → workbuddy 默认解释器 →
-  技能包内 `.venv` → PATH 上的 `python`。
-- **退出即回收**：关闭窗口时以 `taskkill /T /F` 结束后端进程树，并写入
-  `backend.log`（异常退出时便于排查）；配置文件与日志位于
-  `%APPDATA%\医学综合工作台\`。
-- **精简菜单**（按 Alt 显示）：「视图」（重新加载 / 开发者工具 / 缩放 / 全屏）、
-  「帮助」（打开技能目录 / 打开数据目录 / 关于）。
-- **重新构建**（改了 `desktop/` 下源码后）：
-
-```bash
-cd platform/desktop
-npm install          # 首次
-npm run dist         # 产出 dist/YixueWorkbench-<版本>-x64.exe（单文件）
-npm run pack         # 或产出 dist/win-unpacked/（文件夹版，启动更快）
-```
-
-**六个页面**：概览 / 教材库 / 跨库检索 / 技能产物 / 专家体系 / 功能导航。
-
-**关键说明**：
-
-- **零依赖**：只用 Python 标准库 `http.server`，不装 Flask/FastAPI。
-- **不复制知识库**：直接读写本技能包原文件。技能根定位顺序为
-  `YIXUE_SKILL_ROOT` 环境变量 → **本平台所在技能包**（`platform/` 的上级）→
-  `~/.workbuddy/skills/yixue-zonghe` → 当前目录。优先绑定自身技能包，
-  避免机器上存在多份技能副本时互相抢占。
-- **后端 API**：`/api/overview`、`/api/textbooks`、`/api/search`、`/api/upload`、
-  `/api/delete`、`/api/sync`、`/api/rebuild-index`、`/api/extract-shixuemin`、
-  `/api/task`、`/api/distill/task|tasks|prompt|check|quality|install|import` 等 20+ 个。
-- **端到端自检**：`<python> platform/verify_platform.py`（43 项检查）。
-
-### 教材库管理
-- **上传**：拖拽/选择 `.pdf/.docx/.doc/.txt`（单文件 ≤500MB）到中医或西医教材目录，
-  可勾选「上传后立即同步」。
-- **同步解析**：`sync_new_materials.py`（PDF 文本层 + 扫描页 OCR + 内嵌图片 OCR）
-  以长任务方式后台执行，UI 轮询进度。
-- **重建索引**：`build_textbook_index.py`，刷新 `references/textbook-index*.md` 与类目筛选。
-- **预览/删除**：文本类可预览前 400 行（GB18030 自动识别）；删除为软删除，
-  文件移入 `platform/.trash/` 可手工恢复。
-
-### ★ 蒸馏入口（专家体系页 / 技能产物页）
-
-**重要**：仓颉蒸馏的 7 步核心（消化素材 → 提取认知上下文 → 组装 SKILL.md）
-**必须由 AI 参与**，Python 无法自动完成。因此工作台采用**指令卡模式**：
-
-1. **新建蒸馏任务**（专家体系页）：填蒸馏类型（A 人物 / B 教材）、对象名（必填）、
-   聚焦方向，拖拽上传素材（`.pdf/.docx/.doc/.txt/.md/.epub`，≤200MB）。
-2. 工作台在 `蒸馏产出/_inbox/<对象名>/` 落盘素材，并生成
-   `DISTILL_PROMPT.md` 指令卡（含完整 7 步流程、产出路径、质检要求、
-   文本素材 ≤50KB 时自动内联原文）。
-3. **复制指令卡 → 粘贴给 TRAE 执行**，AI 完成蒸馏并写入
-   `蒸馏产出/_inbox/<对象名>/{SKILL.md,references/research/}`。
-4. 回到「技能产物」页依次：**检测产物** → **质检**（`quality_check.py` 11 项）
-   → **安装到蒸馏产出**（自动重命名为 `<对象名>-perspective/`，清理指令卡与素材）。
-   质检未达 11/11 会拒绝安装。
-
-**任务状态机**：`pending`（待蒸馏）→ `produced`（已产出）→ `quality_ok`（质检通过）
-→ 安装完成；质检未过显示 `quality_fail` 并附 11 项明细。
-
-**导入已完成归档**：已有 perspective 的 `.zip` 可经「技能产物 → 导入已完成归档」
-解压到 `_inbox/_import/`（带 zip-slip 防护），供质检与安装。
-
-**石学敏针灸全集文本抽取**：该 PDF 默认不在检索范围内，需跑一次抽取：
-
-```bash
-<python> platform/extract_shixuemin.py          # 幂等，约 2 秒
-```
-
-抽取后 `石学敏体系/针灸全集/` 出现 11 卷分卷 + `全文.txt`，
-石师体系检索范围从 5 个文件扩到 18 个（"醒脑开窍" 213 处、"三阴交" 565 处命中）。
-工作台「专家体系」页在未抽取时会显示「抽取全文」按钮。
-
-> 当前运行环境的沙箱会隔离 loopback 网络——外部 shell 访问不到沙箱内子进程监听的端口
-> （表现为 connect timeout / 502）。因此平台自检脚本把「起服务」与「发请求」放在同一进程树内。

@@ -143,7 +143,7 @@ DailyRead/
 ├── 音频功能方案.md                          # 音频全链路设计文档
 ├── 鸿蒙 (HarmonyOS) Base64 m4a 音频自动播放开发指南.txt
 ├── SKILL/                                   # 医学综合 skill（yixue-zonghe）
-│   ├── SKILL.md                            # skill 路由与通用规则（含中西医双轨分流、讲义交付铁律）
+│   ├── SKILL.md                            # skill 路由与通用规则（含中西医双轨分流、动态专家发现、讲义体例路由）
 │   ├── yixue-zonghe-skill.zip              # ★ 技能分发包（完整包，含教材与 PDF，约 826MB）
 │   ├── 中医教材/                           # 716 部中医知识库（现代教材 + 古籍）
 │   ├── 西医教材/                           # 西医教材（PDF 源 + 转写 txt，支持 PDF/DOCX/DOC/TXT 自动 OCR）
@@ -384,12 +384,12 @@ Win 端录入            后端存储                鸿蒙端播放
 
 ### 2026-09-20
 
-**医学综合 skill：新增第四位蒸馏专家「王洪图·内经学」+ 仓库副本回灌：**
+**医学综合 skill：新增第四位蒸馏专家「王洪图·内经学」+ 以安装版为准全量对齐：**
 - 🧠 **新增「王洪图·内经学」专家体系**（`蒸馏产出/王洪图-内经-perspective/`）：A 类人物蒸馏，素材为四部一手文本约 **157 万字符**——《王洪图内经讲稿》80 讲授课实录（505,632 字符）、《王洪图内经临证发挥》（243,574 字符，扫描件整页 OCR 369 页）、《黄帝内经素问白话解》与《灵枢白话解》主编本（476,752 + 343,919 字符，仅用于篇目图谱）。产出 7 条信念 + 6 个心智模型（以经解经／功能·整体·变化三角度／中焦气机枢纽→神志病从脾胃转枢／引经入证／多解并存两把尺子／理论—临床—实验三层验证）+ 2 个推理示例 + 6 条反模式护栏 + Harness Engine
 - ✅ **质检 11/11 通过**（女娲 6/6 + 仓颉 5/5）；关键引用回搜素材原文 **23/23 命中**，无臆造
 - 🔗 **新增专家接入摘要** `references/wanghongtu-integration.md`：中医学习／讲义／病案／出题默认融入；针灸限经络理论、处方讲解限经旨立法（实操量学归石师、君臣佐使归邓中甲）；西医功能不调用
-- 📚 **回灌仓库副本**（此前仅存在于安装目录）：补入 `蒸馏产出/张廷模-中药学-perspective/`、`references/zhangtingmo-integration.md`、`references/lecture-format-zhongyaoxue.md`、`references/examples/中药学-麻黄讲义_OneNote版样板.html`、`中医教材/中药功效学(张廷模).txt` 与《中药学讲稿(张廷模)-精校》txt/doc，以及王洪图专家全套与 `_inbox/王洪图-内经/材料/`
-- 📄 **同步 6 个安装版较新的文件**至仓库：`quality-checklist.md`（新增中药学体例检查）、`quiz-guide.md`（**卷面洁净原则**：出题大纲、难度与考试场景标记一律不上卷面）、`build_exam_html.py`（生成时清除题干难度标记）、`to_onenote.py`（`<img>` 直通与图注）、`text_utils.py`（Word 退出 RPC 偶发失败不再丢弃已转存内容）、`textbook-index.md`（重建索引，716 个文本文件）
+- 📚 **以安装版为准全量对齐**（含教材）：`SKILL.md` 采用安装版 09-19 22:04 版（技能包格式，含 frontmatter）；并补齐此前仅存在于安装目录的 `蒸馏产出/张廷模-中药学-perspective/`、`references/zhangtingmo-integration.md`、`references/lecture-format-zhongyaoxue.md`、`references/examples/中药学-麻黄讲义_OneNote版样板.html`、`中医教材/中药功效学(张廷模).txt` 与《中药学讲稿(张廷模)-精校》txt/doc、王洪图专家全套与 `_inbox/王洪图-内经/材料/`。对齐后 `中医教材` 716 部 txt（+《中药学讲稿》doc）、`西医教材` 11 PDF + 11 txt，**逐文件校验两侧差异为 0**（排除 node_modules / dist / `__pycache__`）
+- 📄 **同步 6 个安装版较新的文件**：`quality-checklist.md`（新增中药学体例检查）、`quiz-guide.md`（**卷面洁净原则**：出题大纲、难度与考试场景标记一律不上卷面）、`build_exam_html.py`（生成时清除题干难度标记）、`to_onenote.py`（`<img>` 直通与图注）、`text_utils.py`（Word 退出 RPC 偶发失败不再丢弃已转存内容）、`textbook-index.md`（重建索引，716 个文本文件）
 - 📦 **重新打包技能分发包** `SKILL/yixue-zonghe-skill.zip`（**1367 条目** = 59 目录 + 1308 文件 / **826MB**，UTF-8 文件名，解压根目录 `yixue-zonghe/`）
 
 ### 2026-09-18
