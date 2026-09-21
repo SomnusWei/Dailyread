@@ -1376,7 +1376,8 @@ function parseExamRow(r) {
   return { ...r, level_scope: scope, extra_users: extra.map(Number) };
 }
 
-// POST /api/learning/exams 发布考试（multipart：paperFile + answerFile + title/levels/extraUsers/startAt/endAt）
+// POST /api/learning/exams 发布考试（multipart：paperFile 必填 + answerFile 选填 + title/levels/extraUsers/startAt/endAt）
+// title 留空时以考卷文件名（去扩展名）作标题；未上传答案卷时 answer_filename 存 NULL
 router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) {
   examUpload.fields([{ name: 'paperFile', maxCount: 1 }, { name: 'answerFile', maxCount: 1 }])(req, res, function (err) {
     if (err) return res.status(400).json(error('上传失败：' + err.message, 400));
@@ -1392,11 +1393,12 @@ router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) 
     const paper = req.files && req.files.paperFile && req.files.paperFile[0];
     const answer = req.files && req.files.answerFile && req.files.answerFile[0];
     const titleRaw = (req.body.title || '').trim();
-    if (!paper || !answer) {
-      unlinkAll(); return res.status(400).json(error('请同时上传考卷与答题卡 HTML 文件', 400));
+    if (!paper) {
+      unlinkAll(); return res.status(400).json(error('请上传考卷 HTML 文件', 400));
     }
     let title = titleRaw;
     if (!title) {
+      // 标题留空：用考卷文件名（去扩展名）
       // 浏览器上传的中文文件名经 multer/busboy 按 latin1 解码成乱码（如 中药学·… → ä¸­…），还原为 UTF-8
       let rawName = (paper.originalname || paper.filename || '').trim();
       try {
@@ -1438,8 +1440,8 @@ router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) 
       return res.status(400).json(error('考卷HTML未包含exam_id，请用题库 skill 生成', 400));
     }
     const examCode = paperCode.trim();
-    // 答题卡可携带同一 exam_id（校验与考卷一致），也可不携带
-    const answerCode = extractExamCode(fs.readFileSync(answer.path, 'utf8'));
+    // 答题卡为选填：有则校验其 exam_id 与考卷一致，无则 answer_filename 存 NULL
+    const answerCode = answer ? extractExamCode(fs.readFileSync(answer.path, 'utf8')) : null;
     if (answerCode && answerCode.trim() !== examCode) {
       unlinkAll();
       return res.status(400).json(error('答题卡与考卷的 exam_id 不一致', 400));
@@ -1452,7 +1454,7 @@ router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) 
     const [result] = await pool.query(
       `INSERT INTO lc_exams (uploader_id, exam_code, title, paper_filename, answer_filename, start_at, end_at, level_scope, extra_users)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.lcUser.id, examCode, title, paper.filename, answer.filename,
+      [req.lcUser.id, examCode, title, paper.filename, answer ? answer.filename : null,
        startAt, endAt, JSON.stringify(levels), extraUsers.length > 0 ? JSON.stringify(extraUsers) : null]
     );
     return res.json(success({ id: result.insertId }, '考试已发布'));

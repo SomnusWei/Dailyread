@@ -1842,10 +1842,11 @@
     var answerInput = document.getElementById('examAnswerFile');
     var paper = paperInput.files[0];
     var answer = answerInput.files[0];
+    var titleEl = document.getElementById('examTitle');
+    var title = titleEl ? titleEl.value.trim() : '';
     if (!paper) return toast('请选择考卷文件（HTML）', 'error');
-    if (!answer) return toast('请选择答案卷文件（HTML）', 'error');
     if (!/\.(html?|htm)$/i.test(paper.name)) return toast('考卷文件需为 .html/.htm', 'error');
-    if (!/\.(html?|htm)$/i.test(answer.name)) return toast('答案卷文件需为 .html/.htm', 'error');
+    if (answer && !/\.(html?|htm)$/i.test(answer.name)) return toast('答案卷文件需为 .html/.htm', 'error');
     var levels = examLevels.getSelected();
     if (levels.length === 0) return toast('请选择面向等级（可全选）', 'error');
     if (levels.indexOf('all') >= 0) levels = ['all'];
@@ -1862,8 +1863,9 @@
     fd.append('extraUsers', JSON.stringify(extraIds));
     if (startRaw) fd.append('startAt', startRaw);
     if (endRaw) fd.append('endAt', endRaw);
+    if (title) fd.append('title', title);
     fd.append('paperFile', paper);
-    fd.append('answerFile', answer);
+    if (answer) fd.append('answerFile', answer);
     var btn = document.getElementById('examSubmitBtn');
     btn.disabled = true; btn.textContent = '发布中…';
     try {

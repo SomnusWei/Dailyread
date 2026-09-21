@@ -220,6 +220,11 @@
           <form class="lc-form-panel" id="examForm">
             <h3>📤 发起考试</h3>
             <div class="lc-field">
+              <label>考试标题（选填）</label>
+              <input type="text" id="examTitle" maxlength="128" placeholder="留空则自动采用考卷文件名">
+              <p class="lc-editor-note">留空时自动取考卷文件名（去掉 .html 后缀）作为标题。</p>
+            </div>
+            <div class="lc-field">
               <label>作答时间范围（选填，留空表示不限时）</label>
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
                 <div>
@@ -236,11 +241,12 @@
             <div class="lc-field">
               <label>考卷文件（交互式 HTML）</label>
               <input type="file" id="examPaperFile" accept=".html,.htm" required>
-              <p class="lc-editor-note">考试标题将自动采用考卷文件名称（去掉 .html 后缀）。考卷/答案卷需为题库 skill 生成的交互式 HTML（内含 exam_id）。</p>
+              <p class="lc-editor-note">考卷/答案卷需为题库 skill 生成的交互式 HTML（内含 exam_id）。</p>
             </div>
             <div class="lc-field">
-              <label>答案卷文件（交互式 HTML）</label>
-              <input type="file" id="examAnswerFile" accept=".html,.htm" required>
+              <label>答案卷文件（选填，交互式 HTML）</label>
+              <input type="file" id="examAnswerFile" accept=".html,.htm">
+              <p class="lc-editor-note">不传答案卷也可发布；未上传时该考试不显示答案卷入口，文件数按实际上传计。</p>
             </div>
             <div class="lc-field">
               <label>面向等级（默认全等级，可多选）</label>

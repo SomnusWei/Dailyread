@@ -115,6 +115,11 @@ const SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT = `
 ALTER TABLE lc_users ADD COLUMN dr_bound_at DATETIME NULL AFTER dr_user_id
 `;
 
+// 迁移：lc_exams.answer_filename 改可空（答案卷为选填，未上传时存 NULL）
+const SQL_ALTER_LC_EXAMS_ANSWER_NULLABLE = `
+ALTER TABLE lc_exams MODIFY COLUMN answer_filename VARCHAR(255) NULL
+`;
+
 // 考试：试卷/答题卡 HTML 发布（exam_code = 试卷 HTML 内嵌的 exam_id，唯一）
 // start_at/end_at 为 DATETIME（存 'YYYY-MM-DD HH:mm:ss' 北京时间墙上时间，应用层读取字符串比较以规避时区歧义）
 const SQL_CREATE_LC_EXAMS = `
@@ -124,7 +129,7 @@ CREATE TABLE IF NOT EXISTS lc_exams (
     exam_code       VARCHAR(64) NOT NULL,
     title           VARCHAR(128) NOT NULL,
     paper_filename  VARCHAR(255) NOT NULL,
-    answer_filename VARCHAR(255) NOT NULL,
+    answer_filename VARCHAR(255) NULL,
     start_at        DATETIME NULL,
     end_at          DATETIME NULL,
     level_scope     TEXT NOT NULL,
@@ -193,7 +198,8 @@ async function ensureLearningSchema() {
     ['lc_handouts.extra_users', SQL_ALTER_LC_HANDOUTS_ADD_EXTRA_USERS],
     ['lc_users.dr_user_id', SQL_ALTER_LC_USERS_ADD_DR_USER_ID],
     ['lc_users.dr_bound_at', SQL_ALTER_LC_USERS_ADD_DR_BOUND_AT],
-    ['lc_exam_scores.student_display', "ALTER TABLE lc_exam_scores ADD COLUMN student_display VARCHAR(64) DEFAULT ''"]
+    ['lc_exam_scores.student_display', "ALTER TABLE lc_exam_scores ADD COLUMN student_display VARCHAR(64) DEFAULT ''"],
+    ['lc_exams.answer_filename_nullable', SQL_ALTER_LC_EXAMS_ANSWER_NULLABLE]
   ];
   for (const [name, sql] of migrations) {
     try {
