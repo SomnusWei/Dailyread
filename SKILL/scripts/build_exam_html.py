@@ -3,11 +3,12 @@
 """
 交互式 HTML 试卷生成器（zhongyi-zonghe 功能六）
 
-输入 JSON 题库（由 AI 出题后按 schema 构造），输出两个文件：
-  1. {name}.html      —— 交互式试卷：顶部填姓名，按题型作答（单选/多选/填空/简答），
+输入 JSON 题库（由 AI 出题后按 schema 构造），输出文件：
+  1. {name}.html      —— 交互式试卷（**默认唯一产出**）：顶部填姓名，按题型作答（单选/多选/填空/简答），
                          底部提交后原地批改：客观题自动判分，主观题给参考答案+要点自评，
                          成绩卡显示姓名、得分明细与总分
   2. {name}_答案卷.html —— 题目+答案+解析+出处（打印友好，可转 PDF 交付）
+                         **默认不出**，仅当用户明确要求答案卷/打印版/PDF 时加 --with-answers 生成
 
 JSON 题目 schema（exam.json）：
 {
@@ -48,7 +49,9 @@ JSON 题目 schema（exam.json）：
   python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name 模拟卷 --seed 42
   # PWA 部署时可自定义成绩上报接口（默认 POST /api/exam/submit）：
   python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name 中医基础模拟卷 --submit-url /api/exam/submit
-  # 答案卷转 PDF（可选）：
+  # 答案卷默认不出；仅用户明确要答案卷/打印版/PDF 时才加 --with-answers：
+  python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name 中医基础模拟卷 --with-answers
+  # 再由答案卷转 PDF（可选）：
   "C:/Program Files/Google/Chrome/Application/chrome.exe" --headless --disable-gpu \
     --print-to-pdf="答案卷.pdf" --no-pdf-header-footer "试卷输出/xxx_答案卷.html"
 
@@ -984,6 +987,8 @@ def main():
                         help="不随机打乱选择题选项顺序（默认打乱，避免正确答案位置集中出现）")
     parser.add_argument("--seed", type=int, default=None,
                         help="选项打乱随机种子（便于复现某一次选项顺序；默认每次随机）")
+    parser.add_argument("--with-answers", action="store_true",
+                        help="额外出答案卷 HTML（默认不出；仅用户明确要求答案卷/打印版/PDF 时使用）")
     args = parser.parse_args()
 
     with open(args.exam, "r", encoding="utf-8") as f:
@@ -1012,11 +1017,15 @@ def main():
     base = args.name or data["title"]
 
     exam_path = os.path.join(args.output_dir, f"{base}.html")
-    answer_path = os.path.join(args.output_dir, f"{base}_答案卷.html")
     with open(exam_path, "w", encoding="utf-8") as f:
         f.write(build_exam_html(data, submit_url=args.submit_url))
-    with open(answer_path, "w", encoding="utf-8") as f:
-        f.write(build_answer_html(data))
+
+    # 答案卷默认不出，仅在 --with-answers 时生成
+    answer_path = None
+    if args.with_answers:
+        answer_path = os.path.join(args.output_dir, f"{base}_答案卷.html")
+        with open(answer_path, "w", encoding="utf-8") as f:
+            f.write(build_answer_html(data))
 
     n_type = {}
     for q in data["questions"]:
@@ -1025,7 +1034,10 @@ def main():
         f"{TYPE_META[t]['label']}{n}" for t, n in n_type.items())
     print(f"✅ 试卷生成完成：")
     print(f"   📄 交互式试卷: {exam_path}")
-    print(f"   📄 答案卷(可转PDF): {answer_path}")
+    if answer_path:
+        print(f"   📄 答案卷(可转PDF): {answer_path}")
+    else:
+        print(f"   （答案卷未生成；如需请加 --with-answers）")
     print(f"   题量: {len(data['questions'])} 题（{type_summary}）")
     print(f"   总分: {data['total_score']} 分")
     print(f"   📡 成绩上报: POST {args.submit_url}（exam_id={data['exam_id']}）")
