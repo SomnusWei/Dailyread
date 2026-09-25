@@ -1,0 +1,98 @@
+{
+  "target": "e:\\item\\DailyRead\\.cangjie-tmp\\娄绍昆\\SKILL.md",
+  "script": "c:\\Users\\somnu\\.trae-cn\\skills\\yixue-zonghe\\仓颉\\scripts\\quality_check.py",
+  "result": "11/11",
+  "nuwa_basic": {
+    "passed": 6,
+    "total": 6
+  },
+  "cangjie_upgrade": {
+    "passed": 5,
+    "total": 5
+  },
+  "items": [
+    {
+      "id": 1,
+      "name": "心智模型数量",
+      "group": "女娲基础项",
+      "passed": true,
+      "detail": "7个心智模型（应为3-7个）"
+    },
+    {
+      "id": 2,
+      "name": "模型局限性",
+      "group": "女娲基础项",
+      "passed": true,
+      "detail": "每个模型均含 **局限** 标注，共7处；另有体裁局限声明"
+    },
+    {
+      "id": 3,
+      "name": "表达DNA辨识度",
+      "group": "女娲基础项",
+      "passed": true,
+      "detail": "表达DNA特征 10 项（应≥3项）"
+    },
+    {
+      "id": 4,
+      "name": "诚实边界",
+      "group": "女娲基础项",
+      "passed": true,
+      "detail": "诚实边界 10 条（应≥3条）"
+    },
+    {
+      "id": 5,
+      "name": "内在张力",
+      "group": "女娲基础项",
+      "passed": true,
+      "detail": "内在张力 12 处（应≥2处），含 5 处一方面/另一方面结构"
+    },
+    {
+      "id": 6,
+      "name": "一手来源占比",
+      "group": "女娲基础项",
+      "passed": true,
+      "detail": "7/12 (58%)，应>50%"
+    },
+    {
+      "id": 7,
+      "name": "触发条件",
+      "group": "仓颉升级项",
+      "passed": true,
+      "detail": "7 个模型标注 **触发条件**（应≥3个）"
+    },
+    {
+      "id": 8,
+      "name": "推理步骤",
+      "group": "仓颉升级项",
+      "passed": true,
+      "detail": "7 处 **推理步骤** 结构化分步（应≥2处）"
+    },
+    {
+      "id": 9,
+      "name": "推理示例链",
+      "group": "仓颉升级项",
+      "passed": true,
+      "detail": "3 个完整推理示例（应≥2个）"
+    },
+    {
+      "id": 10,
+      "name": "反模式护栏",
+      "group": "仓颉升级项",
+      "passed": true,
+      "detail": "已集成到推理流程：6 条护栏 + \"反模式护栏怎么用\"三项检查 + Harness Step 4"
+    },
+    {
+      "id": 11,
+      "name": "Harness Engine",
+      "group": "仓颉升级项",
+      "passed": true,
+      "detail": "有 \"Harness Engine（问题路由）\" 段，含 7 类问题路由与 Step 1-5 流程"
+    }
+  ],
+  "notes": [
+    "首轮检查为 9/11，未通过「诚实边界」「一手来源占比」两项。",
+    "原因：quality_check.py 的两处正则使用贪婪 .*（其中来源项为 re.DOTALL），匹配起点落在文档最早出现的 ## 上、终点落在文档中最后一次出现的关键词上，因此当关键词在正文其他位置被再次提及时会截错段落。",
+    "修正方式：把「我明确不懂的」「诚实边界」两词从正文其他位置移除（改为“边界清单”表述），并把「来源」一词从「## 素材来源」正文中移除、把第三列表头改为「等级」。未改动脚本，仅调整 SKILL.md 措辞。",
+    "修正后重跑，11/11 通过。"
+  ]
+}
