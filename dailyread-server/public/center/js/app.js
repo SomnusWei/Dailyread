@@ -1870,7 +1870,9 @@
     btn.disabled = true; btn.textContent = '发布中…';
     try {
       var d = await api('/exams', { method: 'POST', body: fd });
-      toast(d.notified != null ? '考试已发布，已通知 ' + d.notified + ' 位成员' : '考试发布成功', 'success');
+      var okMsg = d.notified != null ? '考试已发布，已通知 ' + d.notified + ' 位成员' : '考试发布成功';
+      if (d && d.reused) okMsg += '（同一考卷再次发布，已为本场分配独立编号）';
+      toast(okMsg, 'success');
       this.reset();
       switchExamTab('list');
       renderExams();

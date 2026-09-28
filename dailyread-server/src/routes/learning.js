@@ -1326,6 +1326,48 @@ function extractExamCode(html) {
   return jm ? jm[1] : null;
 }
 
+// 分配一个未被占用的 exam_id（命名与题库 skill 一致：exam-<10 位十六进制>）
+// 用于"同一份考卷分场次多次发布"时为新场次派生独立编号
+async function allocateExamCode() {
+  for (let i = 0; i < 10; i++) {
+    const code = 'exam-' + crypto.randomBytes(5).toString('hex');
+    const [rows] = await pool.query('SELECT id FROM lc_exams WHERE exam_code = ? LIMIT 1', [code]);
+    if (rows.length === 0) return code;
+  }
+  throw new Error('无法分配考试编号，请稍后重试');
+}
+
+// 统一卷内 exam_id（发布考试时调用）
+// 背景：考卷可能由旧版脚本生成、或被人工局部改动，导致提取时读到的
+// <meta name="exam-id"> 与内嵌 JS 里的 exam_id 不一致。注册考试读 meta，
+// 成绩上报读 JS，一旦不一致，成绩会落到旧考试上；若旧考试窗口已过，
+// examSubmit 会按"已截止"拒收（400），学生端却已本地判分并显示分数，
+// 表现为"能看分数，但考试仍显示未完成、无法回显"。
+// 故发布时把两份 HTML 内出现的所有旧 exam_id 一律改写为本次注册的 exam_code。
+function unifyExamIds(filePath, examCode) {
+  let html;
+  try { html = fs.readFileSync(filePath, 'utf8'); } catch (e) { return 0; }
+  const codes = new Set();
+  const metaTags = html.match(/<meta\b[^>]*\bname\s*=\s*["']exam[-_]?id["'][^>]*>/gi) || [];
+  metaTags.forEach(tag => {
+    const c = /\bcontent\s*=\s*["']([^"']+)["']/i.exec(tag);
+    if (c && c[1].trim()) codes.add(c[1].trim());
+  });
+  // 只收集"真正是 id 值"的写法：带引号的值，或以 exam- 开头的裸值（文件头注释里那种）。
+  // 不能收 exam_id: EXAM.exam_id 这类变量引用（否则会把 JS 变量名给替换掉）
+  const assign = /exam[\s_-]*id\s*[:=]\s*(?:["']([A-Za-z0-9_-]{4,})["']|(exam-[A-Za-z0-9_-]{4,}))/gi;
+  let m;
+  while ((m = assign.exec(html))) codes.add((m[1] || m[2]).trim());
+  let n = 0;
+  codes.forEach(old => {
+    if (!old || old === examCode) return;
+    const parts = html.split(old);
+    if (parts.length > 1) { n += parts.length - 1; html = parts.join(examCode); }
+  });
+  if (n > 0) fs.writeFileSync(filePath, html);
+  return n;
+}
+
 // 'YYYY-MM-DD HH:mm:ss' / 'YYYY-MM-DDTHH:mm:ss'（无时区标注的墙上时间）→ 本地 Date
 function parseLocalDT(str) {
   if (!str) return null;
@@ -1439,17 +1481,28 @@ router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) 
       unlinkAll();
       return res.status(400).json(error('考卷HTML未包含exam_id，请用题库 skill 生成', 400));
     }
-    const examCode = paperCode.trim();
-    // 答题卡为选填：有则校验其 exam_id 与考卷一致，无则 answer_filename 存 NULL
+    const baseCode = paperCode.trim();
+    // 答题卡为选填：有则校验其 exam_id 与考卷一致（比较卷内原始 id），无则 answer_filename 存 NULL
     const answerCode = answer ? extractExamCode(fs.readFileSync(answer.path, 'utf8')) : null;
-    if (answerCode && answerCode.trim() !== examCode) {
+    if (answerCode && answerCode.trim() !== baseCode) {
       unlinkAll();
       return res.status(400).json(error('答题卡与考卷的 exam_id 不一致', 400));
     }
+    // 同一份考卷允许多次发布（如分时段两场）：若卷内 exam_id 已被占用，
+    // 则为本场分配新的 exam_id，并把卷内所有 exam_id 统一改写为新 id，两场互不干扰
+    let examCode = baseCode;
+    let reused = false;
     const [exist] = await pool.query('SELECT id FROM lc_exams WHERE exam_code = ? LIMIT 1', [examCode]);
     if (exist.length > 0) {
-      unlinkAll();
-      return res.status(400).json(error('该考卷 exam_id 已发布过，请勿重复上传', 400));
+      examCode = await allocateExamCode();
+      reused = true;
+    }
+    // 把两份文件内出现的所有 exam_id 统一为本次注册的 exam_code，
+    // 避免"注册读 meta、上报读 JS"两处不一致导致成绩落到旧考试（见 unifyExamIds 注释）
+    const patched = unifyExamIds(paper.path, examCode) + (answer ? unifyExamIds(answer.path, examCode) : 0);
+    if (patched > 0 || reused) {
+      console.log('[learning/exams:create] exam_id 统一为', examCode,
+        reused ? '(卷内原 id ' + baseCode + ' 已占用，本场新分配)' : '', '共改写', patched, '处');
     }
     const [result] = await pool.query(
       `INSERT INTO lc_exams (uploader_id, exam_code, title, paper_filename, answer_filename, start_at, end_at, level_scope, extra_users)
@@ -1457,7 +1510,7 @@ router.post('/exams', lcAuthRequired, lcRequireStaff, function (req, res, next) 
       [req.lcUser.id, examCode, title, paper.filename, answer ? answer.filename : null,
        startAt, endAt, JSON.stringify(levels), extraUsers.length > 0 ? JSON.stringify(extraUsers) : null]
     );
-    return res.json(success({ id: result.insertId }, '考试已发布'));
+    return res.json(success({ id: result.insertId, exam_code: examCode, reused: reused }, '考试已发布'));
   } catch (e) {
     console.error('[learning/exams:create]', e);
     unlinkAll();
