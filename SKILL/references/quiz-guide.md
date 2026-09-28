@@ -133,7 +133,8 @@ python build_exam_html.py --exam exam.json --output-dir 试卷输出 --name "{�
   - 成绩卡：姓名、客观题得分、主观题（关键词自动批改/自评）、已答题数、正确率、总分+进度条
 - **成绩自动上报服务器**（PWA 学习中心场景）：
   - 提交批改的同时，向 `submit_url`（默认 `/api/exam/submit`，可用 `--submit-url` 修改）发起 **POST，Content-Type: application/json，body 为成绩 JSON**
-  - 发送顺序：`navigator.sendBeacon`（页面关闭也能送达）→ 失败则 `fetch keepalive POST` → 均失败则 localStorage 留档（key 前缀 `exam_result:`）
+  - 发送顺序：`fetch keepalive POST`（主，可读到服务器应答）→ 抛错时 `navigator.sendBeacon` 补发一次 → 无论成败都写 localStorage 留档（key 前缀 `exam_result:`）
+  - 卷面回执：成功显示 ✅；未成功显示 `⚠️ 成绩未上报：<原因>`（4xx/5xx 带服务器 `message`），成绩单下方出现「重新上报成绩」按钮，不再静默
   - 成绩数据同时挂载 `window.__LAST_EXAM_RESULT__`，宿主系统/自动化测试可直接读取
   - `exam_id` 未在 exam.json 提供时按卷名自动生成稳定 ID（`exam-<md5前10位>`），服务器靠它关联试卷
   - `exam_id` 同时写入试卷 HTML 三个位置：开头 HTML 注释、`<head>` meta 标签（`exam-id`/`exam-submit-url`/`exam-total-score`）、内嵌 `const EXAM = {...}` 数据——服务器端解析 meta 即可建立试卷清单
@@ -176,7 +177,7 @@ app.post("/api/exam/submit", express.json({ limit: "256kb" }), (req, res) => {
 });
 ```
 
-要点：接口返回 2xx 即视为上报成功；上报失败不影响学生查看成绩（本地留档兜底）；服务器可选读取 `localStorage` 中 `exam_result:*` 键做离线补录。
+要点：接口返回 2xx 即视为上报成功；未成功时卷面会明确显示失败原因并给「重新上报成绩」按钮（本机留档兜底），学生查看成绩不受影响；服务器可选读取 `localStorage` 中 `exam_result:*` 键做离线补录。
   - 提交后所有作答区锁定，防止改答案
 
 ### 附：命题模板（题型规范）

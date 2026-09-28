@@ -453,7 +453,8 @@ function gradeExam() {
     "</div>" +
     '<div class="score-bar"><div class="score-bar-fill" style="width:' + rate + '%"></div></div>' +
     '<p class="score-note">提交时间已记录 · ' + subjNote + "</p>" +
-    '<p class="score-note" id="upload-note"></p>';
+    '<p class="score-note" id="upload-note"></p>' +
+    '<button type="button" id="retry-upload" class="retry-btn hidden" onclick="retryUpload()">重新上报成绩</button>';
   if (card.scrollIntoView) card.scrollIntoView({ behavior: "smooth" });
   document.getElementById("submit-btn").disabled = true;
   document.getElementById("submit-btn").textContent = "已提交并批改";
@@ -487,42 +488,67 @@ function gradeExam() {
 }
 
 /**
- * 成绩上报（三重保障，互相独立、失败静默）：
- *  1. navigator.sendBeacon —— 页面关闭/跳转也能送达（PWA 场景首选）
- *  2. fetch keepalive POST —— sendBeacon 不可用时的兜底
- *  3. localStorage 留档 —— 网络均失败时本地保存，服务器可后续取回
- * 另外始终挂载在 window.__LAST_EXAM_RESULT__，便于宿主系统/自动化测试读取。
+ * 成绩上报（成功后卷面明确回执，失败不再静默）：
+ *  1. fetch(keepalive) 为主 —— 能读到服务器真实响应（200 入库 / 400 被拒），据此给出准确提示
+ *  2. sendBeacon 兜底 —— fetch 抛错（离线、页面正在卸载）时再补一次；
+ *     服务器对「同一考试同一学生」只记首次，重复上报会被忽略，无副作用
+ *  3. localStorage 留档 —— 无论成败都本地保存，供「重新上报」按钮复用
+ * 结果写入 #upload-note；未成功时显示 #retry-upload 按钮。
  */
 function reportResult(payload) {
   const body = JSON.stringify(payload);
   const url = EXAM.submit_url || "/api/exam/submit";
-  let sent = false;
-  try {
-    if (navigator.sendBeacon) {
-      sent = navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
-    }
-  } catch (e) { /* ignore */ }
-  if (!sent) {
-    try {
-      fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
-                   body: body, keepalive: true })
-        .then(r => setUploadNote(r.ok))
-        .catch(() => setUploadNote(false));
-      sent = true;
-    } catch (e) { /* ignore */ }
-  }
   try {
     localStorage.setItem("exam_result:" + payload.exam_id + ":" + payload.submitted_at, body);
   } catch (e) { /* ignore */ }
   window.__LAST_EXAM_RESULT__ = payload;
-  if (sent) setUploadNote(true);
+  setUploadNote("pending");
+  const beacon = () => {
+    let sent = false;
+    try {
+      sent = !!(navigator.sendBeacon &&
+        navigator.sendBeacon(url, new Blob([body], { type: "application/json" })));
+    } catch (e) { /* ignore */ }
+    setUploadNote(sent ? "unconfirmed" : "fail", "网络异常");
+  };
+  try {
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                 body: body, keepalive: true })
+      .then(r => r.json().catch(() => ({})).then(d => {
+        if (r.ok) setUploadNote("ok");
+        else setUploadNote("rejected", (d && d.message) || ("服务器返回 " + r.status));
+      }))
+      .catch(beacon);
+  } catch (e) {
+    beacon();
+  }
 }
 
-function setUploadNote(ok) {
+// 重新上报：复用本机留档的本次成绩
+function retryUpload() {
+  const payload = window.__LAST_EXAM_RESULT__;
+  if (!payload) { setUploadNote("fail", "本机未找到本次成绩留档"); return; }
+  reportResult(payload);
+}
+
+function setUploadNote(state, extra) {
   const note = document.getElementById("upload-note");
-  if (note) note.textContent = ok === false
-    ? "⚠️ 成绩上报失败，已保存在本机（localStorage），可重新联网后同步"
-    : "✅ 成绩已上报至服务器（POST " + (EXAM.submit_url || "/api/exam/submit") + "），并已本地留档";
+  if (!note) return;
+  const btn = document.getElementById("retry-upload");
+  const url = EXAM.submit_url || "/api/exam/submit";
+  const text = {
+    ok: "✅ 成绩已上报至服务器（POST " + url + "），并已本地留档",
+    pending: "⏳ 正在上报成绩…",
+    unconfirmed: "⚠️ 成绩上报结果未确认（已尝试在页面卸载时补发，无法读取服务器应答）。成绩已在本机留档，可点下方按钮复查是否入库",
+    // 服务器已应答但拒收（如考试已截止）：重试无用，提示把原因反馈给老师
+    rejected: "⚠️ 成绩未上报：" + (extra || "服务器拒收") +
+              "。成绩已在本机留档，请把以上原因告知老师",
+    // 网络层失败：联网后重试可能成功
+    fail: "⚠️ 成绩未上报：" + (extra || "网络异常") +
+          "。成绩已保存在本机，联网后点下方按钮重新上报"
+  }[state] || "";
+  note.textContent = text;
+  if (btn) btn.classList.toggle("hidden", state === "ok" || state === "pending");
 }
 
 function feedbackHTML(chosen, q) {
@@ -861,6 +887,9 @@ body {{ font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: v
 .score-bar-fill {{ height: 100%; background: linear-gradient(90deg, #d84343, #8b1e1e);
                    border-radius: 5px; transition: width .8s ease; }}
 .score-note {{ font-size: 12.5px; color: var(--c-muted); margin-top: 10px; }}
+.retry-btn {{ margin-top: 8px; background: transparent; color: var(--c-primary); font-size: 13px;
+              border: 1px solid var(--c-primary); border-radius: 999px; padding: 5px 16px; cursor: pointer; }}
+.retry-btn:hover {{ background: var(--c-primary); color: #fff; }}
 /* —— 成绩回显模式（?r=1 + localStorage['lc_exam_review:<exam_id>']）样式 —— */
 .review-banner {{ background: #fff8e1; border: 1px solid #f0c36d; color: #6d4c00;
                   border-radius: 8px; padding: 10px 14px; margin-top: 14px; font-size: 14px; }}
