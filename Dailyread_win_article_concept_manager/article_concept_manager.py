@@ -618,6 +618,8 @@ class DataModel:
         """批量更新文章字段，返回 {'updated': int, 'skipped_iscontent': int} 统计"""
         ids_set = set(article_ids)
         now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        # 标题分类需逐篇算（标题各不相同），单独取出后按篇应用
+        title_type = updates.get(TITLE_TYPE_KEY)
         # 收集被修改的文章副本，用于云同步推送（修改后再取 clientId）
         updated_articles = []
         updated_count = 0
@@ -626,6 +628,8 @@ class DataModel:
             if article['id'] in ids_set:
                 applied_updates = {}
                 for key, value in updates.items():
+                    if key == TITLE_TYPE_KEY:
+                        continue  # 特殊键，下面单独处理
                     # 判定：iscontent=False 但文章无图片时，跳过该字段不修改
                     if key == 'iscontent' and not value:
                         has_image = bool(article.get('imagewebp')) and len(article.get('imagewebp', '')) > 0
@@ -634,6 +638,12 @@ class DataModel:
                             continue  # 不应用这个字段
                     article[key] = value
                     applied_updates[key] = value
+                # 标题分类：已有【…】则替换，没有则加到最前面（无变化不记录）
+                if title_type:
+                    new_title = apply_title_prefix(article.get('title', ''), title_type)
+                    if new_title != article.get('title', ''):
+                        article['title'] = new_title
+                        applied_updates['title'] = new_title
                 if applied_updates:  # 有实际修改才记录
                     article['lastModified'] = now
                     updated_articles.append(dict(article))
@@ -1402,6 +1412,54 @@ class ReaderPreviewDialog(QDialog):
         cursor.insertText('')
 
 
+# 标题快捷分类：从数据目录下的 type.txt 读取（每行一个分类，用户可自行增删）
+TITLE_TYPE_FILE = 'type.txt'
+DEFAULT_TITLE_TYPES = ['方歌', '中药', '针灸', '经典', '歌诀']
+# 批量修改中「标题分类」用的特殊键：分类要逐篇算（每篇标题不同），不能当普通字段直接赋值
+TITLE_TYPE_KEY = '__titleType__'
+
+
+def load_title_types() -> list:
+    """读取 type.txt 中的标题分类列表
+
+    文件与 exe（或源码）同目录，每行一个分类；空行忽略、重复项去重，
+    行内已写的【】会被去掉（点按钮时统一补上）。文件不存在时按默认分类创建。
+    """
+    path = data_path(TITLE_TYPE_FILE)
+    if not os.path.exists(path):
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(DEFAULT_TITLE_TYPES) + '\n')
+        except Exception:
+            return list(DEFAULT_TITLE_TYPES)
+        return list(DEFAULT_TITLE_TYPES)
+    try:
+        with open(path, 'r', encoding='utf-8-sig') as f:
+            lines = f.read().splitlines()
+    except Exception:
+        return []
+    result, seen = [], set()
+    for line in lines:
+        name = line.strip().strip('【】').strip()
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
+
+
+def apply_title_prefix(title: str, type_name: str) -> str:
+    """把标题的分类前缀设为【type_name】
+
+    标题里已有【…】（如【方歌】）时原位替换，否则加到标题最前面。
+    """
+    title = title or ''
+    prefix = f"【{type_name}】"
+    matched = re.search(r'【[^】]*】', title)
+    if matched:
+        return title[:matched.start()] + prefix + title[matched.end():]
+    return prefix + title
+
+
 class ArticleEditDialog(QDialog):
     """文章编辑对话框"""
 
@@ -1420,7 +1478,7 @@ class ArticleEditDialog(QDialog):
         settings.clear()  # 清除所有旧设置
 
         self.setFixedWidth(900)
-        self.setFixedHeight(620)
+        self.setFixedHeight(655)
         self.setStyleSheet("QDialog { margin-top: 0px; }")
         self.setup_ui()
         if self.article and self.article.get('imagewebp'):
@@ -1468,6 +1526,22 @@ class ArticleEditDialog(QDialog):
         title_layout.addWidget(title_label)
         title_layout.addWidget(self.titleEdit)
         main_layout.addLayout(title_layout)
+
+        # 快捷分类行：按钮来自 type.txt，点一下把该分类写到标题最前面
+        self.title_type_buttons = []
+        title_types = load_title_types()
+        if title_types:
+            type_layout = QHBoxLayout()
+            type_layout.setSpacing(5)
+            type_layout.addWidget(QLabel("快捷分类"))
+            for type_name in title_types:
+                btn = QPushButton(f"【{type_name}】")
+                btn.setToolTip(f"在标题最前面加【{type_name}】；标题里已有【…】时替换为该分类")
+                btn.clicked.connect(lambda _, n=type_name: self.apply_title_type(n))
+                type_layout.addWidget(btn)
+                self.title_type_buttons.append(btn)
+            type_layout.addStretch(1)
+            main_layout.addLayout(type_layout)
 
         # 内容区域：左右布局（不使用 splitter）
         content_layout = QHBoxLayout()
@@ -1651,6 +1725,14 @@ class ArticleEditDialog(QDialog):
         buttonBox.rejected.connect(self.reject)
         btn_row.addWidget(buttonBox)
         main_layout.addLayout(btn_row)
+
+    def apply_title_type(self, type_name: str):
+        """把标题的分类前缀设为【type_name】
+
+        标题里已有【…】（如【方歌】）时替换该处，否则加到标题最前面。
+        """
+        self.titleEdit.setText(apply_title_prefix(self.titleEdit.text(), type_name))
+        self.titleEdit.setFocus()
 
     def preview_reading(self):
         """在编辑界面内实时预览当前编辑中的文章（未保存内容同样可预览；只读不打卡不写库）"""
@@ -2099,6 +2181,27 @@ class BatchEditDialog(QDialog):
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
 
+        # 标题分类（前缀）：分类来自 type.txt
+        title_type_group = QGroupBox("标题分类（前缀）")
+        title_type_layout = QHBoxLayout(title_type_group)
+        self.title_type_check = QCheckBox("修改")
+        self.title_type_combo = QComboBox()
+        for type_name in load_title_types():
+            self.title_type_combo.addItem(f"【{type_name}】", type_name)
+        self.title_type_combo.setEnabled(False)
+        self.title_type_check.toggled.connect(self.title_type_combo.setEnabled)
+        title_type_layout.addWidget(self.title_type_check)
+        title_type_layout.addWidget(self.title_type_combo)
+        title_type_hint = QLabel("标题已有【…】则替换，没有则加到最前面")
+        title_type_hint.setStyleSheet("font-size: 11px; color: #999;")
+        title_type_hint.setWordWrap(True)
+        title_type_layout.addWidget(title_type_hint, 1)
+        # 无 type.txt 或文件为空时禁用该组
+        if self.title_type_combo.count() == 0:
+            self.title_type_check.setEnabled(False)
+            title_type_hint.setText("未找到 type.txt（与 EXE 同目录，每行一个分类）")
+        layout.addWidget(title_type_group)
+
         # 正在阅读开关
         reading_group = QGroupBox("正在阅读")
         reading_layout = QHBoxLayout(reading_group)
@@ -2178,6 +2281,7 @@ class BatchEditDialog(QDialog):
     def on_confirm(self):
         """确认：至少勾选一项"""
         if not any([
+            self.title_type_check.isChecked(),
             self.reading_check.isChecked(),
             self.required_check.isChecked(),
             self.indep_switch_check.isChecked(),
@@ -2191,6 +2295,9 @@ class BatchEditDialog(QDialog):
     def get_updates(self) -> dict:
         """返回要更新的字段字典"""
         updates = {}
+        # 标题分类是逐篇计算的（每篇标题不同），用特殊键交给 data_model 处理
+        if self.title_type_check.isChecked() and self.title_type_combo.count() > 0:
+            updates[TITLE_TYPE_KEY] = self.title_type_combo.currentData()
         if self.reading_check.isChecked():
             updates['isReading'] = self.reading_combo.currentText() == "是"
         if self.required_check.isChecked():
@@ -2206,6 +2313,8 @@ class BatchEditDialog(QDialog):
     def get_summary_list(self) -> list:
         """返回修改摘要列表"""
         items = []
+        if self.title_type_check.isChecked() and self.title_type_combo.count() > 0:
+            items.append(f"标题分类={self.title_type_combo.currentText()}")
         if self.reading_check.isChecked():
             items.append(f"正在阅读={self.reading_combo.currentText()}")
         if self.required_check.isChecked():
@@ -2472,7 +2581,11 @@ class ArticlePage(QWidget):
                 if not article:
                     continue
 
-                # 只更新可能变化的列：在读(3)、显示文章(4)、独立打卡率(5)、独立开关(6)、必读(7)、完成率(9)
+                # 只更新可能变化的列：标题(1)、在读(3)、显示文章(4)、独立打卡率(5)、独立开关(6)、必读(7)、完成率(9)
+                item_title = _QTableWidgetItem(article.get('title', ''))
+                item_title.setTextAlignment(_align)
+                self.table.setItem(row, 1, item_title)
+
                 item3 = _QTableWidgetItem("是" if article.get('isReading') else "否")
                 item3.setTextAlignment(_align)
                 self.table.setItem(row, 3, item3)
@@ -3513,6 +3626,36 @@ class SettingsPage(QWidget):
 
         layout.addWidget(article_defaults_group)
 
+        # ── 标题分类（type.txt）──
+        title_type_group = QGroupBox("🏷️ 标题分类")
+        title_type_layout = QVBoxLayout(title_type_group)
+
+        title_type_path_label = QLabel(f"配置文件：{data_path(TITLE_TYPE_FILE)}")
+        title_type_path_label.setStyleSheet("color: #888; font-size: 11px;")
+        title_type_path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        title_type_path_label.setWordWrap(True)
+        title_type_layout.addWidget(title_type_path_label)
+
+        title_type_btn_row = QHBoxLayout()
+        open_type_btn = QPushButton("📝 打开编辑")
+        open_type_btn.setStyleSheet("background-color: #0078d4; color: white; padding: 6px 16px;")
+        open_type_btn.setToolTip("用系统默认程序（通常是记事本）打开 type.txt")
+        open_type_btn.clicked.connect(self._open_title_type_file)
+        title_type_btn_row.addWidget(open_type_btn)
+        title_type_btn_row.addStretch(1)
+        title_type_layout.addLayout(title_type_btn_row)
+
+        title_type_hint = QLabel(
+            "每行一个分类（如 方歌、中药、针灸…），保存后无需重启：\n"
+            "· 文章增改界面的标题下方会按此生成快捷按钮\n"
+            "· 批量修改中可勾选「标题分类（前缀）」批量套用"
+        )
+        title_type_hint.setStyleSheet("color: #888; font-size: 11px;")
+        title_type_hint.setWordWrap(True)
+        title_type_layout.addWidget(title_type_hint)
+
+        layout.addWidget(title_type_group)
+
         # ── 备份与恢复 ──
         backup_group = QGroupBox("💾 备份与恢复")
         backup_layout = QHBoxLayout(backup_group)
@@ -3608,6 +3751,16 @@ class SettingsPage(QWidget):
         self.shortcuts['add_article'] = self.add_article_edit.text().strip()
         self.shortcuts['search_article'] = self.search_article_edit.text().strip()
         self.save_shortcuts()
+
+    def _open_title_type_file(self):
+        """用系统默认程序打开 type.txt 供用户编辑（文件不存在时按默认分类创建）"""
+        path = data_path(TITLE_TYPE_FILE)
+        if not os.path.exists(path):
+            load_title_types()  # 顺带生成默认分类文件
+        try:
+            os.startfile(path)
+        except Exception as e:
+            QMessageBox.warning(self, "提示", f"打开失败：{e}\n\n文件位置：\n{path}")
 
     def _on_article_defaults_changed(self):
         self.article_defaults['isReading'] = self.default_isReading_check.isChecked()
