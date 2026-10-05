@@ -47,7 +47,9 @@ export class CheckInRepository {
       checkInTime: record.checkInTime,
       lastModified: record.lastModified
     };
-    return await db.insert(TableNames.CHECKINS, valueBucket);
+    // 同步合并时可能重复插入同一 (articleId, checkInDate)，用 IGNORE 静默跳过，
+    // 避免 14800032 (UNIQUE constraint failed) 异常中断整个同步流程
+    return await db.insert(TableNames.CHECKINS, valueBucket, relationalStore.ConflictResolution.ON_CONFLICT_IGNORE);
   }
 
   async deleteAllCheckInRecords(): Promise<number> {

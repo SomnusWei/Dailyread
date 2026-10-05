@@ -94,6 +94,77 @@ export class ArticleRepository {
     return articles;
   }
 
+  /**
+   * 仅加载文章元数据（不含 imagewebp / audiobase64 大字段）。
+   * 用于首页、文章管理页等列表展示，避免多篇带图文章同时驻留内存导致 GC 压力、滑动卡顿。
+   * 打开单篇文章时用 getArticleById 加载完整数据。
+   */
+  async getAllArticlesMeta(): Promise<Article[]> {
+    const db = AppDatabase.getInstance().getDb();
+    const articles: Article[] = [];
+    try {
+      const predicates = new relationalStore.RdbPredicates(TableNames.ARTICLES);
+      const result: relationalStore.ResultSet = await db.query(predicates);
+      const colId: number = result.getColumnIndex('id');
+      const colClientId: number = result.getColumnIndex('clientId');
+      const colTitle: number = result.getColumnIndex('title');
+      const colContent: number = result.getColumnIndex('content');
+      const colContentHtml: number = result.getColumnIndex('contentHtml');
+      const colChineseChars: number = result.getColumnIndex('chineseChars');
+      const colFontFamily: number = result.getColumnIndex('fontFamily');
+      const colFontSize: number = result.getColumnIndex('fontSize');
+      const colFontColor: number = result.getColumnIndex('fontColor');
+      const colIsBold: number = result.getColumnIndex('isBold');
+      const colIsReading: number = result.getColumnIndex('isReading');
+      const colIsRequired: number = result.getColumnIndex('isRequired');
+      const colRequiredDays: number = result.getColumnIndex('requiredDays');
+      const colUseIndependentCheckRate: number = result.getColumnIndex('useIndependentCheckRate');
+      const colIndependentCheckRate: number = result.getColumnIndex('independentCheckRate');
+      const colCreateTime: number = result.getColumnIndex('createTime');
+      const colIsLongArticle: number = result.getColumnIndex('isLongArticle');
+      const colCheckInDays: number = result.getColumnIndex('checkInDays');
+      const colCompletionRate: number = result.getColumnIndex('completionRate');
+      const colIsContent: number = result.getColumnIndex('iscontent');
+      const colLastModified: number = result.getColumnIndex('lastModified');
+      while (result.goToNextRow()) {
+        const article: Article = new Article();
+        article.id = result.getLong(colId);
+        article.clientId = colClientId >= 0 && !result.isColumnNull(colClientId) ? result.getString(colClientId) : '';
+        article.title = result.getString(colTitle);
+        article.content = result.getString(colContent);
+        if (!result.isColumnNull(colContentHtml)) {
+          article.contentHtml = result.getString(colContentHtml);
+        } else {
+          article.contentHtml = null;
+        }
+        article.chineseChars = result.getLong(colChineseChars);
+        article.fontFamily = result.getString(colFontFamily);
+        article.fontSize = result.getLong(colFontSize);
+        article.fontColor = result.getString(colFontColor);
+        article.isBold = result.getLong(colIsBold) === 1;
+        article.isReading = result.getLong(colIsReading) === 1;
+        article.isRequired = result.getLong(colIsRequired) === 1;
+        article.requiredDays = result.getString(colRequiredDays);
+        article.useIndependentCheckRate = result.getLong(colUseIndependentCheckRate) === 1;
+        article.independentCheckRate = result.getDouble(colIndependentCheckRate);
+        article.createTime = result.getString(colCreateTime);
+        article.isLongArticle = result.getLong(colIsLongArticle) === 1;
+        article.checkInDays = result.getLong(colCheckInDays);
+        article.completionRate = Math.round(result.getDouble(colCompletionRate));
+        // 大字段留空：列表页不需要，打开文章时再加载
+        article.imagewebp = '';
+        article.audiobase64 = '';
+        article.iscontent = colIsContent >= 0 && !result.isColumnNull(colIsContent) ? result.getLong(colIsContent) === 1 : true;
+        article.lastModified = result.getString(colLastModified);
+        articles.push(article);
+      }
+      result.close();
+    } catch (e) {
+      console.error('getAllArticlesMeta error:', JSON.stringify(e));
+    }
+    return articles;
+  }
+
   async getArticleById(id: number): Promise<Article[]> {
     const db = AppDatabase.getInstance().getDb();
     const articles: Article[] = [];
@@ -293,6 +364,25 @@ export class ArticleRepository {
 
   async updateArticle(article: Article): Promise<number> {
     const db = AppDatabase.getInstance().getDb();
+    // 防御：若 clientId 为空（调用方漏传），从 DB 查出该文章的 clientId 补上，
+    // 避免同步推送时因 clientId 为空被服务端拒绝（400 缺少 clientId）
+    if (!article.clientId) {
+      try {
+        const pred = new relationalStore.RdbPredicates(TableNames.ARTICLES);
+        pred.equalTo('id', article.id);
+        const r = await db.query(pred, ['clientId']);
+        if (r.goToNextRow()) {
+          const col = r.getColumnIndex('clientId');
+          if (col >= 0 && !r.isColumnNull(col)) {
+            article.clientId = r.getString(col);
+            console.info('ArticleRepository.updateArticle: 补全 clientId=' + article.clientId + ' (id=' + article.id + ')');
+          }
+        }
+        r.close();
+      } catch (e) {
+        console.error('updateArticle 查询 clientId 失败: ' + JSON.stringify(e));
+      }
+    }
     const valueBucket: relationalStore.ValuesBucket = {
       clientId: article.clientId,
       title: article.title,

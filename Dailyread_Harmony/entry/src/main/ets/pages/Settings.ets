@@ -510,6 +510,31 @@ struct SettingsPage {
                 .backgroundColor('#FFFFFF')
                 .borderRadius(8)
 
+                // 云同步操作卡片
+                Column() {
+                  Row() {
+                    Column() {
+                      Text('云同步').fontSize(16).fontWeight(FontWeight.Medium)
+                      Text('重置同步游标并从服务端全量重拉（本地缺失文章时使用）')
+                        .fontSize(12).fontColor('#999999').margin({ top: 4 })
+                    }
+                    .alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+                    Button('重置同步')
+                      .fontSize(14)
+                      .backgroundColor('#FF9800')
+                      .fontColor('#FFFFFF')
+                      .height(36)
+                      .enabled(this.isLoggedIn())
+                      .onClick(() => this.resetSync())
+                  }.width('100%').alignItems(VerticalAlign.Center)
+                }
+                .width('100%')
+                .padding(16)
+                .backgroundColor('#FFFFFF')
+                .borderRadius(8)
+                .margin({ top: 12 })
+
                 Text('版本号: 1.51')
                   .fontSize(12).fontColor('#999999').width('100%').textAlign(TextAlign.Center)
                   .margin({ top: 24, bottom: 24 })
@@ -567,5 +592,19 @@ struct SettingsPage {
     SyncService.getInstance().stop();
     promptAction.showToast({ message: '已退出登录', duration: 2000 });
     router.replaceUrl({ url: 'pages/Login' });
+  }
+
+  /**
+   * 重置同步游标并全量重拉（本地缺失文章但服务端存在时使用）
+   */
+  private async resetSync(): Promise<void> {
+    try {
+      promptAction.showToast({ message: '正在重置同步并全量重拉...', duration: 2000 });
+      await SyncService.getInstance().resetAndFullSync();
+      promptAction.showToast({ message: '全量重拉完成', duration: 2000 });
+    } catch (e) {
+      console.error('Settings.resetSync error: ' + JSON.stringify(e));
+      promptAction.showToast({ message: '重置同步失败: ' + JSON.stringify(e), duration: 3000 });
+    }
   }
 }

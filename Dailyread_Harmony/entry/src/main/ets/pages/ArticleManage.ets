@@ -2,6 +2,7 @@ import router from '@ohos.router';
 import { Article } from '../model/Article';
 import { ArticleRepository } from '../repository/ArticleRepository';
 import { ImageCompressionService, SizedPixelMap } from '../service/ImageCompressionService';
+import { SyncService } from '../service/SyncService';
 import promptAction from '@ohos.promptAction';
 import image from '@ohos.multimedia.image';
 import fs from '@ohos.file.fs';
@@ -81,7 +82,8 @@ struct ArticleManagePage {
   async loadData(): Promise<void> {
     this.isLoading = true;
     try {
-      const list: Article[] = await ArticleRepository.getInstance().getAllArticles();
+      // 列表页只加载元数据（不含 imagewebp/audiobase64），避免多篇带图文章驻留内存导致滑动卡顿
+      const list: Article[] = await ArticleRepository.getInstance().getAllArticlesMeta();
       // 整体赋值触发 @State 更新
       this.articles = list;
       // 过滤文章
@@ -111,15 +113,28 @@ struct ArticleManagePage {
    * 打开编辑 Dialog（复用：列表编辑按钮 + Reader 跳转自动打开）
    */
   async openEditDialog(article: Article): Promise<void> {
-    this.editingArticle = article;
-    this.newTitle = article.title;
-    this.newContent = article.content;
-    this.newIsReading = article.isReading;
-    this.newIsRequired = article.isRequired;
+    // 列表页用 getAllArticlesMeta 加载，imagewebp/audiobase64 为空。
+    // 编辑时必须加载完整数据，否则保存会丢失图片/音频。
+    let fullArticle: Article = article;
+    if (!article.imagewebp || article.imagewebp.length === 0) {
+      try {
+        const list: Article[] = await ArticleRepository.getInstance().getArticleById(article.id);
+        if (list.length > 0) {
+          fullArticle = list[0];
+        }
+      } catch (e) {
+        console.error('ArticleManage.openEditDialog: 加载完整文章失败 id=' + article.id + ': ' + JSON.stringify(e));
+      }
+    }
+    this.editingArticle = fullArticle;
+    this.newTitle = fullArticle.title;
+    this.newContent = fullArticle.content;
+    this.newIsReading = fullArticle.isReading;
+    this.newIsRequired = fullArticle.isRequired;
     // 默认 true，兼容 iscontent 字段缺失的旧文章
-    this.newIsContent = article.iscontent !== false;
-    console.info('ArticleManage.openEditDialog: id=' + article.id + ' iscontent=' + this.newIsContent + ' showContent(原始)=' + JSON.stringify(article.iscontent));
-    this.newImageWebp = article.imagewebp && article.imagewebp.length > 0 ? article.imagewebp : '';
+    this.newIsContent = fullArticle.iscontent !== false;
+    console.info('ArticleManage.openEditDialog: id=' + fullArticle.id + ' iscontent=' + this.newIsContent + ' showContent(原始)=' + JSON.stringify(fullArticle.iscontent));
+    this.newImageWebp = fullArticle.imagewebp && fullArticle.imagewebp.length > 0 ? fullArticle.imagewebp : '';
     this.previewPixelMap = null;
     if (this.newImageWebp.length > 0) {
       try {
@@ -172,6 +187,7 @@ struct ArticleManagePage {
 
       if (this.editingArticle !== null) {
         article.id = this.editingArticle.id;
+        article.clientId = this.editingArticle.clientId;
         article.fontFamily = this.editingArticle.fontFamily;
         article.fontSize = this.editingArticle.fontSize;
         article.fontColor = this.editingArticle.fontColor;
@@ -192,9 +208,17 @@ struct ArticleManagePage {
         console.info('ArticleManage.saveArticle: 更新文章 id=' + article.id + ' iscontent=' + article.iscontent + ' showContent=' + this.newIsContent);
         await ArticleRepository.getInstance().updateArticle(article);
         promptAction.showToast({ message: '修改成功', duration: 2000 });
+        // 编辑保存后立即上传服务器（不等轮询）
+        try { SyncService.getInstance().triggerConsume(); } catch (syncErr) {
+          console.error('ArticleManage.saveArticle: 触发同步失败: ' + JSON.stringify(syncErr));
+        }
       } else {
         await ArticleRepository.getInstance().insertArticle(article);
         promptAction.showToast({ message: '添加成功', duration: 2000 });
+        // 新增保存后立即上传服务器（不等轮询）
+        try { SyncService.getInstance().triggerConsume(); } catch (syncErr) {
+          console.error('ArticleManage.saveArticle: 触发同步失败: ' + JSON.stringify(syncErr));
+        }
       }
 
       this.showAddDialog = false;

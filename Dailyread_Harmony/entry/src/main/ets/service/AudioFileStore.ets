@@ -1,7 +1,7 @@
 /**
  * 大音频文件存储
  * 背景：鸿蒙 RDB 对单字段超过约 2MB 的文本写入会失效（insert 返回 rowId 但行不落库），
- *      导致带 2.7MB audiobase64 的文章无法同步入库（如"刺疟论"）。
+ *      导致带大体积 audiobase64 的文章无法同步入库。
  * 方案：>1MB 的 audiobase64 解码后写入沙箱文件，contents.audiobase64 列仅存 'file://绝对路径' 引用。
  *      - hasAudio 判断（audiobase64.length > 0）天然兼容 file:// 引用
  *      - 上行（推送/备份导出）前用 readAsBase64 还原，协议不变

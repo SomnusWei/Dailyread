@@ -910,13 +910,14 @@ def center_window(window: QWidget):
 
 # ==================== 图片处理工具 ====================
 
-def compress_qimage_to_webp_base64(image: QImage, max_size_kb: int = 25) -> str:
+def compress_qimage_to_webp_base64(image: QImage, max_size_kb: int = 250) -> str:
     """
     将 QImage 对象转换为 WebP 格式并压缩到指定大小以下，返回纯 base64 字符串（无前缀）
     保持原始宽高比，不修改尺寸，仅通过质量压缩控制文件大小
+    若图片本身（最高质量 WebP）已 <= max_size_kb，则不压缩，直接返回最高质量结果
     参数：
         image: QImage 对象（来自文件或剪贴板）
-        max_size_kb: 最大文件大小，单位 KB，默认 25KB
+        max_size_kb: 最大文件大小，单位 KB，默认 250KB
     """
     try:
         if image.isNull():
@@ -924,22 +925,27 @@ def compress_qimage_to_webp_base64(image: QImage, max_size_kb: int = 25) -> str:
 
         max_bytes = max_size_kb * 1024
 
-        # 循环降低质量直到满足大小要求（保持原始尺寸和宽高比）
-        for quality in range(80, 5, -10):
+        def _save(quality: int) -> QByteArray:
             byte_array = QByteArray()
             buffer = QBuffer(byte_array)
             buffer.open(QBuffer.OpenModeFlag.WriteOnly)
             image.save(buffer, "WEBP", quality)
             buffer.close()
+            return byte_array
+
+        # 1. 先用最高质量保存，若已满足大小要求则直接返回（不压缩）
+        best = _save(100)
+        if best.size() <= max_bytes:
+            return best.toBase64().data().decode('ascii')
+
+        # 2. 循环降低质量直到满足大小要求（保持原始尺寸和宽高比）
+        for quality in range(90, 5, -10):
+            byte_array = _save(quality)
             if byte_array.size() <= max_bytes:
                 return byte_array.toBase64().data().decode('ascii')
 
-        # 如果仍然过大，使用最低质量
-        byte_array = QByteArray()
-        buffer = QBuffer(byte_array)
-        buffer.open(QBuffer.OpenModeFlag.WriteOnly)
-        image.save(buffer, "WEBP", 5)
-        buffer.close()
+        # 3. 如果仍然过大，使用最低质量
+        byte_array = _save(5)
         return byte_array.toBase64().data().decode('ascii')
 
     except Exception as e:
@@ -947,13 +953,14 @@ def compress_qimage_to_webp_base64(image: QImage, max_size_kb: int = 25) -> str:
         return ''
 
 
-def compress_image_to_webp_base64(filepath: str, max_size_kb: int = 25) -> str:
+def compress_image_to_webp_base64(filepath: str, max_size_kb: int = 250) -> str:
     """
     将图片文件转换为 WebP 格式并压缩到指定大小以下，返回纯 base64 字符串（无前缀）
     保持原始宽高比，不修改尺寸，仅通过质量压缩控制文件大小
+    若图片本身（最高质量 WebP）已 <= max_size_kb，则不压缩
     参数：
         filepath: 图片文件路径
-        max_size_kb: 最大文件大小，单位 KB，默认 25KB
+        max_size_kb: 最大文件大小，单位 KB，默认 250KB
     """
     image = QImage(filepath)
     return compress_qimage_to_webp_base64(image, max_size_kb)
@@ -1462,14 +1469,17 @@ def apply_title_prefix(title: str, type_name: str) -> str:
 
 class ArticleEditDialog(QDialog):
     """文章编辑对话框"""
+    _image_loaded = pyqtSignal(str, str)  # (client_id, imagewebp) 从服务端懒加载到的图片
 
-    def __init__(self, article: dict = None, parent=None):
+    def __init__(self, article: dict = None, parent=None, data_model=None):
         super().__init__(parent)
         self.article = article or {}
+        self.data_model = data_model
         self.is_edit = bool(article and article.get('id'))
         self.imagewebp_data = ''
         self.audiobase64_data = ''
         self._audio_temp_path = ''  # 试听临时文件路径，关闭时清理
+        self._media_fetch_done = False  # 防止重复拉取
         self.setWindowTitle("编辑文章" if self.is_edit else "添加文章")
 
         # 强制设置窗口大小（覆盖任何保存的设置）
@@ -1487,6 +1497,11 @@ class ArticleEditDialog(QDialog):
         if self.article and self.article.get('audiobase64'):
             self.audiobase64_data = self.article.get('audiobase64', '')
             self.update_audio_preview()
+
+        # 编辑模式且本地无图片时，从服务端懒加载图片（meta 模式同步时未拉取图片）
+        if self.is_edit and not self.imagewebp_data:
+            self._image_loaded.connect(self._on_image_loaded)
+            self._lazy_load_image()
 
     def restore_geometry(self):
         """恢复窗口几何信息"""
@@ -1759,7 +1774,7 @@ class ArticleEditDialog(QDialog):
         )
         if not filepath:
             return
-        b64 = compress_image_to_webp_base64(filepath, max_size_kb=25)
+        b64 = compress_image_to_webp_base64(filepath, max_size_kb=250)
         if not b64:
             QMessageBox.warning(self, "提示", "图片处理失败，请选择其他图片")
             return
@@ -1777,7 +1792,7 @@ class ArticleEditDialog(QDialog):
             if image.isNull():
                 QMessageBox.warning(self, "提示", "剪贴板中没有有效图片")
                 return
-            b64 = compress_qimage_to_webp_base64(image, max_size_kb=25)
+            b64 = compress_qimage_to_webp_base64(image, max_size_kb=250)
             if not b64:
                 QMessageBox.warning(self, "提示", "图片处理失败，请重试")
                 return
@@ -1792,7 +1807,7 @@ class ArticleEditDialog(QDialog):
                     filepath = url.toLocalFile()
                     ext = filepath.lower().rsplit('.', 1)[-1] if '.' in filepath else ''
                     if ext in ('png', 'jpg', 'jpeg', 'bmp', 'webp', 'gif'):
-                        b64 = compress_image_to_webp_base64(filepath, max_size_kb=25)
+                        b64 = compress_image_to_webp_base64(filepath, max_size_kb=250)
                         if b64:
                             self.imagewebp_data = b64
                             self.update_image_preview()
@@ -1831,6 +1846,53 @@ class ArticleEditDialog(QDialog):
             self.imagePreviewLabel.clear()
             self.imagePreviewLabel.setText("（暂无图片）")
             self.imageSizeLabel.setText("")
+
+    def _lazy_load_image(self):
+        """从服务端懒加载图片（meta 模式同步时未拉取图片大字段）"""
+        if self._media_fetch_done:
+            return
+        cid = self.article.get('clientId')
+        if not cid:
+            return
+        # 先检查本地媒体文件是否存在
+        if self.data_model:
+            local = self.data_model._read_media(str(cid), 'image')
+            if local:
+                self.imagewebp_data = local
+                self.update_image_preview()
+                self._media_fetch_done = True
+                return
+        self._media_fetch_done = True
+        import threading
+        threading.Thread(target=self._fetch_image_async, args=(str(cid),), daemon=True).start()
+
+    def _fetch_image_async(self, client_id):
+        """后台线程：从服务端拉取图片"""
+        try:
+            r = api_client.fetch_article_media(client_id)
+            if r.get('code') == 0:
+                data = r.get('data') or {}
+                image = data.get('imagewebp') or ''
+                if image:
+                    self._image_loaded.emit(client_id, image)
+        except Exception as e:
+            print(f"[EditDialog] 拉取图片失败: {e}")
+
+    def _on_image_loaded(self, client_id, image_b64):
+        """图片懒加载回调：更新预览并写入本地缓存"""
+        if not image_b64:
+            return
+        # 竞态防护：只更新匹配 clientId 的文章
+        if str(self.article.get('clientId', '')) != str(client_id):
+            return
+        self.imagewebp_data = image_b64
+        self.update_image_preview()
+        # 写入本地 media 缓存，下次打开无需再请求服务端
+        if self.data_model:
+            try:
+                self.data_model._write_media(str(client_id), 'image', image_b64, skip_if_exists=False)
+            except Exception as e:
+                print(f"[EditDialog] 写入本地图片缓存失败: {e}")
 
     def on_select_audio(self):
         """选择音频文件并转码为 m4a（AAC-LC）base64"""
@@ -2330,10 +2392,13 @@ class BatchEditDialog(QDialog):
 
 class ArticlePage(QWidget):
     """文章管理页面"""
+    _row_image_loaded = pyqtSignal(str)  # client_id：某行图片已从服务端拉取到本地缓存，需刷新该行
 
     def __init__(self, data_model: DataModel, parent=None, defer_refresh=False):
         super().__init__(parent)
         self.data_model = data_model
+        self._image_fetching = set()  # 正在拉取图片的 clientId 集合，防重复
+        self._row_image_loaded.connect(self._on_row_image_loaded)
         self.setup_ui()
         if not defer_refresh:
             self.refresh_table()
@@ -2546,6 +2611,62 @@ class ArticlePage(QWidget):
         self.table.setUpdatesEnabled(True)
         _t_teardown = _time.time()
         _debug_log(f"refresh_table rows={len(articles)} setup={(_t_setup-_t0)*1000:.0f}ms loop={(_t_loop-_t_setup)*1000:.0f}ms teardown={(_t_teardown-_t_loop)*1000:.0f}ms total={(_t_teardown-_t0)*1000:.0f}ms")
+
+        # 列表渲染完成后，后台懒加载缺失的图片（meta 模式同步时未拉取图片大字段）
+        self._lazy_load_missing_images(articles)
+
+    def _lazy_load_missing_images(self, articles):
+        """对列表中本地无图片的文章，后台从服务端拉取并写入本地缓存，逐篇刷新行"""
+        import threading
+        cids_to_fetch = []
+        for a in articles:
+            cid = a.get('clientId')
+            if not cid:
+                continue
+            cid_str = str(cid)
+            # 已有图片（内存或本地文件）则跳过
+            if a.get('imagewebp'):
+                continue
+            if os.path.exists(self.data_model._media_path(cid_str, 'image')):
+                continue
+            if cid_str in self._image_fetching:
+                continue
+            cids_to_fetch.append(cid_str)
+        if not cids_to_fetch:
+            return
+        for cid in cids_to_fetch:
+            self._image_fetching.add(cid)
+        threading.Thread(target=self._fetch_missing_images_async, args=(cids_to_fetch,), daemon=True).start()
+
+    def _fetch_missing_images_async(self, cids):
+        """后台线程：逐篇拉取缺失图片，写入本地缓存并通知主线程刷新行"""
+        for cid in cids:
+            try:
+                r = api_client.fetch_article_media(cid)
+                if r.get('code') == 0:
+                    data = r.get('data') or {}
+                    image = data.get('imagewebp') or ''
+                    if image:
+                        self.data_model._write_media(cid, 'image', image, skip_if_exists=False)
+                        self._row_image_loaded.emit(cid)
+            except Exception as e:
+                print(f"[ArticleList] 拉取图片失败 cid={cid}: {e}")
+            finally:
+                self._image_fetching.discard(cid)
+
+    def _on_row_image_loaded(self, client_id):
+        """某行图片已拉取到本地缓存，刷新该行的图片列显示"""
+        client_id = str(client_id)
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 1)  # 标题列
+            if not item:
+                continue
+            # 通过 data_model 找到对应文章
+            article = next((a for a in self.data_model.articles if str(a.get('clientId', '')) == client_id), None)
+            if article and article.get('id') is not None:
+                # 用 update_table_row 刷新该行
+                self.update_table_row(article['id'])
+            break
 
     def refresh_article_by_client_id(self, client_id):
         """按 clientId 局部刷新单行（打卡后更新打卡天数/完成率，避免全表重建卡顿）"""
@@ -2764,7 +2885,7 @@ class ArticlePage(QWidget):
 
     def do_edit_article(self, article: dict):
         """执行编辑"""
-        dialog = ArticleEditDialog(article, self)
+        dialog = ArticleEditDialog(article, self, data_model=self.data_model)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             data = dialog.get_data()
             if data and isinstance(data, list):
@@ -4000,6 +4121,7 @@ class ReaderDialog(QDialog):
     _tasks_loaded = pyqtSignal(list, int, int)    # (未打卡 articleId 列表, 今日任务总数, 已打卡数)
     _article_loaded = pyqtSignal(dict)           # 从服务端拉取到的单篇文章
     _audio_loaded = pyqtSignal(str)              # 从服务端拉取到的音频 base64
+    _image_loaded = pyqtSignal(str, str)         # (client_id, imagewebp) 从服务端拉取到的图片
     _show_msg = pyqtSignal(str, str)             # (title, message) 弹窗提示
 
     def __init__(self, data_model, parent=None):
@@ -4022,6 +4144,7 @@ class ReaderDialog(QDialog):
         self._tasks_loaded.connect(self._on_tasks_loaded)
         self._article_loaded.connect(self._on_article_loaded)
         self._audio_loaded.connect(self._on_audio_loaded)
+        self._image_loaded.connect(self._on_image_loaded)
         self._show_msg.connect(self._on_show_msg)
 
     def _reader_setting(self, key, default=None, typ=None):
@@ -4118,6 +4241,37 @@ class ReaderDialog(QDialog):
             return
         self._play_audio_b64(audio_b64)
 
+    def _on_image_loaded(self, client_id, image_b64):
+        """图片懒加载回调：仅当当前文章匹配时才更新并刷新显示"""
+        if self._closed or not image_b64 or not self.current_article:
+            return
+        # 竞态防护：用户可能已切换到其他文章，只更新匹配的文章
+        if str(self.current_article.get('clientId', '')) != str(client_id):
+            return
+        self.current_article['imagewebp'] = image_b64
+        # 写入本地 media 缓存，下次打开无需再请求服务端
+        self.data_model._write_media(str(client_id), 'image', image_b64, skip_if_exists=False)
+        # 刷新图片显示
+        self._refresh_image()
+
+    def _refresh_image(self):
+        """根据 current_article 的 imagewebp 刷新内容区的图片（文字内容保留）"""
+        if self._closed or not self.current_article:
+            return
+        article = self.current_article
+        iscontent = article.get('iscontent', True)
+        fs = int(self._reader_setting("font_size", 18))
+        html = self._render_content(article.get('content', ''), fs) if iscontent else ''
+        img_b64 = article.get('imagewebp') or ''
+        if img_b64:
+            img_data_uri = self._webp_to_png_data_uri(img_b64)
+            if img_data_uri:
+                img_html = f'<div style="text-align:center;margin-top:16px;"><img src="{img_data_uri}" style="max-width:100%;"/></div>'
+                html = html + img_html
+        if not html:
+            html = '<div style="color:#999;text-align:center;margin-top:40px;">（无内容）</div>'
+        self.content_edit.setHtml(html)
+
     def _on_show_msg(self, title, msg):
         if self._closed:
             return
@@ -4203,6 +4357,12 @@ class ReaderDialog(QDialog):
         self.next_btn.setEnabled(True)
         # 加载音频
         self._load_audio(article)
+        # 若本地无音频或图片且已登录，异步从服务端懒加载（meta 同步模式不拉取这些大字段）
+        need_media = not article.get('audiobase64') or not img_b64
+        if need_media and api_client.is_logged_in():
+            cid = article.get('clientId')
+            if cid:
+                threading.Thread(target=self._fetch_media_async, args=(cid,), daemon=True).start()
         # 更新进度（已打卡 = 会话前已打卡 + 本次会话已打卡）
         self._update_progress_label()
 
@@ -4255,21 +4415,21 @@ class ReaderDialog(QDialog):
         audio_b64 = article.get('audiobase64') or ''
         if audio_b64:
             self._play_audio_b64(audio_b64)
-        else:
-            cid = article.get('clientId')
-            if cid:
-                threading.Thread(target=self._fetch_audio_async, args=(cid,), daemon=True).start()
 
-    def _fetch_audio_async(self, client_id):
+    def _fetch_media_async(self, client_id):
+        """从服务端懒加载音频+图片（meta 模式同步时不拉取这些大字段）"""
         try:
             r = api_client.fetch_article_media(client_id)
             if r.get('code') == 0:
                 data = r.get('data') or {}
                 audio = data.get('audiobase64') or ''
+                image = data.get('imagewebp') or ''
                 if audio:
                     self._audio_loaded.emit(audio)
+                if image:
+                    self._image_loaded.emit(client_id, image)
         except Exception as e:
-            print(f"[Reader] 拉取音频失败: {e}")
+            print(f"[Reader] 拉取媒体失败: {e}")
 
     def _play_audio_b64(self, b64_str):
         try:

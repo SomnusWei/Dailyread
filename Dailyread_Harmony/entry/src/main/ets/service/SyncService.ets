@@ -27,6 +27,7 @@ export class SyncService {
   private queue: OfflineWriteQueue = OfflineWriteQueue.getInstance();
   private timerHandle: number = -1;
   private running: boolean = false;
+  private consuming: boolean = false;
   private pullBusy: boolean = false;
   private statusCallback: ((msg: string) => void) | null = null;
 
@@ -164,6 +165,8 @@ export class SyncService {
     this.running = true;
     this.notify('同步服务已启动');
     this.scheduleConsume();
+    // 启动时立即消费一次队列（处理上次遗留的待同步项，如图片）
+    this.consumeOnce();
   }
 
   stop(): void {
@@ -181,37 +184,69 @@ export class SyncService {
     }, CONSUME_INTERVAL);
   }
 
+  /**
+   * 立即触发一次队列消费（用于文章编辑保存后直接上传服务器，不等轮询）
+   * 若已有消费在进行或服务未启动，则跳过本次触发，避免并发冲突
+   */
+  triggerConsume(): void {
+    if (!this.running || this.consuming) {
+      console.info('SyncService.triggerConsume: 服务未启动或已有同步进行，跳过本次触发');
+      return;
+    }
+    this.consumeOnce();
+  }
+
   private async consumeOnce(): Promise<void> {
     if (!this.api.isLoggedIn()) {
       return;
     }
-    const items: QueueItem[] = this.queue.getAll();
-    if (items.length === 0) {
+    if (this.consuming) {
       return;
     }
-    this.notify('同步中... 队列剩余 ' + items.length + ' 条');
-    for (let i = 0; i < items.length; i++) {
-      const item: QueueItem = items[i];
-      try {
-        const ok: boolean = await this.consumeOne(item);
-        if (ok) {
-          this.queue.remove(item);
-        } else {
-          this.queue.incrementRetry(item);
-        }
-      } catch (e) {
-        console.error('SyncService consume error: ' + JSON.stringify(e));
-        this.queue.incrementRetry(item);
+    this.consuming = true;
+    try {
+      const items: QueueItem[] = this.queue.getAll();
+      if (items.length === 0) {
+        return;
       }
+      this.notify('同步中... 队列剩余 ' + items.length + ' 条');
+      for (let i = 0; i < items.length; i++) {
+        const item: QueueItem = items[i];
+        try {
+          const ok: boolean = await this.consumeOne(item);
+          if (ok) {
+            this.queue.remove(item);
+          } else {
+            this.queue.incrementRetry(item);
+          }
+        } catch (e) {
+          console.error('SyncService consume error: ' + JSON.stringify(e));
+          try { this.queue.incrementRetry(item); } catch (ignore) {}
+        }
+      }
+      this.notify('同步完成，队列剩余 ' + this.queue.size() + ' 条');
+    } finally {
+      this.consuming = false;
     }
-    this.notify('同步完成，队列剩余 ' + this.queue.size() + ' 条');
   }
 
   private async consumeOne(item: QueueItem): Promise<boolean> {
     if (item.entity === 'article') {
       if (item.op === 'create' || item.op === 'update') {
         const payload = JSON.parse(item.payload) as ArticlePayload;
-        return await this.api.pushArticle(payload);
+        const imgLen = (payload.imagewebp || '').length;
+        const audioLen = (payload.audiobase64 || '').length;
+        const totalLen = item.payload.length;
+        console.info('SyncService.consumeOne: pushArticle clientId=' + item.clientId +
+          ' op=' + item.op + ' payloadLen=' + totalLen +
+          ' imagewebpLen=' + imgLen + ' audioLen=' + audioLen);
+        const ok = await this.api.pushArticle(payload);
+        if (!ok) {
+          console.error('SyncService.consumeOne: pushArticle 失败 clientId=' + item.clientId +
+            ' op=' + item.op + ' imagewebpLen=' + imgLen + ' audioLen=' + audioLen +
+            ' (检查服务端日志 / max_allowed_packet / 网络)');
+        }
+        return ok;
       } else if (item.op === 'patch') {
         // 使用PATCH部分更新
         const payload = JSON.parse(item.payload) as Record<string, Object>;
@@ -306,13 +341,7 @@ export class SyncService {
       }
       const articles = (data['articles'] as Object[]) || [];
       const nextSince = (data['nextSince'] as string) || '';
-      // 诊断：本批是否含刺疟论
-      let hitNote = '无';
-      for (let k = 0; k < articles.length; k++) {
-        const t = String(((articles[k] as Record<string, Object>)['title']) || '');
-        if (t.indexOf('刺疟') >= 0) { hitNote = '含[' + t + '] clientId=' + String(((articles[k] as Record<string, Object>)['clientId']) || ''); break; }
-      }
-      console.info('[DIAG][pullArticles] round=' + round + ' 返回=' + articles.length + ' 刺疟=' + hitNote + ' nextSince=' + (nextSince === '' ? '<空>' : nextSince));
+      console.info('[DIAG][pullArticles] round=' + round + ' 返回=' + articles.length + ' nextSince=' + (nextSince === '' ? '<空>' : nextSince));
       if (articles.length > 0) {
         merged += await this.mergeArticles(articles);
       }
@@ -328,16 +357,8 @@ export class SyncService {
     }
     // 诊断：仅在全量拉取或本次拉到内容时核对本地文章总数（避免日常增量每次全库扫描）
     if (merged > 0 || initialSince === '') {
-      const localAll = await ArticleRepository.getInstance().getAllArticles();
-      let localHit = -1;
-      for (let j = 0; j < localAll.length; j++) {
-        if (String(localAll[j].title).indexOf('刺疟') >= 0) { localHit = j; break; }
-      }
-      console.info('[DIAG][pullArticles] 结束 合并=' + merged + ' getAllArticles总数=' + localAll.length
-        + ' 列表内刺疟存在=' + (localHit >= 0) + ' 末次游标=' + since);
-      // 按 clientId 直查（绕过 getAllArticles）：区分「没写进表」还是「写进表但读丢」
-      const direct = await ArticleRepository.getInstance().findArticleByClientId('w4027f6cc4fb248b8');
-      console.info('[DIAG][pullArticles] 直查刺疟论 clientId=w4027f6cc4fb248b8 -> ' + (direct ? '存在(id=' + direct.id + ', title=' + direct.title + ')' : '不存在'));
+      const localAll = await ArticleRepository.getInstance().getAllArticlesMeta();
+      console.info('[DIAG][pullArticles] 结束 合并=' + merged + ' getAllArticles总数=' + localAll.length + ' 末次游标=' + since);
     }
     this.notify('拉取 ' + merged + ' 篇增量文章');
     return merged;
@@ -410,6 +431,8 @@ export class SyncService {
     if (checkins.length > 0) {
       const checkInRepo = CheckInRepository.getInstance();
       const articleRepo = ArticleRepository.getInstance();
+      // 只加载元数据（id+clientId），且在循环外调用一次，避免每条打卡都全表扫描
+      const articles = await articleRepo.getAllArticlesMeta();
 
       for (let i = 0; i < checkins.length; i++) {
         const rc = checkins[i] as Record<string, Object>;
@@ -418,7 +441,6 @@ export class SyncService {
         const checkInTime = (rc['checkInTime'] as string) || '';
 
         // 通过 clientId 查找本地文章
-        const articles = await articleRepo.getAllArticles();
         const article = articles.find(a => a.clientId === remoteArticleId);
         if (article) {
           const record = new CheckInRecord();
@@ -578,7 +600,7 @@ export class SyncService {
     const taskRepo = DailyTaskRepository.getInstance();
     const localRecord = await taskRepo.getTodayTask();
     const articleRepo = ArticleRepository.getInstance();
-    const articles = await articleRepo.getAllArticles();
+    const articles = await articleRepo.getAllArticlesMeta();
 
     // 转换服务端数据为本地格式
     const newItems: DailyTaskItem[] = [];
@@ -590,8 +612,7 @@ export class SyncService {
       if (!article && clientId.length > 0) {
         const missTitle = (ri['articleTitle'] as string) || '';
         console.warn('[DIAG][mergeTasks] 任务引用本地缺失文章 clientId=' + clientId
-          + ' title=' + missTitle + '（本地共 ' + articles.length + ' 篇）localArticleId=0 → Reader 无法定位'
-          + (missTitle.indexOf('刺疟') >= 0 ? ' <<< 目标文章[刺疟论]' : ''));
+          + ' title=' + missTitle + '（本地共 ' + articles.length + ' 篇）localArticleId=0 → Reader 无法定位');
       }
       newItems.push({
         taskId: 0,
@@ -678,7 +699,7 @@ export class SyncService {
 
       // 构建服务端载荷（articleId 使用 clientId）
       const articleRepo = ArticleRepository.getInstance();
-      const allArticles = await articleRepo.getAllArticles();
+      const allArticles = await articleRepo.getAllArticlesMeta();
 
       const itemsPayload: DailyTaskItemPayload[] = [];
       for (let i = 0; i < record.items.length; i++) {
@@ -778,9 +799,21 @@ export class SyncService {
     // 5. 推送本地配置（除 keepScreenOn）
     await this.pushConfig();
 
-    // 注意：不再在 fullSync 中 pushTodayTasks，避免覆盖其他设备的打卡
-    // pushTodayTasks 仅在任务首次创建时调用（SplashPage/Settings 中的创建操作）
-
     this.notify('全量同步完成');
+  }
+
+  /**
+   * 重置文章同步游标并全量重拉（用于本地缺失文章但服务端存在的情况）
+   * 会清空 articleSince，从服务端拉取全部文章，然后执行完整同步流程
+   */
+  async resetAndFullSync(): Promise<void> {
+    if (!this.api.isLoggedIn()) {
+      return;
+    }
+    this.notify('重置同步游标，开始全量重拉...');
+    // 重置文章同步游标为空，强制从服务端拉取全部文章
+    await this.api.setArticleSince('');
+    await this.fullSync();
+    this.notify('全量重拉完成');
   }
 }

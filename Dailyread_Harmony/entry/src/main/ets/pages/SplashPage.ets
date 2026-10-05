@@ -138,9 +138,9 @@ struct SplashPage {
       this.initMessage = '正在读取配置…';
       const updatedConfig = await ConfigRepository.getInstance().getConfig();
 
-      // 8. 加载所有文章
+      // 8. 加载所有文章（元数据模式，不含 imagewebp/audiobase64，避免启动时内存暴涨）
       this.initMessage = '正在读取文章库…';
-      const allArticles = await ArticleRepository.getInstance().getAllArticles();
+      const allArticles = await ArticleRepository.getInstance().getAllArticlesMeta();
       console.info('SplashPage: 已加载文章数=' + allArticles.length);
 
       // 9. 预加载今日任务

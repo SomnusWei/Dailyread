@@ -24,7 +24,9 @@ export interface SizedPixelMap {
  *      （避开 image.createImageSource(Uint8Array)
  *   4) image.createImageSource(绝对路径) → ImageSource
  *   5) 尺寸序列 × quality × format('image/webp') 依次尝试 packing
- *      - 命中 <= 25KB 立即返回；否则返回体积最小的一份作为兜底
+ *      - 先用原始尺寸 + quality=100 打包，若 <= 250KB 直接返回（不压缩）
+ *      - 否则保持原始尺寸，quality 从 90→80→…→5 逐级降质，取首个 <= 250KB 的结果
+ *      - 若 quality=5 仍超限，兜底返回 quality=5 的结果
  *   6) ArrayBuffer → base64 字符串（正确的 3→4 查表编码）
  *
  * 显示端（Reader / ArticleManage 预览）：
@@ -216,7 +218,7 @@ export class ImageCompressionService {
   // ----------------------------------------------------------------------
 
   async pickAndCompressToWebP(): Promise<string> {
-    const MAX_BYTES: number = 25 * 1024;
+    const MAX_BYTES: number = 250 * 1024; // 250KB，与 Win 端一致
 
     // 1. 选择图片
     let photoUris: string[] = [];
@@ -381,82 +383,68 @@ export class ImageCompressionService {
       console.warn('ImageCompressionService: getImageInfo 失败: ' + JSON.stringify(err));
     }
 
-    const widthSteps: number[] = [480, 360, 280, 200, 140, 100, 70];
-    const qualitySteps: number[] = [80, 60, 45, 30, 20, 10];
-    const formatList: string[] = ['image/webp'];
+    // 对齐 Win 端：保持原始尺寸，仅通过 quality 控制大小
+    const qualitySteps: number[] = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 5];
+    const format: string = 'image/webp';
 
     let bestBuffer: ArrayBuffer = new ArrayBuffer(0);
 
-    for (let wIdx: number = 0; wIdx < widthSteps.length; wIdx++) {
-      const targetWidth: number = widthSteps[wIdx];
-      let scale: number = 1.0;
-      if (targetWidth < originalWidth) {
-        scale = targetWidth / originalWidth;
-      }
-      const targetHeight: number = Math.max(1, Math.floor(originalHeight * scale));
-
-      let pm: image.PixelMap | null = null;
-      try {
-        const decodeOpts: image.DecodingOptions = {
-          desiredSize: { width: targetWidth, height: targetHeight }
-        };
-        pm = await source.createPixelMap(decodeOpts);
-        console.info('ImageCompressionService: createPixelMap desiredSize 成功, size=' +
-          targetWidth + 'x' + targetHeight);
-      } catch (err1) {
-        console.warn('ImageCompressionService: desiredSize 解码失败: ' + JSON.stringify(err1));
-        try {
-          pm = await source.createPixelMap();
-        } catch (err2) {
-          console.error('ImageCompressionService: 原始尺寸解码也失败: ' + JSON.stringify(err2));
-          continue;
-        }
-      }
-
-      for (let qIdx: number = 0; qIdx < qualitySteps.length; qIdx++) {
-        const quality: number = qualitySteps[qIdx];
-        for (let fIdx: number = 0; fIdx < formatList.length; fIdx++) {
-          const fmt: string = formatList[fIdx];
-          let packer: image.ImagePacker | null = null;
-          let data: ArrayBuffer = new ArrayBuffer(0);
-          try {
-            packer = image.createImagePacker();
-            const packOpts: image.PackingOption = { format: fmt, quality: quality };
-            data = await packer.packing(pm, packOpts);
-          } catch (packErr) {
-            console.warn('ImageCompressionService: packing 失败, format=' + fmt +
-              ', quality=' + quality + ': ' + JSON.stringify(packErr));
-            if (packer !== null) {
-              try { packer.release(); } catch (ignore) {}
-            }
-            continue;
-          }
-          if (packer !== null) {
-            try { packer.release(); } catch (ignore) {}
-          }
-
-          console.info('ImageCompressionService: [OK] size=' + targetWidth + 'x' + targetHeight +
-            ', quality=' + quality + ', format=' + fmt + ', bytes=' + data.byteLength);
-
-          if (data.byteLength <= 0) {
-            continue;
-          }
-          if (data.byteLength <= maxBytes) {
-            bestBuffer = data;
-            if (pm !== null) { try { pm.release(); } catch (ignore) {} }
-            try { source.release(); } catch (ignore) {}
-            console.info('ImageCompressionService: 命中目标，返回 ' + data.byteLength + 'B');
-            return bestBuffer;
-          }
-          if (bestBuffer.byteLength === 0 || data.byteLength < bestBuffer.byteLength) {
-            bestBuffer = data;
-          }
-        }
-      }
-
-      if (pm !== null) { try { pm.release(); } catch (ignore) {} }
+    // 用原始尺寸解码（不缩放）
+    let pm: image.PixelMap | null = null;
+    try {
+      pm = await source.createPixelMap();
+      console.info('ImageCompressionService: createPixelMap(原始尺寸) 成功');
+    } catch (err) {
+      console.error('ImageCompressionService: 原始尺寸解码失败: ' + JSON.stringify(err));
+      try { source.release(); } catch (ignore) {}
+      return new ArrayBuffer(0);
     }
 
+    for (let qIdx: number = 0; qIdx < qualitySteps.length; qIdx++) {
+      const quality: number = qualitySteps[qIdx];
+      let packer: image.ImagePacker | null = null;
+      let data: ArrayBuffer = new ArrayBuffer(0);
+      try {
+        packer = image.createImagePacker();
+        const packOpts: image.PackingOption = { format: format, quality: quality };
+        data = await packer.packing(pm, packOpts);
+      } catch (packErr) {
+        console.warn('ImageCompressionService: packing 失败, quality=' + quality + ': ' + JSON.stringify(packErr));
+        if (packer !== null) {
+          try { packer.release(); } catch (ignore) {}
+        }
+        continue;
+      }
+      if (packer !== null) {
+        try { packer.release(); } catch (ignore) {}
+      }
+
+      console.info('ImageCompressionService: [OK] size=' + originalWidth + 'x' + originalHeight +
+        ', quality=' + quality + ', bytes=' + data.byteLength);
+
+      if (data.byteLength <= 0) {
+        continue;
+      }
+
+      // 记录当前最小结果作为兜底
+      if (bestBuffer.byteLength === 0 || data.byteLength < bestBuffer.byteLength) {
+        bestBuffer = data;
+      }
+
+      // 命中目标大小，立即返回
+      if (data.byteLength <= maxBytes) {
+        if (pm !== null) { try { pm.release(); } catch (ignore) {} }
+        try { source.release(); } catch (ignore) {}
+        if (quality === 100) {
+          console.info('ImageCompressionService: 原图 <= 250KB，不压缩，直接返回 ' + data.byteLength + 'B');
+        } else {
+          console.info('ImageCompressionService: 命中目标，返回 ' + data.byteLength + 'B (quality=' + quality + ')');
+        }
+        return data;
+      }
+    }
+
+    if (pm !== null) { try { pm.release(); } catch (ignore) {} }
     try { source.release(); } catch (ignore) {}
 
     if (bestBuffer.byteLength === 0) {

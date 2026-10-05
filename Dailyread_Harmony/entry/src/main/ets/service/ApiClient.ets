@@ -416,6 +416,11 @@ export class ApiClient {
 
   async pushArticle(article: ArticlePayload): Promise<boolean> {
     const r = await this.request('POST', '/api/articles', article);
+    if (r.code !== 0) {
+      console.error('ApiClient.pushArticle 失败: code=' + r.code + ' message=' + r.message +
+        ' clientId=' + article.clientId + ' imagewebpLen=' + (article.imagewebp || '').length +
+        ' audioLen=' + (article.audiobase64 || '').length);
+    }
     return r.code === 0;
   }
 

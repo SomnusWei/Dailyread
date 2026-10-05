@@ -821,51 +821,6 @@ struct ReaderPage {
                       .backgroundColor('#F5F5F5');
                   }
                 }
-
-                Column() {
-                  if (this.isCheckedIn) {
-                    Text('✓ 今日已打卡')
-                      .fontSize(16)
-                      .fontColor('#4CAF50')
-                      .fontWeight(FontWeight.Bold)
-                      .padding({ left: 24, right: 24, top: 12, bottom: 12 })
-                      .backgroundColor('#E8F5E9')
-                      .borderRadius(8);
-                  } else {
-                    Row() {
-                      Text('打卡此文章')
-                        .layoutWeight(1)
-                        .textAlign(TextAlign.Center)
-                        .fontSize(16)
-                        .fontColor('#FFFFFF')
-                        .fontWeight(FontWeight.Bold)
-                        .padding({ top: 12, bottom: 12 })
-                        .backgroundColor('#4CAF50')
-                        .borderRadius(8)
-                        .onClick(() => {
-                          this.handleCheckIn();
-                        });
-
-                      Text('待缓再读')
-                        .layoutWeight(1)
-                        .textAlign(TextAlign.Center)
-                        .fontSize(16)
-                        .fontColor(this.canReadLater ? '#FFFFFF' : '#BDBDBD')
-                        .fontWeight(FontWeight.Bold)
-                        .padding({ top: 12, bottom: 12 })
-                        .backgroundColor(this.canReadLater ? '#FF9800' : '#E0E0E0')
-                        .borderRadius(8)
-                        .margin({ left: 12 })
-                        .onClick(() => {
-                          this.handleReadLater();
-                        });
-                    }
-                    .width('80%')
-                  }
-                }
-                .width('100%')
-                .margin({ top: 32, bottom: 32 })
-                .alignItems(HorizontalAlign.Center);
               }
               .width('100%')
               .alignItems(HorizontalAlign.Start)
@@ -984,6 +939,7 @@ struct ReaderPage {
 
       if (this.showBars) {
         Column() {
+          // 第一行：字号控制 + 编辑
           Row() {
             Text('A-')
               .fontSize(20)
@@ -1022,6 +978,53 @@ struct ReaderPage {
           .width('100%')
           .padding({ left: 16, right: 16, top: 12, bottom: 12 })
           .backgroundColor('#FFFFFF');
+
+          // 第二行：打卡 / 待缓再读（已打卡则显示"今日已打卡"）
+          if (this.article !== null) {
+            Row() {
+              if (this.isCheckedIn) {
+                Text('✓ 今日已打卡')
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.Center)
+                  .fontSize(15)
+                  .fontColor('#4CAF50')
+                  .fontWeight(FontWeight.Bold)
+                  .padding({ top: 10, bottom: 10 })
+                  .backgroundColor('#E8F5E9')
+                  .borderRadius(8);
+              } else {
+                Text('打卡此文章')
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.Center)
+                  .fontSize(15)
+                  .fontColor('#FFFFFF')
+                  .fontWeight(FontWeight.Bold)
+                  .padding({ top: 10, bottom: 10 })
+                  .backgroundColor('#4CAF50')
+                  .borderRadius(8)
+                  .onClick(() => {
+                    this.handleCheckIn();
+                  });
+
+                Text('待缓再读')
+                  .layoutWeight(1)
+                  .textAlign(TextAlign.Center)
+                  .fontSize(15)
+                  .fontColor(this.canReadLater ? '#FFFFFF' : '#BDBDBD')
+                  .fontWeight(FontWeight.Bold)
+                  .padding({ top: 10, bottom: 10 })
+                  .backgroundColor(this.canReadLater ? '#FF9800' : '#E0E0E0')
+                  .borderRadius(8)
+                  .margin({ left: 12 })
+                  .onClick(() => {
+                    this.handleReadLater();
+                  });
+              }
+            }
+            .width('100%')
+            .padding({ left: 16, right: 16, top: 0, bottom: 12 })
+            .backgroundColor('#FFFFFF');
+          }
         }
         .width('100%')
         .position({ x: 0, y: '100%' })

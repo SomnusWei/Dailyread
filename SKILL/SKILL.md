@@ -193,6 +193,20 @@ python extract_content.py --track 中医 --system 心系 --depth deep --ancient 
 python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --output-dir 西医讲义素材
 ```
 
+### OCR 错字核验（中医内科学讲义强制）
+
+教材为 OCR 文本，**提取后必须先做 OCR 错字核验**，再写入讲义：
+
+```bash
+python scripts/ocr_check.py <提取的证型文本.txt>    # 形近字/方名/药名/脉象/舌象扫描
+python search_textbooks.py --track 中医 --keyword "<方名或症状片段>"   # 回搜教材原文逐字定位
+```
+
+**中医内科学体例硬性要求**（见 `references/lecture-format-neike.md` 规则 14/15）：
+- 证治分类表的 `主症`／`证机概要`／`治法`／`代表方` 四列**必须逐字取自教材原文**，不得改写；
+- OCR 存疑处标注「[OCR 存疑]」保留原字，不得擅改；
+- 方名、药名、脉象名必须回搜教材确认。
+
 ---
 
 ## 功能一：医学学习
@@ -231,7 +245,12 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 
 **默认行为：中医讲义制作自动融入专家视角（倪海厦经方体系 + 动态蒸馏专家），无需用户选择风格。**
 
-**交付形态：OneNote 原生 HTML（默认，不导出 PDF）。** 格式规范见 `references/onenote-html-spec.md`。
+**交付形态：OneNote 原生 HTML（默认）。** 格式规范见 `references/onenote-html-spec.md`。
+
+**需要平板手写批注时，再出一份「屏幕连续版」**（左窄栏目录 ＋ 右宽栏正文、连续流式无 A4 分页、
+超长 PNG ＋ 长页 PDF）：规范见 `references/lecture-format-screen.md`，
+命令 `python scripts/render_screen_lecture.py "<讲义>_OneNote版.html"`。
+触发语：「要在平板上批注」「导入华为笔记／StarNote」「不要 PDF 那种按页切的感觉」「左边目录右边内容」。
 
 ### ★ 讲义体例路由（动手前先判体例）
 
@@ -240,7 +259,7 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 | **单味中药**（麻黄、桂枝、石膏…）或**药材类别**（解表药、清热药…） | **中药学体例** | `references/lecture-format-zhongyaoxue.md` | `references/examples/中药学-麻黄讲义_OneNote版样板.html` |
 | **方剂 / 按「剂」成章**（泻下剂、解表剂…） | 方剂学体例 | `references/lecture-format-fangjixue.md` | `references/examples/方剂学-泻下剂讲义_OneNote版样板.html` |
 | **生理学**（按教材章：细胞、血液、循环…） | 生理学体例 | `references/lecture-format-physiology.md` | `references/examples/生理学-细胞的基本功能讲义_OneNote版样板.html` |
-| **中医内科学**（按教材章：肺系、心系、脾胃、肝胆…；章内按**病证**分节） | **中医内科学体例** | `references/lecture-format-neike.md` | `references/examples/中医内科学-肺系病证讲义_OneNote版样板.html` |
+| **中医内科学**（按教材章：肺系、心系、脾胃、肝胆…；章内按**病证**分节） | **中医内科学体例** | `references/lecture-format-neike.md` | `references/examples/中医内科学-心系病证讲义_OneNote版样板.html` |
 | 其他（西医各科、专科病证等） | 通用体例 | — | `templates/lecture-template.html` |
 
 **路由规则**：
@@ -251,7 +270,7 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 4. 主题是**中医内科学的章或病证**（感冒、咳嗽、哮病、喘证、肺痈、肺痨、肺胀、肺痿、胸痹、胃痛、泄泻、消渴…） → **中医内科学体例**
    - 该体例**默认三专家并列**：**倪海厦 · 娄绍昆 · 经方专家库（多源合成）**，每节各一张卡，缺一不可
    - 主题色固定 **`#014198`（RGB 1,65,152）**；章标题带 `［第N章］`/`［附录N］` 标签；目录**只列到章节两级**，不列节下子项
-   - 附录固定四个：方剂速查表 / 药物速查表 / 专家视角使用说明与边界声明 / 经方专家库速查表
+   - 附录固定三个：方剂速查表 / 药物速查表 / 经方专家库速查表（**不设**「专家视角使用说明与边界声明」附录）
 5. 歧义时先问用户；用户指定体例时从其指定
 6. **中药学体例的章标题一律不带 ［…］ 标签**——方剂学用 `［目标］`、生理学用 `［第一节］`，
    中药学体例标题直接是「一、药材与来源」这样的正文序号（质检会查 `［` 计数为 0）
@@ -264,10 +283,12 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
    - 法（治法治则）→ 教材治则 + 倪师"先辨阴阳再选方"原则
    - 方（方剂详解）→ 教材方义 + 经方条文卡片 + 倪师临床剂量
    - 药（中药详解）→ 教材功效 + 倪师药性认识（modules/09）
-④ 编写网页版底稿（class 驱动，样式集中在 `<style>`）
-⑤ 转 OneNote 适配版（`scripts/to_onenote.py`，禁止手写）
-⑥ 质量检查（`validate_html.py` + `to_onenote.py --check` + `quality-checklist.md` 分体例检查）
+④ 编写 OneNote 原生 HTML（中医内科学体例直接照蓝本写，不经 to_onenote.py 转换）
+⑤ 质量检查（`validate_html.py` + `quality-checklist.md` 分体例检查）
 ```
+
+> ⚠️ **中医内科学体例直接写 OneNote 原生 HTML**（照蓝本 `references/examples/中医内科学-心系病证讲义_OneNote版样板.html` 写），
+> 不走 ④→⑤ 两步流程。其他体例仍可走「编写网页版底稿 → 转 OneNote 适配版」的两步流程。
 
 **经方主题讲义自动追加模块**：
 - 六经辨证定位（引用 distilled/01 诊断公式）
@@ -281,8 +302,8 @@ python extract_content.py --track 西医 --keyword "高血压,心力衰竭" --ou
 python scripts/to_onenote.py --src "<讲义名>.html" --out "<讲义名>_OneNote版.html" --primary "<主题色>" --check
 ```
 
-主题色按体例取：中药学 `#8a5b00`（棕金）、生理学 `#143561`（深蓝）、方剂学 `#4a1a10`（深棕）、中医青绿 `#0f6b6b`。
-转换器只做格式转换，不改写、不增删正文。**不再有"PDF 导出"这一步**。
+主题色按体例取：中药学 `#8a5b00`（棕金）、生理学 `#143561`（深蓝）、方剂学 `#4a1a10`（深棕）、中医内科学 `#014198`（深蓝）。
+转换器只做格式转换，不改写、不增删正文。**不再有"PDF 导出"这一步**，默认输出 OneNote 原生 HTML（`<讲义名>_OneNote版.html`），不输出 PDF 源、EPUB 或其他版本。
 质量检查执行 `scripts/validate_html.py` 与 `references/quality-checklist.md` 的分体例检查。
 
 ---
@@ -575,6 +596,7 @@ yixue-zonghe/
 │   ├── search_textbooks.py           # 全库检索（--track + --source）
 │   ├── extract_content.py            # 素材批量提取（--track + --source）
 │   ├── build_exam_html.py            # 交互式试卷生成器
+│   ├── render_screen_lecture.py      # 讲义屏幕连续版渲染（长图 + 长页 PDF）
 │   ├── build_textbook_index.py       # 索引重建
 │   ├── sync_new_materials.py         # PDF 增量同步
 │   └── validate_html.py              # 讲义 HTML 质检
@@ -586,6 +608,7 @@ yixue-zonghe/
 │   ├── prescription-guide.md         # 中药处方讲解规范（含经方卡片+三列剂量）
 │   ├── quiz-guide.md                 # 出题指南（含倪师医案题可选）
 │   ├── quality-checklist.md          # 讲义质检清单
+│   ├── lecture-format-screen.md      # 讲义屏幕连续版规范（平板无界笔记 / 长图 + 长页 PDF）
 │   ├── nihaixia-integration.md        # 倪师库运行时摘要
 │   ├── shixuemin-integration.md      # 石师库运行时摘要
 │   └── cangjie-distill-guide.md      # 仓颉蒸馏操作指南（医学适配版）

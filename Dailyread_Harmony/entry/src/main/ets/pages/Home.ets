@@ -240,7 +240,8 @@ struct HomePage {
       const rateWordsPerMin: number = 100;
       this.targetWordsToday = this.config.dailyMinutes * rateWordsPerMin;
 
-      const allArticles: Article[] = await ArticleRepository.getInstance().getAllArticles();
+      // 列表页只加载元数据（不含 imagewebp/audiobase64），避免多篇带图文章驻留内存导致滑动卡顿
+      const allArticles: Article[] = await ArticleRepository.getInstance().getAllArticlesMeta();
       console.info('Home.loadData: allArticles.length=' + allArticles.length);
 
       const dailyTaskService = DailyTaskService.getInstance();
