@@ -12,7 +12,7 @@ function todayStr() {
   return tz.toISOString().slice(0, 10);
 }
 
-// ---------- 任务生成逻辑（与客户端 DailyTaskService 保持一致） ----------
+// ---------- 任务生成逻辑（服务端统一生成；鸿蒙/Win/PWA 端只拉取，不本地生成） ----------
 
 function getEffectiveTargetRate(article, globalRate) {
   if (article.use_independent_check_rate && article.independent_check_rate > 0) {
@@ -44,28 +44,12 @@ function getWordCount(article) {
   return article.chinese_chars > 0 ? article.chinese_chars : (article.content ? article.content.length : 0);
 }
 
-function isLongArticle(article, maxWordLimit) {
-  return getWordCount(article) > maxWordLimit * 0.3;
-}
-
-function categorizeArticles(taskPool, maxWordLimit) {
-  const longArticles = [];
-  const shortArticles = [];
-  for (const a of taskPool) {
-    if (isLongArticle(a, maxWordLimit)) {
-      longArticles.push(a);
-    } else {
-      shortArticles.push(a);
-    }
-  }
-  return { longArticles, shortArticles };
-}
-
-function selectShortArticles(shortArticles, remainingWord) {
-  if (remainingWord <= 0 || shortArticles.length === 0) return [];
+// 统一选文：不区分长文/短文，按每日字数预算随机组合填充
+function selectArticles(pool, remainingWord) {
+  if (remainingWord <= 0 || pool.length === 0) return [];
   const selected = [];
   let totalWords = 0;
-  const available = [...shortArticles];
+  const available = [...pool];
   while (available.length > 0 && totalWords < remainingWord) {
     const randomIndex = Math.floor(Math.random() * available.length);
     const candidate = available[randomIndex];
@@ -79,98 +63,8 @@ function selectShortArticles(shortArticles, remainingWord) {
   return selected;
 }
 
-function arraysEqualIgnoreOrder(a, b) {
-  if (a.length !== b.length) return false;
-  const sortedA = [...a].sort((x, y) => x - y);
-  const sortedB = [...b].sort((x, y) => x - y);
-  for (let i = 0; i < sortedA.length; i++) {
-    if (sortedA[i] !== sortedB[i]) return false;
-  }
-  return true;
-}
-
-function checkAntiDuplicate(currentIds, lastIds, totalLongCount) {
-  if (!lastIds || lastIds.length === 0) return true;
-  if (totalLongCount <= 2) {
-    return !arraysEqualIgnoreOrder(currentIds, lastIds);
-  } else {
-    for (let i = 0; i < currentIds.length; i++) {
-      if (!lastIds.includes(currentIds[i])) return true;
-    }
-    return false;
-  }
-}
-
-async function selectLongArticles(longArticles, maxWordLimit, lastLongArticleIds) {
-  const maxTotalWords = maxWordLimit * 0.7;
-  const lastIds = lastLongArticleIds || [];
-  const totalLongCount = longArticles.length;
-  const maxAttempts = 10;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const selected = [];
-    let totalWords = 0;
-    const available = [...longArticles];
-    while (available.length > 0) {
-      const randomIndex = Math.floor(Math.random() * available.length);
-      const candidate = available[randomIndex];
-      const wc = getWordCount(candidate);
-      if (totalWords + wc <= maxTotalWords) {
-        selected.push(candidate);
-        totalWords += wc;
-      }
-      available.splice(randomIndex, 1);
-    }
-    if (selected.length === 0) {
-      let minLen = Number.MAX_VALUE;
-      let minArticle = null;
-      for (const a of longArticles) {
-        const wc = getWordCount(a);
-        if (wc < minLen && wc <= maxTotalWords) {
-          minLen = wc;
-          minArticle = a;
-        }
-      }
-      if (minArticle) selected.push(minArticle);
-    }
-    const currentIds = selected.map(a => a.id);
-    if (checkAntiDuplicate(currentIds, lastIds, totalLongCount)) {
-      return selected;
-    }
-  }
-
-  // 降级：允许重复
-  console.warn('防重复校验多次失败，降级为允许重复');
-  const selected = [];
-  let totalWords = 0;
-  const available = [...longArticles];
-  while (available.length > 0 && totalWords < maxTotalWords) {
-    const randomIndex = Math.floor(Math.random() * available.length);
-    const candidate = available[randomIndex];
-    const wc = getWordCount(candidate);
-    if (totalWords + wc <= maxTotalWords) {
-      selected.push(candidate);
-      totalWords += wc;
-    }
-    available.splice(randomIndex, 1);
-  }
-  if (selected.length === 0) {
-    let minLen = Number.MAX_VALUE;
-    let minArticle = null;
-    for (const a of longArticles) {
-      const wc = getWordCount(a);
-      if (wc < minLen && wc <= maxTotalWords) {
-        minLen = wc;
-        minArticle = a;
-      }
-    }
-    if (minArticle) selected.push(minArticle);
-  }
-  return selected;
-}
-
 /**
- * 生成今日任务列表（与客户端 DailyTaskService.getOrGenerateTodayTasks 逻辑一致）
+ * 生成今日任务列表（服务端统一生成，鸿蒙/Win/PWA 端只拉取）
  * @param {number} userId 用户ID
  * @param {boolean} force 是否强制重新生成（忽略已有任务）
  */
@@ -216,24 +110,7 @@ async function generateDailyTask(userId, force = false) {
   const dailyMinutes = Number(config.daily_minutes || 20);
   const globalTargetRate = Number(config.target_check_rate || 30);
 
-  // 3. 获取昨日长文章ID列表
-  let lastLongArticleIds = [];
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-  const [yesterdayTasks] = await pool.query(
-    `SELECT last_long_article_ids FROM daily_tasks WHERE user_id = ? AND task_date = ?`,
-    [userId, yesterdayStr]
-  );
-  if (yesterdayTasks.length > 0 && yesterdayTasks[0].last_long_article_ids) {
-    try {
-      lastLongArticleIds = JSON.parse(yesterdayTasks[0].last_long_article_ids);
-    } catch (e) {
-      lastLongArticleIds = [];
-    }
-  }
-
-  // 4. 如果今日已有任务且不强制，直接返回现有
+  // 3. 如果今日已有任务且不强制，直接返回现有
   if (!force) {
     const [existing] = await pool.query(
       `SELECT id FROM daily_tasks WHERE user_id = ? AND task_date = ?`,
@@ -250,9 +127,8 @@ async function generateDailyTask(userId, force = false) {
     await pool.query(`DELETE FROM daily_tasks WHERE user_id = ? AND task_date = ?`, [userId, today]);
   }
 
-  // 5. 生成任务列表
-  let resultItems = [];
-  let selectedLongArticleIds = [];
+  // 4. 生成任务列表（统一选文规则：不再区分长文/短文，按每日字数预算随机组合）
+  const resultItems = [];
 
   if (dailyMinutes > 0 && articles.length > 0) {
     const taskPool = filterTaskPool(articles, globalTargetRate);
@@ -276,50 +152,16 @@ async function generateDailyTask(userId, force = false) {
         });
       }
 
+      // 剩余文章统一随机选取（长文与短文同一规则），填满每日字数预算
       const maxWordLimit = calculateMaxWordLimit(dailyMinutes);
-      const { longArticles, shortArticles } = categorizeArticles(remainingPool, maxWordLimit);
-
-      let selectedLongArticles = [];
-      let selectedShortArticles = [];
-
-      if (longArticles.length === 0) {
-        selectedShortArticles = selectShortArticles(shortArticles, maxWordLimit);
-      } else if (longArticles.length === 1) {
-        const longArticle = longArticles[0];
-        const longWordCount = getWordCount(longArticle);
-        if (longWordCount <= maxWordLimit) {
-          selectedLongArticles = [longArticle];
-          selectedLongArticleIds = [longArticle.id];
-          selectedShortArticles = selectShortArticles(shortArticles, maxWordLimit - longWordCount);
-        } else {
-          selectedShortArticles = selectShortArticles(shortArticles, maxWordLimit);
-        }
-      } else {
-        selectedLongArticles = await selectLongArticles(longArticles, maxWordLimit, lastLongArticleIds);
-        selectedLongArticleIds = selectedLongArticles.map(a => a.id);
-        let longTotalWords = 0;
-        for (const a of selectedLongArticles) longTotalWords += getWordCount(a);
-        selectedShortArticles = selectShortArticles(shortArticles, maxWordLimit - longTotalWords);
-      }
-
-      for (const a of selectedLongArticles) {
+      const selectedArticles = selectArticles(remainingPool, maxWordLimit);
+      for (const a of selectedArticles) {
         resultItems.push({
           article_id: a.id,
           client_id: a.client_id,
           article_title: a.title,
           word_target: getWordCount(a),
-          is_long_article: 1,
-          is_required: 0,
-          display_name: a.title
-        });
-      }
-      for (const a of selectedShortArticles) {
-        resultItems.push({
-          article_id: a.id,
-          client_id: a.client_id,
-          article_title: a.title,
-          word_target: getWordCount(a),
-          is_long_article: 0,
+          is_long_article: a.is_long_article ? 1 : 0,
           is_required: 0,
           display_name: a.title
         });
@@ -327,7 +169,7 @@ async function generateDailyTask(userId, force = false) {
     }
   }
 
-  // 5.5 兜底：如果没有选出任何文章但用户有文章，至少选一篇
+  // 4.5 兜底：如果没有选出任何文章但用户有文章，至少选一篇
   if (resultItems.length === 0 && articles.length > 0) {
     // 优先选必读文章，否则选最短的一篇
     const required = articles.find(a => a.is_required && a.is_reading);
@@ -344,20 +186,20 @@ async function generateDailyTask(userId, force = false) {
     });
   }
 
-  // 6. 计算总字数（必读文章不计入）
+  // 5. 计算总字数（必读文章不计入）
   let totalWords = 0;
   for (const item of resultItems) {
     if (!item.is_required) totalWords += item.word_target;
   }
 
-  // 7. 保存到数据库
+  // 6. 保存到数据库
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [insertResult] = await conn.query(
       `INSERT INTO daily_tasks (user_id, task_date, count, total_words, last_long_article_ids, create_time, last_modified)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [userId, today, resultItems.length, totalWords, JSON.stringify(selectedLongArticleIds), new Date().toISOString(), new Date().toISOString()]
+      [userId, today, resultItems.length, totalWords, '[]', new Date().toISOString(), new Date().toISOString()]
     );
     const taskId = insertResult.insertId;
     for (const item of resultItems) {
@@ -385,7 +227,7 @@ async function generateDailyTask(userId, force = false) {
       taskDate: today,
       count: resultItems.length,
       totalWords,
-      lastLongArticleIds: JSON.stringify(selectedLongArticleIds),
+      lastLongArticleIds: '[]',
       items: responseItems
     };
   } catch (e) {

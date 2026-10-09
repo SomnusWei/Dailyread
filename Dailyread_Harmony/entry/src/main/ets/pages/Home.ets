@@ -249,7 +249,7 @@ struct HomePage {
       const hasTodayTasks = await dailyTaskService.hasTodayTasks();
       console.info('Home.loadData: hasTodayTasks=' + hasTodayTasks);
 
-      let taskItems = await dailyTaskService.getOrGenerateTodayTasks(allArticles);
+      let taskItems = await dailyTaskService.getOrGenerateTodayTasks();
       console.info('Home.loadData: taskItems.length after getOrGenerate=' + taskItems.length);
 
       // 防御性修复：如果 hasTodayTasks 为 true 但 items 为空，

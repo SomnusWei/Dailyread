@@ -1,8 +1,6 @@
 import router from '@ohos.router';
 import common from '@ohos.app.ability.common';
 import { ConfigRepository } from '../repository/ConfigRepository';
-import { ArticleRepository } from '../repository/ArticleRepository';
-import { DailyTaskRepository } from '../repository/DailyTaskRepository';
 import { DailyTaskService } from '../service/DailyTaskService';
 import { ApiClient } from '../service/ApiClient';
 import { SyncService } from '../service/SyncService';
@@ -138,22 +136,9 @@ struct SplashPage {
       this.initMessage = '正在读取配置…';
       const updatedConfig = await ConfigRepository.getInstance().getConfig();
 
-      // 8. 加载所有文章（元数据模式，不含 imagewebp/audiobase64，避免启动时内存暴涨）
-      this.initMessage = '正在读取文章库…';
-      const allArticles = await ArticleRepository.getInstance().getAllArticlesMeta();
-      console.info('SplashPage: 已加载文章数=' + allArticles.length);
-
-      // 9. 预加载今日任务
-      // 关键修复：启动时先清空本地任务缓存，确保用最新文章数据重新生成
-      // （解决 Win 端修改后鸿蒙端仍显示旧任务列表的问题）
-      this.initMessage = '正在生成今日阅读列表…';
-      try {
-        await DailyTaskRepository.getInstance().clearTodayTask();
-        console.info('SplashPage: 已清空本地今日任务缓存，将重新生成');
-      } catch (e) {
-        console.error('SplashPage: 清空今日任务缓存失败: ' + JSON.stringify(e));
-      }
-      const tasks = await DailyTaskService.getInstance().getOrGenerateTodayTasks(allArticles);
+      // 8. 预加载今日任务（任务由服务端生成，本端只拉取/读缓存）
+      this.initMessage = '正在加载今日阅读列表…';
+      const tasks = await DailyTaskService.getInstance().getOrGenerateTodayTasks();
       console.info('SplashPage: 预加载任务完成，数量=' + tasks.length);
 
       // 10. 保存最终配置

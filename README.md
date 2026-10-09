@@ -387,6 +387,28 @@ Win 端录入            后端存储                鸿蒙端播放
 
 ## 📝 更新日志
 
+### 2026-10-09
+
+**每日任务生成逻辑重构：服务端统一选文（取消长/短文区分）+ 鸿蒙端去除本地生成 + 线上部署：**
+
+**一、服务端：统一选文规则（`dailyTasks.js`）**
+- 🔀 **取消长文/短文区分**：删除 `isLongArticle` / `categorizeArticles` / `selectShortArticles`(旧) / `arraysEqualIgnoreOrder` / `checkAntiDuplicate` / `selectLongArticles`，新增统一 `selectArticles()`——必读前置后，剩余文章不再按字数分长短，一律按每日字数预算（`dailyMinutes × 100 × (1.01~1.10 随机系数)`）随机组合填满
+- 🗑 **移除「昨日防重复」**：删除昨日 `last_long_article_ids` 查询与 10 次重试防重复机制；`last_long_article_ids` 落库与返回统一写 `'[]'`（列保留，兼容既有接口）
+- 🏷 **`is_long_article` 改用文章自身属性**：任务项标记取 `articles.is_long_article`，与鸿蒙端 `articleToTaskItem`、必读/兜底分支口径一致（此前服务端按「选择路径」覆盖，与客户端不一致）
+- 🐛 **修复「反复重新生成都出现同一篇长篇」**：旧逻辑下当账号恰有 1 篇「长文」（字数 > 预算×30%）且能塞进预算时，分支 B 会**无条件选中它**；统一后改为参与随机选取
+- ✅ 必读前置、字数预算、兜底选文、`totalWords` 口径（必读不计）均保持不变
+
+**二、鸿蒙端：不再本地生成任务，全部由服务端生成**
+- ✂️ **`DailyTaskService.ets` 重写**：删除 `localGenerateTodayTasks` 及全部本地生成/分类/防重复代码；`getOrGenerateTodayTasks()` 改为「读本地缓存 → 无则从服务端拉取」，去掉入参 `articles`
+- 🔌 **调用点更新**：`Home.ets` / `SplashPage.ets` 改为 `getOrGenerateTodayTasks()`；`SplashPage` 去掉「启动预加载全部文章」与「清空本地任务缓存后重建」两处旧 workaround（任务一致性已由 `pullTodayTasks` 的比对替换保证）
+- ⚠️ **离线行为**：未登录 / 断网且本地无当日缓存时不再有任务列表（本地不再兜底生成）；有缓存则继续展示
+- 📄 同步更新 `Dailyread_Harmony/README.md` 的「今日任务生成」章节
+
+**三、线上部署**
+- 🚀 线上 `/opt/dailyread-server/src/routes/dailyTasks.js` 更新为新版（此前仍为 2026-08-19 旧版）；`node --check` 通过，`systemctl restart dailyread-server` 后服务 active、`/health` 200
+- 💾 部署前已备份原文件：`/opt/dailyread-server/backups/dailyTasks.js.bak-20261009-094418`
+- ℹ️ Win 端只是调用服务端接口，**无需重新打包**；鸿蒙端为客户端改动，**需在 DevEco 重新编译安装**后生效
+
 ### 2026-10-05
 
 **鸿蒙端列表滑动卡顿修复 + 图片上传压缩 + Win 端跨端图片懒加载：**

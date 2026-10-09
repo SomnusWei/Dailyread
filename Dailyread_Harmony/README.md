@@ -404,31 +404,27 @@ const json = await BackupService.exportToJSON()
 
 ## 🧠 核心业务逻辑：今日任务生成
 
-核心逻辑位于 [DailyTaskService.ets](entry/src/main/ets/service/DailyTaskService.ets) 的 `getOrGenerateTodayTasks()` 方法。
+今日任务**统一由服务端生成**，鸿蒙端只负责从服务端拉取并缓存到本地，**不再本地生成**任务列表。取任务入口为 [DailyTaskService.ets](entry/src/main/ets/service/DailyTaskService.ets) 的 `getOrGenerateTodayTasks()`。
 
-### 算法流程
+### 端上流程
 
 ```
-1. 命中缓存？若当日 tasks 已存在 → 直接返回（稳定不变）
-2. 从 Config 读取 dailyMinutes 和 targetCheckRate
-3. 任务池筛选：isReading=true 且 completionRate < effectiveRate
-   （effectiveRate：有独立目标率优先用它，否则用全局 targetCheckRate）
-4. 必读前置：将 isRequired=true 的文章先排到结果最前面
-5. 计算字数上限：maxWordLimit = dailyMinutes × 250 × (1.01~1.11 随机系数)
-6. 长/短文章分类：字数 > maxWordLimit × 30% 判定为长文章
-7. 分支选取：
-   A) 无长文章 → 用短文章随机填满字数上限
-   B) 1 篇长文章 → 若它本身 ≤ maxWordLimit 必选，剩余用短文章补
-   C) ≥2 篇长文章 → 随机组合长文章（总字数 ≤ maxWordLimit×70%），
-      防重复校验：昨日长文章列表作为「黑名单参考」，剩余用短文章补
-8. 转换为 DailyTaskItem 列表，持久化到 daily_tasks 表
+1. 命中本地缓存（当日 tasks 已存在且 count>0）→ 直接返回
+2. 未命中且已登录 → 调用 SyncService.fetchOrGenerateTodayTasks() 请求服务端
+   （服务端当日任务不存在时会自动生成）
+3. 服务端任务写回本地后重新读取并返回
+4. 未登录或服务端无任务 → 返回空列表（本地不再生成）
 ```
 
-### 防重复机制
+### 服务端生成规则（dailyTasks.js · generateDailyTask）
 
-- 短文章选取：最多 100 次随机抽取，每次从候选池移除已选项
-- 长文章选取：通过 `yesterdayLongArticleIds` 对比昨日与今日列表，最多 10 次尝试避免相同组合
-- 若多次尝试仍无法避免重复 → 降级允许重复
+- 任务池筛选：`isReading=true` 且 `completionRate < effectiveRate`
+  （effectiveRate：有独立目标率优先用它，否则用全局 targetCheckRate）
+- 必读前置：`isRequired=true` 的文章先排到结果最前面
+- 字数上限：`maxWordLimit = dailyMinutes × 100 × (1.01~1.10 随机系数)`
+- 剩余文章**统一随机组合**填满字数上限（不再区分长文/短文，已移除防重复机制）
+- 兜底：一篇都没选出但用户有文章时，至少选一篇
+- 落库：`daily_tasks` + `daily_task_items`
 
 ---
 
